@@ -11,7 +11,7 @@
 <script src="lib/pdf.min.js"></script>
 <style>
 body{margin:0;font:14px system-ui;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
-#bar{background:#222;color:#eee;padding:5px 6px;display:flex;flex-direction:column;gap:5px}
+#bar{background:#222;color:#eee;padding:5px 44px 5px 6px;display:flex;flex-direction:column;gap:5px}
 /* safe center：宽屏居中好看；窄屏内容装不下时自动退回左对齐，保证横滑能划到最左边 */
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:safe center}
 #bar button,#bar label{background:#444;color:#eee;border:0;padding:4px 8px;border-radius:4px;cursor:pointer;
@@ -58,6 +58,8 @@ body{margin:0;font:14px system-ui;display:flex;flex-direction:column;height:100v
 
 #wrap{flex:1;overflow:auto;background:#777;position:relative;min-height:0;touch-action:pan-x pan-y}
 body.hidebar #bar{display:none}
+/* 收缩/展开钉在同一个右上角位置，切换不跳 */
+#bBar{position:fixed;top:6px;right:10px;z-index:31}
 #barShow{position:fixed;top:6px;right:10px;z-index:30;display:none;background:rgba(40,40,40,.9);
    color:#eee;border:1px solid #555;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:13px}
 /* 弹出层一律钉在工具栏下方（--barH 由 JS 按实际高度实时写入），绝不盖住工具栏 */
@@ -684,7 +686,7 @@ syncBarH();
 document.addEventListener('click',e=>{
   if($('menu').style.display!=='none'&&!e.target.closest('#menu')){
     $('menu').style.display='none';
-    if(!e.target.closest('#gen,#help,#lib,#panel'))e.stopPropagation();
+    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
