@@ -38,7 +38,7 @@ async def main():
         await pg.click("#bMenu"); await asyncio.sleep(0.2)
         print(ok(await pg.is_visible("#menu")), "点 ☰ 打开菜单")
         # 菜单里的控件在 DOM 里、事件仍绑定
-        for iid in ["nextN","skipN","bSkip","bClr","off","shift","bShift","chkFollow","chkNum","chkProg","chkAlignY","chkSnapX","barWin","bGen","bExp","fMap","bWipe","bHelp"]:
+        for iid in ["nextN","skipN","bSkip","bClr","off","shift","bShift","chkFollow","chkNum","chkProg","chkAlignY","chkSnapX","barWin","bExp","fMap","bHelp"]:
             ex=await pg.evaluate(f"!!document.getElementById('{iid}')")
             if not ex: print("  MISSING", iid)
         # 点菜单里的「清空时间」不关菜单（在菜单内点击不关闭）

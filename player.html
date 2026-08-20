@@ -241,7 +241,7 @@ body.hidebar #bar{display:none}
   <label title="谱上印着多小节休止(如 6)：填 6 再点，下一编号 = 最后一小节 + 6">跨小节<input type="number" id="skipN" min="1" step="1" value="1"></label>
   <button id="bSkip" title="下一编号 = 最后一个小节号 + 上面填的数，用完复位成 1">跳</button>
  </div>
- <button id="bClr">清空时间</button>
+ <button id="bClr">清空时间点</button>
  <div class="msec">打点 / 时间</div>
  <div class="mrow">
   <label title="补偿人的反应延迟：打点时记录的时间 = 当前时间 − 补偿">补偿ms<input type="number" id="off" step="10" value="0"></label>
@@ -259,7 +259,6 @@ body.hidebar #bar{display:none}
  <div class="msec">生成 / 数据</div>
  <button id="bExp">导出JSON</button>
  <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
- <button id="bWipe">清除存档</button>
  <button id="bHelp">? 快捷键</button>
 </div>
 <div id="wrap"><div id="pages"></div></div>
@@ -2114,22 +2113,6 @@ async function tryRestore(){
   return '已恢复本地存档（'+new Date(s.ts||Date.now()).toLocaleString()+'）：'
     +M.length+' 标记 / '+E.length+' 时间点';
 }
-$('bWipe').onclick=async()=>{
-  if(!pdfName)return msg('还没打开 PDF',1);
-  if(idb){
-    if(!confirm('删除《'+pdfName+'》的本地存档？当前画面上的内容不受影响。'))return;
-    await idbDel(idb,'anns',pdfHash);msg('存档已删除');
-    return;
-  }
-  if(LS){
-    if(!confirm('删除《'+pdfName+'》的本地存档？当前画面上的内容不受影响。'))return;
-    LS.removeItem(KEY());msg('存档已删除');
-    return;
-  }
-  if(memStore.size){memStore.clear();msg('已清除内存存档（此浏览器没有本地存储，没有存档可删）')}
-  else msg('本地存储不可用，没有存档可删',1);
-};
-
 /* ---------- 导入导出 ---------- */
 $('bExp').onclick=()=>{
   const data={v:5,pdf:pdfName,offset,TEMPO,METER,FORM,M:pureM(),E:[...E].sort((a,b)=>a.t-b.t)};

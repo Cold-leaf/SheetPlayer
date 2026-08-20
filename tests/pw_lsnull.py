@@ -36,10 +36,6 @@ async def main():
               "警告文案明确: \""+ (await pg.inner_text("#msg")) +"\"")
         print(ok(await pg.evaluate("M.length")>=4), f"没有本地存储时功能照常（已标 {await pg.evaluate(chr(39)+chr(39)) if False else chr(0)}" if False else "没有本地存储时功能照常（标记仍能加）")
 
-        # 清除存档按钮安全降级（按钮在菜单里）
-        await pg.click("#bMenu"); await pg.click("#bWipe")
-        print(ok("没有存档可删" in await pg.inner_text("#msg")), "「清除存档」: "+await pg.inner_text("#msg"))
-
         print("\npage errors:",errs or "(none)")
         await b.close()
 asyncio.run(main())
