@@ -23,7 +23,7 @@ async def main():
         w0=await pg.evaluate("boxes[1].clientWidth"); vw=await pg.evaluate("wrap.clientWidth")
         print(f"      初始页宽 {w0}px / 视口 {vw}px")
         print(ok(w0>vw), f"默认 130% 在平板竖屏下溢出: {w0} > {vw}")
-        await pg.click("#bFitW"); await asyncio.sleep(0.8)
+        await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         w1=await pg.evaluate("boxes[1].clientWidth"); z=await pg.evaluate("zoom")
         print(ok(w1<=vw-24+1), f"「适应宽度」后页宽 {w1}px ≤ 视口 {vw}px (缩放 {Math.round if False else ''}{round(z*100)}%)")
         print(ok(await pg.inner_text("#zoomVal")==str(round(z*100))+"%"), "缩放显示:", await pg.inner_text("#zoomVal"))

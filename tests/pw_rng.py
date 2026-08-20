@@ -36,7 +36,7 @@ async def main():
         print(ok(same==["6/8","9/8","6/8","9/8","6/8","6/8","6/8","6/8","9/8","6/8","9/8"]),
               f"逐小节结果与你原表一致: {same}")
 
-        await pg.click("#bMenu"); await pg.click("#bGen"); await asyncio.sleep(0.4)
+        await pg.click("#bGen"); await asyncio.sleep(0.4)
         rows=await pg.eval_on_selector_all("#gMeter .grow","e=>e.length")
         sigs=await pg.eval_on_selector_all("#gMeter input.sig","e=>e.map(x=>x.value)")
         rngs=await pg.eval_on_selector_all("#gMeter input.rng","e=>e.map(x=>x.value)")
@@ -103,7 +103,7 @@ async def main():
         rs=await pg.evaluate("METER.map(r=>sigText(r.sig)+': '+formText(r.ranges))")
         print(ok(rs==ME), f"刷新恢复: {rs}")
 
-        await pg.click("#bMenu"); await pg.click("#bGen"); await asyncio.sleep(0.4)
+        await pg.click("#bGen"); await asyncio.sleep(0.4)
         await pg.screenshot(path="/tmp/meter_rng.png")
         print("\npage errors:",errs or "(none)")
         await b.close()

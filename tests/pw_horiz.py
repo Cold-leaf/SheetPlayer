@@ -45,13 +45,13 @@ async def main():
         print(ok(sl>=0), f"横向跟随滚动生效 (scrollLeft={sl:.0f})")
 
         # 「适应」在横向下按高度适配
-        await pg.click("#bFitW"); await asyncio.sleep(0.8)
+        await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         ph_=await pg.evaluate("boxes[1].clientHeight"); vh=await pg.evaluate("wrap.clientHeight")
         print(ok(ph_<=vh-24+1), f"横向「适应」按高度: 页高 {ph_}px ≤ 视口 {vh}px")
 
         # 切回纵向，「适应」按宽度
         await pg.click("#bHoriz"); await asyncio.sleep(0.3)
-        await pg.click("#bFitW"); await asyncio.sleep(0.8)
+        await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         pw2=await pg.evaluate("boxes[1].clientWidth"); vw=await pg.evaluate("wrap.clientWidth")
         print(ok(pw2<=vw-24+1), f"纵向「适应」按宽度: 页宽 {pw2}px ≤ 视口 {vw}px")
 

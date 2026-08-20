@@ -106,7 +106,7 @@ async def main():
         await pg.wait_for_function("()=>document.querySelectorAll('.page').length>0", timeout=30000)
         await pg.evaluate("M=[{page:1,nx:.2,ny:.2,m:1},{page:1,nx:.4,ny:.2,m:2}]; E=[]; syncNext(); layout()")
         await pg.select_option("#mode","time")
-        await pg.click("#zoom"); await pg.keyboard.press(" ")   # #off 已进菜单，用可见的缩放滑条测焦点在输入框时的空格
+        await pg.click("#mode"); await pg.keyboard.press(" ")   # 缩放滑条已隐藏，用可见的 #mode 测焦点在控件内时空格不打点
         n_in = await pg.evaluate("E.length")
         await pg.evaluate("document.activeElement.blur()"); await pg.keyboard.press(" ")
         n_out = await pg.evaluate("E.length")

@@ -13,7 +13,7 @@ async def main():
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pg.click("#bHoriz"); await asyncio.sleep(0.2)
-        await pg.click("#bFitW"); await asyncio.sleep(0.8)
+        await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         # 每页 4 小节，铺满 6 页，让播放确实要跨页横滚
         await pg.evaluate("""()=>{
           M=[];let k=1;
