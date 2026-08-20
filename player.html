@@ -188,6 +188,7 @@ body.hidebar #bar{display:none}
   <input type="file" id="fAud" hidden accept="audio/*">
   <label>模式<select id="mode">
     <option value="mark">标小节</option>
+    <option value="autobar">标小节（半自动）</option>
     <option value="time">打时间</option>
     <option value="play">播放</option>
     <option value="edit">编辑点</option>
@@ -889,6 +890,61 @@ function rowRightEdge(mk){
   rowEdgeCache.set(key,out);
   return out;
 }
+// ④ 半自动标小节：给一个 y 坐标，找到它所在的「谱表组」（系统）——组内空隙小、组间空隙大
+function systemAt(page,ny){
+  const st=staves(page);
+  if(!st||!st.length)return null;
+  let best=0,bd=1e9;
+  for(let i=0;i<st.length;i++){
+    const s=st[i];
+    const d=(ny>=s.top&&ny<=s.bot)?0:Math.min(Math.abs(ny-s.top),Math.abs(ny-s.bot));
+    if(d<bd){bd=d;best=i}
+  }
+  if(bd>0.08)return null;                    // 离所有谱表都太远（点在页边/空白），不猜
+  let lo=best,hi=best;
+  while(lo>0&&st[lo].top-st[lo-1].bot<0.06)lo--;
+  while(hi<st.length-1&&st[hi+1].top-st[hi].bot<0.06)hi++;
+  return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1)};
+}
+// 扫描一行（谱表组）里所有印刷小节线，返回 nx（升序，含最右的终止线，由调用方去掉）
+function detectRowBars(page,sys,rightOfNx){
+  const c=cvs[page];
+  if(!c||!c.width||!sys)return null;
+  const W=c.width,H=c.height;
+  const ys=Math.max(0,Math.round(sys.top*H)-1);
+  const ye=Math.min(H-1,Math.round(sys.bot*H)+1);
+  let img;
+  try{img=c.getContext('2d',{willReadFrequently:true}).getImageData(0,ys,W,ye-ys+1)}
+  catch(err){return null}
+  const d=img.data,iw=img.width;
+  const dark=(ix,y)=>{const iy=y-ys;
+    for(let k=Math.max(0,ix-1);k<=Math.min(iw-1,ix+1);k++){
+      const p=(iy*iw+k)*4;
+      if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<175)return true;
+    }
+    return false;
+  };
+  const cols=[];
+  for(let ix=1;ix<iw-1;ix++){
+    let okAll=true;
+    for(const s of sys.staves){              // 跨声部校验：得穿过组内【每一个】谱表
+      const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
+      const hh=bb-a+1;
+      if(hh<6){okAll=false;break}
+      let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
+      if(n/hh<0.95){okAll=false;break}
+    }
+    if(okAll)cols.push(ix);
+  }
+  const runs=[];
+  for(const x of cols){const r=runs[runs.length-1];
+    if(r&&x-r[1]<=3)r[1]=x;else runs.push([x,x])}
+  const lines=runs.map(([a,b])=>(a+b)/2/W).filter(x=>x>rightOfNx+0.002).sort((a,b)=>a-b);
+  // 符干紧贴小节线时也会通到底：去掉间距过近的（比最小小节窄得多）——保留靠左那条（真小节线）
+  const out=[];
+  for(const x of lines){if(!out.length||x-out[out.length-1]>=0.025)out.push(x)}
+  return out;
+}
 function applySnaps(mk){
   let hit='';
   if($('chkAlignY').checked&&alignNy(mk))hit='对齐同行';
@@ -958,6 +1014,30 @@ pagesEl.onclick=e=>{
     const hit=applySnaps(nmk);
     syncNext();layout();save();
     if(hit)msg('小节 '+nmk.m+'：'+hit);
+    return;
+  }
+  if(mode==='autobar'){
+    // 半自动：点一下行首，检测该行剩余印刷小节线，一次补齐整行。
+    // 行首（谱号/调号之后）没有印刷线，只能靠你点；往右的线是各小节边界，跳过最右的终止线。
+    snap();
+    const sys=systemAt(g.page,g.ny);
+    const h=sys?Math.max(0.04,sys.bot-sys.top):lastH;
+    const nmk={page:g.page,nx:g.nx,ny:sys?sys.top:g.ny,m:nextM,h};
+    M.push(nmk);lastH=h;
+    let added=0,lines=null;
+    if(sys){
+      lines=detectRowBars(g.page,sys,g.nx);
+      if(lines&&lines.length>1){
+        for(const nx of lines.slice(0,-1)){          // 去掉最右的终止线
+          if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004))continue;   // 重复的点跳过
+          M.push({page:g.page,nx,ny:sys.top,m:++nextM,h});
+          added++;
+        }
+      }
+    }
+    syncNext();layout();save();
+    msg(added?('已补齐整行 '+added+' 个小节'+(lines&&lines.length>1?('（检测到 '+(lines.length-1)+' 条小节线）'):''))
+             :'未检测到更多小节线，已标 1 个（可切「标小节」手动补）');
     return;
   }
   if(!best){                                   // 之前这里是静默 return，跟着音频打点时根本发现不了漏点
@@ -2102,7 +2182,8 @@ $('mode').onchange=()=>{
   if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
   if($('mode').value!=='play'&&arm){arm=null;updLoop()}
   if($('mode').value==='time'&&!specOn())specShow(true);   // 打时间时把频谱条自动拉出来
-  msg({mark:'点谱面加小节标记',time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍',
+  msg({mark:'点谱面加小节标记',autobar:'点一下行首，自动补齐整行小节',
+       time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍',
        edit:'拖中段挪位置，拖两端改长度，单击开面板'}[$('mode').value]);
 };
 $('nextN').onchange=()=>{const v=Math.max(1,Math.round(+$('nextN').value||1));nextM=v;$('nextN').value=v};
