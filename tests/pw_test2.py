@@ -19,7 +19,7 @@ async def main():
         # 模拟 2x 高清屏，走 DPR 分支
         pg = await b.new_page(viewport={"width":1440,"height":900}, device_scale_factor=2)
         pg.on("pageerror", lambda e: errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8732/player.html")
+        await pg.goto("http://127.0.0.1:8732/player.html?direct=1")
         await pg.evaluate("localStorage.clear()")
         await pg.reload()
 

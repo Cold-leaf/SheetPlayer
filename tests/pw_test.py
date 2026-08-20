@@ -19,7 +19,7 @@ async def main():
         pg = await b.new_page(viewport={"width":1440,"height":900})
         pg.on("console", lambda m: logs.append(f"[{m.type}] {m.text}"))
         pg.on("pageerror", lambda e: errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8731/player.html")
+        await pg.goto("http://127.0.0.1:8731/player.html?direct=1")
 
         await pg.set_input_files("#fPdf", PDF)
         await pg.set_input_files("#fAud", AUD)
@@ -53,12 +53,14 @@ async def main():
         print("keyboard taps ->", len(E), "个时间点, m序列:", [e["m"] for e in E])
         print("tapM after taps:", await pg.evaluate("tapM"))
 
-        # 3) 补偿 offset 生效？
+        # 3) 补偿 offset 生效？（#off 在菜单里，先开菜单）
+        await pg.click("#bMenu")
         await pg.fill("#off", "200"); await pg.dispatch_event("#off","change")
         t_before = await pg.evaluate("aud.currentTime")
         await pg.evaluate("tapM=1; addTime(tapM, stamp()); refresh()")
         t_rec = await pg.evaluate("E.find(e=>e.m===1).t")
         print(f"offset 200ms: audio t={t_before:.2f} recorded={t_rec:.2f} delta={t_before-t_rec:.3f}")
+        await pg.click("#bMenu")   # 关掉菜单，后面点谱面才不会被"只关菜单"逻辑吞掉
 
         # 4) 撤销栈：删标记后撤销能恢复
         before = await pg.evaluate("[M.length,E.length]")

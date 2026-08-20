@@ -10,7 +10,7 @@ def ok(c): return "OK   " if c else "FAIL "
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":1200,"height":900})
-        await pg.goto("http://127.0.0.1:8768/player.html")
+        await pg.goto("http://127.0.0.1:8768/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)

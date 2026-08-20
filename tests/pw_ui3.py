@@ -12,7 +12,7 @@ async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":1280,"height":900})
         pg.on("pageerror",lambda e:errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8767/player.html")
+        await pg.goto("http://127.0.0.1:8767/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
@@ -43,7 +43,7 @@ async def main():
 
         # --- 手机窄屏按钮文本不竖排 ---
         pg2=await b.new_page(viewport={"width":380,"height":800})
-        await pg2.goto("http://127.0.0.1:8767/player.html")
+        await pg2.goto("http://127.0.0.1:8767/player.html?direct=1")
         await pg2.set_input_files("#fPdf",PDF)
         await pg2.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         ws=await pg2.evaluate("""()=>{const b=document.getElementById('bUndo');

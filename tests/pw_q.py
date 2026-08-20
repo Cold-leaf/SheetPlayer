@@ -8,7 +8,7 @@ srv=socketserver.TCPServer(("127.0.0.1",8735),H); threading.Thread(target=srv.se
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page()
-        await pg.goto("http://127.0.0.1:8735/player.html")
+        await pg.goto("http://127.0.0.1:8735/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelectorAll('.page').length>0",timeout=30000)

@@ -12,7 +12,7 @@ async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":1500,"height":1050})
         pg.on("pageerror",lambda e:errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8738/player.html")
+        await pg.goto("http://127.0.0.1:8738/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
@@ -36,7 +36,7 @@ async def main():
         print(ok(same==["6/8","9/8","6/8","9/8","6/8","6/8","6/8","6/8","9/8","6/8","9/8"]),
               f"逐小节结果与你原表一致: {same}")
 
-        await pg.click("#bGen"); await asyncio.sleep(0.4)
+        await pg.click("#bMenu"); await pg.click("#bGen"); await asyncio.sleep(0.4)
         rows=await pg.eval_on_selector_all("#gMeter .grow","e=>e.length")
         sigs=await pg.eval_on_selector_all("#gMeter input.sig","e=>e.map(x=>x.value)")
         rngs=await pg.eval_on_selector_all("#gMeter input.rng","e=>e.map(x=>x.value)")
@@ -103,7 +103,7 @@ async def main():
         rs=await pg.evaluate("METER.map(r=>sigText(r.sig)+': '+formText(r.ranges))")
         print(ok(rs==ME), f"刷新恢复: {rs}")
 
-        await pg.click("#bGen"); await asyncio.sleep(0.4)
+        await pg.click("#bMenu"); await pg.click("#bGen"); await asyncio.sleep(0.4)
         await pg.screenshot(path="/tmp/meter_rng.png")
         print("\npage errors:",errs or "(none)")
         await b.close()

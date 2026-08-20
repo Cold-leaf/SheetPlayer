@@ -12,7 +12,7 @@ async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":1500,"height":1000})
         pg.on("pageerror",lambda e:errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8756/player.html")
+        await pg.goto("http://127.0.0.1:8756/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)

@@ -38,7 +38,7 @@ TRUTH = r"""
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":1400,"height":900})
-        await pg.goto("http://127.0.0.1:8753/player.html")
+        await pg.goto("http://127.0.0.1:8753/player.html?direct=1")
         import os
         WIN=int(os.environ.get("WIN","20"))
         grand=[]

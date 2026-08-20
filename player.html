@@ -155,6 +155,26 @@ body.hidebar #bar{display:none}
    padding:2px 3px;border-radius:3px;font-size:10px;line-height:1.3;color:#eaf4ff;opacity:.8}
 #gStrip .cell b{font-size:9px;font-weight:400;opacity:.65}
 #gStrip .cell.decl{outline:1.5px solid #fff;opacity:1}
+
+/* ---------- 曲目库 ---------- */
+#lib{position:fixed;inset:0;background:#161616;z-index:40;display:none;flex-direction:column;color:#eee}
+#libBox{width:100%;max-width:880px;margin:0 auto;padding:16px;box-sizing:border-box;height:100%;overflow:auto}
+#libHd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+#libHd b{font-size:17px}
+#libHd button,#libHd label.libBtn{background:#444;color:#eee;border:0;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px}
+#libHd label.libBtn{display:inline-block}
+#libInfo{color:#999;font-size:12px}
+.libCard{background:#222;border:1px solid #3a3a3a;border-radius:8px;padding:12px 14px;margin-bottom:10px;
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.libCard.legacy{border-style:dashed}
+.libCard .nm{font-size:16px;font-weight:600;flex:1;min-width:180px;word-break:break-all}
+.libCard .nm small{color:#fc6;font-weight:400;font-size:12px;margin-left:6px}
+.libCard .mi{color:#9cf;font-size:12px;white-space:nowrap}
+.libCard .st{color:#999;font-size:12px;white-space:nowrap}
+.libCard button{background:#444;color:#eee;border:0;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:13px}
+.libCard button.open{background:#0a6;color:#fff}
+.libCard button.del{background:#5a2828}
+.libEmpty{color:#777;text-align:center;padding:46px 0;line-height:2.2;font-size:14px}
 </style>
 </head>
 <body>
@@ -181,6 +201,7 @@ body.hidebar #bar{display:none}
  </div>
  <div class="row">
   <audio id="aud" controls style="width:270px;height:32px"></audio>
+  <label>音频变体<select id="audSel"><option value="">—</option></select></label>
   <label>速度<select id="rate">
     <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
     <option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option>
@@ -234,6 +255,7 @@ body.hidebar #bar{display:none}
  <button id="bExp">导出JSON</button>
  <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
  <button id="bWipe">清除存档</button>
+ <button id="bLib">曲目库</button>
  <button id="bHelp">? 快捷键</button>
 </div>
 <div id="wrap"><div id="pages"></div></div>
@@ -257,6 +279,20 @@ body.hidebar #bar{display:none}
  <canvas id="specCv"></canvas>
 </div>
 <div id="panel"></div>
+<div id="lib">
+ <div id="libBox">
+  <div id="libHd">
+   <b>曲目库</b>
+   <span id="libInfo"></span>
+   <span style="flex:1"></span>
+   <button id="libAdd">＋ 导入谱子</button>
+   <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON（跨设备同步用）">导出全部标注</button>
+   <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
+   <button id="libClose" title="回到谱面">✕</button>
+  </div>
+  <div id="libList"></div>
+ </div>
+</div>
 <div id="help"><div>
  <h3>快捷键（焦点不在输入框时生效）</h3>
  <kbd>空格</kbd> 打时间模式：给当前目标小节打点并自动前进；其他模式：播放/暂停<br>
@@ -367,13 +403,79 @@ async function openPdf(file){
 }
 $('fPdf').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
+  resetTrack();        // 在任何 await 之前先清零：不然选 PDF 后立刻选音频，
+                       // 哈希/解析期间音频已设好，会被 loadPdfBlob 里的 resetTrack 误清掉
   try{
-    msg('打开中…');pdf=await openPdf(f);pdfName=f.name;
-    const note=tryRestore();
-    await buildPages();
-    msg(note||('共 '+pdf.numPages+' 页'));    // 恢复存档的提示优先，别被页数覆盖掉
+    const H=await sha256Hex(f);
+    if(idb){
+      // 文件按内容哈希入库去重；曲目/标注都靠哈希关联，文件名只做显示
+      if(!(await idbGet(idb,'files',H)))
+        await idbPut(idb,'files',{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f});
+      const existFile=await idbGet(idb,'files',H);
+      // 找标注：先按哈希，再按 legacy 文件名（localStorage 时代的老存档）
+      let rec=await idbGet(idb,'anns',H);
+      if(!rec){rec=await idbGet(idb,'anns',legacyKey(f.name));
+        if(rec){
+          await idbDel(idb,'anns',legacyKey(f.name));
+          if(LS)try{LS.removeItem('player:'+f.name)}catch(e2){}   // 解析成哈希后才删老键
+        }
+      }
+      if(rec&&!(await idbGet(idb,'anns',H)))await idbPut(idb,'anns',{hash:H,data:rec.data});
+      // 曲目记录：已有→复用；legacy 记录→按哈希重建；否则新建
+      let tr=await idbGet(idb,'tracks',H);
+      if(!tr){tr=await idbGet(idb,'tracks',legacyKey(f.name));if(tr)await idbDel(idb,'tracks',legacyKey(f.name))}
+      if(!tr)tr={hash:H,name:f.name,createdAt:Date.now(),updatedAt:Date.now(),audios:[],lastAudio:null};
+      else{tr.hash=H;tr.name=f.name;tr.updatedAt=Date.now();tr.noFile=false}
+      await idbPut(idb,'tracks',tr);
+      await loadPdfBlob(existFile.blob,f.name,H);
+    }else{
+      await loadPdfBlob(f,f.name,'');
+    }
   }catch(err){msg('PDF加载失败：'+err.message,1)}
+  finally{e.target.value=''}                 // 清掉，重新导出同名 PDF 后再选一次也能触发
 };
+
+// 曲目加载总入口：先整体重置（否则上一个曲目的标注/渲染/频谱会串过来），再从 Blob 走原有管线
+async function loadPdfBlob(blob,name,H){
+  msg('打开中…');
+  resetTrack();
+  pdfHash=H;track=idb?await idbGet(idb,'tracks',H):null;
+  pdf=await openPdf(blob);pdfName=name;
+  const note=await tryRestore();
+  await buildPages();
+  if(track&&track.lastAudio){                 // 打开曲目时带上上次在听的那个音频变体
+    const r=await idbGet(idb,'files',track.lastAudio);
+    if(r)await switchAudio(r.blob,track.lastAudio);
+  }
+  syncAudSel();
+  showLib(false);
+  msg(note||('共 '+pdf.numPages+' 页'));       // 恢复存档的提示优先，别被页数覆盖掉
+}
+
+// 切换曲目前必须整体清零。原来只重建 DOM，M/E/撤销栈/频谱/挂起的渲染任务全带过去，
+// tryRestore 的"已有内容就不覆盖"守卫还会把新曲目的存档静默丢掉。
+function resetTrack(){
+  pdf=null;pdfName='';pdfHash='';track=null;
+  pageObj=[];pageVP=[];boxes=[];cvs=[];
+  M=[];E=[];OCC=[];RUNS=[];nextM=1;offset=0;repeats=0;
+  TEMPO=[{m:1,bpm:120}];METER=[{sig:[4,4],ranges:[]}];FORM=[];
+  loop={a:null,b:null,on:false};arm=null;lastIdx=-2;lastRun=-2;
+  mkEl.clear();byM.clear();mkByM.clear();
+  lastH=DEF_H;bandEl=null;sweepEl=null;
+  drag=null;curM=null;lastCur=null;lastSeek=null;tapM=null;
+  hist=[];dirty=true;lastT=-1;userScrollUntil=0;
+  $('off').value=0;$('nextN').value=1;
+  for(const t of tasks.values()){try{t.cancel()}catch(e){}}   // 挂起的页面渲染作废，别落到新谱上
+  tasks.clear();visible.clear();
+  io?.disconnect();io=null;
+  staffCache.clear();                              // 谱表检测缓存按页面尺寸为键，换 PDF 必须清
+  if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
+  aud.src='';aud.load();aud.pause();
+  SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
+  pagesEl.innerHTML='';
+  panel.style.display='none';
+  updLoop();stat();
+}
 
 async function buildPages(){
   pagesEl.innerHTML='';boxes=[];cvs=[];pageObj=[];pageVP=[];
@@ -463,15 +565,32 @@ $('chkHoriz').onchange=()=>{                     // 页面左右铺开
 };
 $('bHoriz').onclick=()=>$('chkHoriz').click();
 
-/* 缩放并锚定在视口某个点（触控板捏合 / 双指缩放），该点下的内容保持不动 */
+/* 缩放并锚定在视口某个点（触控板捏合 / 双指缩放），该点下的内容保持不动。
+   页面有 10px 固定边距，不随缩放变——直接按内容坐标整体缩放会差 margin*(zr-1)
+   （1.6x 时 6px，3x 时 20px）。锚点落在页面盒子里时按页内比例换算，误差消掉。 */
 function zoomAt(z,ax,ay){
   z=Math.max(0.05,Math.min(10,z));
   const zr=z/zoom;if(Math.abs(zr-1)<1e-9)return;
-  const cx=wrap.scrollLeft+ax,cy=wrap.scrollTop+ay;      // 锚点下的内容坐标
+  const wr=wrap.getBoundingClientRect();
+  const cx=wrap.scrollLeft+ax,cy=wrap.scrollTop+ay;      // 锚点的内容坐标（ax/ay 已是 wrap 相对坐标）
+  let box=null;
+  for(let n=1;n<boxes.length;n++){                       // 按几何找锚点所在的页面盒子
+    const b=boxes[n];if(!b)continue;
+    if(cx>=b.offsetLeft&&cx<=b.offsetLeft+b.offsetWidth&&
+       cy>=b.offsetTop&&cy<=b.offsetTop+b.offsetHeight){box=b;break}
+  }
   zoom=z;
   $('zoom').value=z;$('zoomVal').textContent=Math.round(z*100)+'%';
-  setPageSizes();
-  wrap.scrollLeft=cx*zr-ax;wrap.scrollTop=cy*zr-ay;
+  if(box){
+    // 页内相对位置用【旧】盒尺寸算，缩放后不变；新盒位置+新尺寸×比例=该点的新内容坐标
+    const fx=(cx-box.offsetLeft)/box.offsetWidth,fy=(cy-box.offsetTop)/box.offsetHeight;
+    setPageSizes();
+    wrap.scrollLeft=box.offsetLeft+box.offsetWidth*fx-ax;
+    wrap.scrollTop=box.offsetTop+box.offsetHeight*fy-ay;
+  }else{                                               // 页面之间/空白处：退回整体缩放
+    setPageSizes();
+    wrap.scrollLeft=cx*zr-ax;wrap.scrollTop=cy*zr-ay;
+  }
   clearTimeout(zoomDeb);zoomDeb=setTimeout(applyZoom,120);
 }
 // 桌面触控板捏合 = ctrl+wheel，拦截成只缩放 PDF
@@ -516,11 +635,12 @@ wrap.addEventListener('touchcancel',pinchEnd);
 $('bBar').onclick=()=>{document.body.classList.add('hidebar');$('barShow').style.display='block'};
 $('barShow').onclick=()=>{document.body.classList.remove('hidebar');$('barShow').style.display='none'};
 
-/* 菜单：点外面关闭，且这一次点击只用来关菜单，不落到谱面上（否则标小节会误加点） */
+/* 菜单：点外面关闭，且这一次点击只用来关菜单，不落到谱面上（否则标小节会误加点）。
+   但对话框 / 曲目库里的点击要照常生效——否则菜单还开着时点库里的「打开」会被吞掉。 */
 document.addEventListener('click',e=>{
   if($('menu').style.display!=='none'&&!e.target.closest('#menu')){
     $('menu').style.display='none';
-    e.stopPropagation();
+    if(!e.target.closest('#gen,#help,#lib,#panel'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
@@ -567,7 +687,7 @@ function refresh(){                      // 只改状态，不重建 DOM
   dirty=true;lastIdx=-2;drawChips();updLoop();stat();
 }
 function stat(){
-  $('stat').textContent='已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
+  $('stat').textContent=(track?'《'+track.name+'》　':'')+'已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
     +(RUNS.length>1?' / '+RUNS.length+' 段':'')
     +(tapM!=null?' / 目标 → 小节 '+tapM:'');
 }
@@ -1311,6 +1431,7 @@ requestAnimationFrame(tick);
 
 /* ---------- 键盘打点 ---------- */
 window.addEventListener('keydown',e=>{
+  if($('lib').style.display==='flex')return;       // 曲目库开着时别让快捷键穿到谱面
   if($('help').style.display==='flex'&&(e.key==='Escape'||e.key.toLowerCase()==='h')){toggleHelp(false);return}
   const a=document.activeElement;
   if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return;
@@ -1878,12 +1999,23 @@ $('bHelp').onclick=()=>toggleHelp();
 $('help').onclick=e=>{if(e.target===$('help'))toggleHelp(false)};
 
 /* ---------- 工具条 ---------- */
-$('fAud').onchange=e=>{
+$('fAud').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
-  if(audUrl)URL.revokeObjectURL(audUrl);
-  audUrl=URL.createObjectURL(f);aud.src=audUrl;
-  analyzeAudio(f);
   e.target.value='';       // 清掉，这样重新导出同名 MP3 后再选一次仍然会触发
+  try{
+    let blob=f,H='';
+    if(idb&&track){        // 有曲目就挂进去（按哈希去重），没有曲目就只当普通音频放
+      H=await sha256Hex(f);
+      if(!(await idbGet(idb,'files',H)))
+        await idbPut(idb,'files',{hash:H,kind:'audio',name:f.name,size:f.size,blob:f});
+      const rec=await idbGet(idb,'files',H);blob=rec.blob;
+      if(!track.audios.some(a=>a.hash===H))track.audios.push({hash:H,name:f.name});
+      track.lastAudio=H;track.updatedAt=Date.now();
+      await idbPut(idb,'tracks',track);
+    }
+    await switchAudio(blob,H);
+    syncAudSel();
+  }catch(err){msg('音频加载失败：'+err.message,1)}
 };
 function syncMode(){pagesEl.classList.toggle('editing',$('mode').value==='edit')}
 $('mode').onchange=()=>{
@@ -1930,19 +2062,29 @@ const LS=(()=>{try{const k='__ls_test';localStorage.setItem(k,'1');localStorage.
 let lsWarned=false;
 function warnLS(){if(!lsWarned){lsWarned=true;
   msg('此浏览器禁用了本地存储（隐私模式或已阻止 Cookie），自动保存失效，请用「导出JSON」备份',1)}}
-let saveT=null;
+
+/* ---------- 三级存储：IndexedDB（曲目库模式）→ localStorage（传统模式）→ 内存 ---------- */
+let saveT=null,memStore=new Map();
+// 键和载荷在 save() 调用时就定死：切曲目 / 清状态不会把旧数据写进新键，防抖只延迟写入本身
 function save(){
   if(!pdfName)return;
   clearTimeout(saveT);
-  saveT=setTimeout(()=>{
-    if(!LS)return warnLS();
-    try{LS.setItem(KEY(),JSON.stringify({v:5,M:pureM(),E,TEMPO,METER,FORM,offset,ts:Date.now()}))}
-    catch(err){warnLS()}
-  },400);
+  const key=idb?pdfHash:pdfName;
+  const payload=JSON.stringify({v:5,M:pureM(),E,TEMPO,METER,FORM,offset,ts:Date.now()});
+  saveT=setTimeout(()=>{storeSave(key,payload)},400);
 }
-function tryRestore(){
+function storeSave(key,payloadStr){
+  if(idb){idbPut(idb,'anns',{hash:key,data:JSON.parse(payloadStr)});return}
+  if(LS){try{LS.setItem('player:'+key,payloadStr)}catch(err){warnLS()}return}
+  memStore.set(key,payloadStr);
+  warnLS();
+}
+async function tryRestore(){
   if(!pdfName||M.length||E.length)return;          // 已有内容（比如先导了 JSON）就不覆盖
-  let s=null;try{s=LS?JSON.parse(LS.getItem(KEY())||'null'):null}catch(err){}
+  let s=null;
+  if(idb){const rec=await idbGet(idb,'anns',pdfHash);s=rec?rec.data:null}
+  else{try{s=LS?JSON.parse(LS.getItem(KEY())||'null'):null}catch(err){}
+    if(!s){const p=memStore.get(pdfName);if(p)try{s=JSON.parse(p)}catch(err){}}}
   if(!s||!(s.M?.length||s.E?.length))return;
   M=s.M||[];E=s.E||[];offset=s.offset||0;$('off').value=offset;
   loadStruct(s);
@@ -1951,16 +2093,26 @@ function tryRestore(){
   return '已恢复本地存档（'+new Date(s.ts||Date.now()).toLocaleString()+'）：'
     +M.length+' 标记 / '+E.length+' 时间点';
 }
-$('bWipe').onclick=()=>{
+$('bWipe').onclick=async()=>{
   if(!pdfName)return msg('还没打开 PDF',1);
-  if(!LS)return msg('本地存储不可用，没有存档可删',1);
-  if(!confirm('删除《'+pdfName+'》的本地存档？当前画面上的内容不受影响。'))return;
-  LS.removeItem(KEY());msg('存档已删除');
+  if(idb){
+    if(!confirm('删除《'+pdfName+'》的本地存档？当前画面上的内容不受影响。'))return;
+    await idbDel(idb,'anns',pdfHash);msg('存档已删除');
+    return;
+  }
+  if(LS){
+    if(!confirm('删除《'+pdfName+'》的本地存档？当前画面上的内容不受影响。'))return;
+    LS.removeItem(KEY());msg('存档已删除');
+    return;
+  }
+  if(memStore.size){memStore.clear();msg('已清除内存存档（此浏览器没有本地存储，没有存档可删）')}
+  else msg('本地存储不可用，没有存档可删',1);
 };
 
 /* ---------- 导入导出 ---------- */
 $('bExp').onclick=()=>{
   const data={v:5,pdf:pdfName,offset,TEMPO,METER,FORM,M:pureM(),E:[...E].sort((a,b)=>a.t-b.t)};
+  if(pdfHash)data.pdfHash=pdfHash;               // 带上内容哈希，换机/换浏览器也能校验谱子对不对
   const b=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(b);
@@ -1981,14 +2133,350 @@ $('fMap').onchange=async e=>{
     E=E.filter(x=>x&&x.m!=null&&isFinite(x.t));
     syncNext();tapM=null;lastSeek=null;
     const bad=pdf?M.filter(x=>x.page<1||x.page>pdf.numPages).length:0;
+    const hashBad=j.pdfHash&&pdfHash&&j.pdfHash!==pdfHash;
     layout();save();
-    if(bad)msg('注意：'+bad+' 个标记的页码超出当前 PDF（'+pdf.numPages+' 页），这些点不会显示',1);
+    if(hashBad)msg('注意：JSON 里的 pdfHash 与当前打开的谱子不一致，可能标错谱子了',1);
+    else if(bad)msg('注意：'+bad+' 个标记的页码超出当前 PDF（'+pdf.numPages+' 页），这些点不会显示',1);
     else msg('已导入 '+M.length+' 标记 / '+E.length+' 时间点');
   }catch(err){msg('导入失败：'+err.message,1)}
   finally{e.target.value=''}
 };
 
+/* ================= 曲目库 =================
+   曲目 = 1 个 PDF + N 个音频变体 + 1 份标注。
+   身份按内容哈希（前 1MB SHA-256），文件名只做显示；数据存 IndexedDB，
+   不可用则退回 localStorage（按文件名键，和旧版一致），再不行退内存。     */
+
+/*PURE-START*/
+// 纯 JS SHA-256（crypto.subtle 不可用时的回退）。输入 Uint8Array，输出 32 字节
+function sha256Js(bytes){
+  const K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+  const len=bytes.length,bitLen=len*8;
+  const withOne=new Uint8Array(len+1);withOne.set(bytes);withOne[len]=0x80;
+  const padLen=((len+8)>>6<<6)+64;
+  const buf=new Uint8Array(padLen);buf.set(withOne);
+  const dv=new DataView(buf.buffer);
+  dv.setUint32(padLen-8,Math.floor(bitLen/4294967296));dv.setUint32(padLen-4,bitLen>>>0);
+  const H=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const w=new Uint32Array(64);
+  for(let off=0;off<padLen;off+=64){
+    for(let i=0;i<16;i++)w[i]=dv.getUint32(off+i*4);
+    for(let i=16;i<64;i++){
+      const x=w[i-15],y=w[i-2];
+      const s0=((x>>>7)|(x<<25))^((x>>>18)|(x<<14))^(x>>>3);
+      const s1=((y>>>17)|(y<<15))^((y>>>19)|(y<<13))^(y>>>10);
+      w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;
+    }
+    let a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for(let i=0;i<64;i++){
+      const S1=((e>>>6)|(e<<26))^((e>>>11)|(e<<21))^((e>>>25)|(e<<7));
+      const ch=(e&f)^(~e&g);
+      const t1=(h+S1+ch+K[i]+w[i])>>>0;
+      const S0=((a>>>2)|(a<<30))^((a>>>13)|(a<<19))^((a>>>22)|(a<<10));
+      const maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)>>>0;
+      h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;
+    }
+    H[0]=(H[0]+a)>>>0;H[1]=(H[1]+b)>>>0;H[2]=(H[2]+c)>>>0;H[3]=(H[3]+d)>>>0;
+    H[4]=(H[4]+e)>>>0;H[5]=(H[5]+f)>>>0;H[6]=(H[6]+g)>>>0;H[7]=(H[7]+h)>>>0;
+  }
+  const out=new Uint8Array(32);                    // 逐字转大端，别直接拿 H.buffer（平台小端会字节反序）
+  for(let i=0;i<8;i++){
+    out[i*4]=H[i]>>>24;out[i*4+1]=(H[i]>>>16)&255;out[i*4+2]=(H[i]>>>8)&255;out[i*4+3]=H[i]&255;
+  }
+  return out;
+}
+function hexOf(u8){let s='';for(let i=0;i<u8.length;i++)s+=u8[i].toString(16).padStart(2,'0');return s}
+// 前 1MB 的内容哈希：数据身份只认内容，文件名只做显示
+async function sha256Hex(blob){
+  const bytes=new Uint8Array(await blob.slice(0,1<<20).arrayBuffer());
+  try{
+    if(globalThis.crypto&&crypto.subtle)return hexOf(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
+  }catch(err){}
+  return hexOf(sha256Js(bytes));
+}
+const legacyKey=name=>'legacy:'+name;
+const lsNameOf=k=>k.startsWith('player:')?k.slice(7):null;
+/*PURE-END*/
+
+/* ---------- IndexedDB ---------- */
+const DBNAME='sheetplayer',DBVER=1;
+function idbPut(db,store,val){
+  return new Promise((res,rej)=>{
+    try{
+      const tx=db.transaction(store,'readwrite');
+      tx.objectStore(store).put(val);
+      tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);
+    }catch(err){rej(err)}
+  });
+}
+function idbGet(db,store,key){
+  return new Promise((res,rej)=>{
+    try{
+      const tx=db.transaction(store,'readonly');
+      const rq=tx.objectStore(store).get(key);
+      rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);
+    }catch(err){rej(err)}
+  });
+}
+function idbDel(db,store,key){
+  return new Promise((res,rej)=>{
+    try{
+      const tx=db.transaction(store,'readwrite');
+      tx.objectStore(store).delete(key);
+      tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);
+    }catch(err){rej(err)}
+  });
+}
+function idbAll(db,store){
+  return new Promise((res,rej)=>{
+    try{
+      const tx=db.transaction(store,'readonly');
+      const rq=tx.objectStore(store).getAll();
+      rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>rej(rq.error);
+    }catch(err){rej(err)}
+  });
+}
+// 打开库并做一次真实读写事务探测：Safari 隐私模式历史上 open 能成功但事务会失败
+async function initStore(){
+  if(typeof indexedDB==='undefined')return null;
+  let db=null;
+  try{
+    db=await new Promise((res,rej)=>{
+      let r;
+      try{r=indexedDB.open(DBNAME,DBVER)}catch(err){return rej(err)}
+      r.onupgradeneeded=()=>{
+        for(const s of ['files','tracks','anns','spec','meta'])
+          if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'hash'});
+      };
+      r.onsuccess=()=>res(r.result);
+      r.onerror=()=>rej(r.error);
+      r.onblocked=()=>rej(new Error('IDB blocked'));
+    });
+    await idbPut(db,'meta',{hash:'probe',v:1});
+    return db;
+  }catch(err){return null}
+}
+// localStorage 时代的老存档一次性搬进库里（键 = legacy:<文件名>）。
+// 不删老键：等对应 PDF 打开、哈希解析完再删（见 fPdf 流程），两头都留着才稳。
+async function sweepLegacy(){
+  if(!LS||!idb)return;
+  let keys=[];try{keys=Object.keys(LS)}catch(err){return}
+  for(const k of keys){
+    const name=lsNameOf(k);if(!name)continue;
+    try{
+      const s=JSON.parse(LS.getItem(k)||'null');
+      if(!s||!(s.M?.length||s.E?.length))continue;
+      const old=await idbGet(idb,'anns',legacyKey(name));
+      if(old&&(+old.data.ts||0)>=(+s.ts||0))continue;      // 库里已有的更新，别用旧的覆盖
+      await idbPut(idb,'anns',{hash:legacyKey(name),data:s});
+      await idbPut(idb,'tracks',{hash:legacyKey(name),name,createdAt:s.ts||Date.now(),
+        updatedAt:s.ts||Date.now(),audios:[],lastAudio:null,noFile:true});
+    }catch(err){}
+  }
+}
+
+/* ---------- 多音频 + 频谱缓存 ---------- */
+let specMem=new Map();                       // 会话内缓存：同一次使用里切音频变体零等待
+function resetAudio(){                       // 只清音频侧，标注一根都不动
+  if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
+  aud.src='';aud.load();aud.pause();
+  SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
+}
+async function switchAudio(blob,hash){
+  resetAudio();
+  audUrl=URL.createObjectURL(blob);aud.src=audUrl;
+  const my=specSeq;
+  let sp=hash?specMem.get(hash):null;
+  if(!sp&&hash&&idb)sp=await idbGet(idb,'spec',hash);
+  if(sp&&my===specSeq){
+    if(sp.px)sp=restoreSpec(sp);         // IDB 记录 → 重建离屏 canvas；内存缓存里是活对象，直接用
+    SPEC=sp;specMem.set(hash,SPEC);
+    specMsg('频谱已从缓存恢复');specDirty=true;
+    return;
+  }
+  await analyzeAudio(blob);
+  if(hash&&SPEC)cacheSpec(hash);
+}
+// 像素直接存 Uint8ClampedArray（IDB structured clone 原生支持）。不走 PNG：
+// toBlob 对 32000px 宽的 canvas 有 Safari 上限风险，createImageBitmap 需要 Safari 15+。
+function cacheSpec(hash){
+  const sp=SPEC;if(!sp||!sp.cv)return;
+  specMem.set(hash,sp);
+  if(!idb)return;
+  try{
+    const px=sp.cv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
+    if(px.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
+    idbPut(idb,'spec',{hash,px,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
+      onsets:sp.onsets,onsetStr:sp.onsetStr});
+  }catch(err){}
+}
+// 恢复目标是新建的 frames×SP_H 离屏 canvas——绝不能画进 #specCv：
+// drawSpec 按源像素坐标从 SPEC.cv 取样，#specCv 是显示画布，尺寸由 fitSpec 定
+function restoreSpec(rec){
+  const cv=document.createElement('canvas');
+  cv.width=rec.frames;cv.height=SP_H;
+  cv.getContext('2d').putImageData(new ImageData(rec.px,rec.frames,SP_H),0,0);
+  SPEC={cv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
+        onsets:rec.onsets,onsetStr:rec.onsetStr};
+  specMsg('频谱已从缓存恢复');specDirty=true;
+  return SPEC;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function syncAudSel(){
+  const sel=$('audSel');
+  if(!idb||!track){sel.style.display='none';return}
+  sel.style.display='';
+  sel.innerHTML=(track.audios&&track.audios.length?track.audios.map(a=>
+      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+'</option>').join('')
+    :'<option value="">（还没有音频）</option>')+
+    '<option value="__add__">＋ 添加音频…</option>';
+  sel.onchange=async()=>{
+    if(sel.value==='__add__'){$('fAud').click();return}
+    const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;
+    const rec=await idbGet(idb,'files',a.hash);
+    if(!rec)return msg('音频文件不在库里',1);
+    track.lastAudio=a.hash;track.updatedAt=Date.now();
+    await idbPut(idb,'tracks',track);
+    await switchAudio(rec.blob,a.hash);
+  };
+}
+
+/* ---------- 曲目库界面 ---------- */
+function showLib(v){
+  $('lib').style.display=v?'flex':'none';
+  if(v)drawLib();
+}
+$('libClose').onclick=()=>showLib(false);
+$('libAdd').onclick=()=>{$('fPdf').click()};
+$('bLib').onclick=()=>{
+  if(!idb)return msg('此浏览器不支持曲目库（IndexedDB 不可用），已用传统模式',1);
+  aud.pause();showLib(true);
+};
+async function drawLib(){
+  const list=$('libList');if(!idb)return;
+  const trs=await idbAll(idb,'tracks');
+  trs.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  const rows=[];
+  for(const t of trs){
+    const a=await idbGet(idb,'anns',t.hash),d=a?a.data:null;
+    rows.push({t,d});
+  }
+  if(!rows.length){
+    list.innerHTML='<div class="libEmpty">还没有曲目。<br>点「＋ 导入谱子」选一个 PDF，<br>或者直接点工具栏的「PDF」。</div>';
+  }else{
+    list.innerHTML=rows.map(({t,d})=>{
+      const nb=d&&d.M?d.M.length:0,ne=d&&d.E?d.E.length:0;
+      return '<div class="libCard'+(t.noFile?' legacy':'')+'">'+
+        '<span class="nm">'+esc(t.name)+(t.noFile?'<small>等待导入 PDF</small>':'')+'</span>'+
+        '<span class="mi">已标 '+nb+' 小节</span><span class="mi">已打 '+ne+' 时间点</span>'+
+        '<span class="mi">音频 '+(t.audios?t.audios.length:0)+'</span>'+
+        '<span class="st">更新 '+(t.updatedAt?new Date(t.updatedAt).toLocaleString():'—')+'</span>'+
+        '<button class="open" data-h="'+esc(t.hash)+'">打开</button>'+
+        '<button class="del" data-h="'+esc(t.hash)+'">删除</button></div>';
+    }).join('');
+    list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
+    list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
+  }
+  try{                                            // 存储占用（拿不到就不显示，纯装饰）
+    const est=await navigator.storage.estimate();
+    $('libInfo').textContent=est.usage!=null?('占用 '+(est.usage/1048576).toFixed(1)+' MB'+
+      (est.quota?(' / 配额 '+(est.quota/1073741824).toFixed(1)+' GB'):'')):'';
+  }catch(err){$('libInfo').textContent=''}
+}
+async function openTrack(h){
+  const tr=await idbGet(idb,'tracks',h);if(!tr)return;
+  const f=await idbGet(idb,'files',h);
+  if(!f||tr.noFile){$('fPdf').click();return}     // 还没存 PDF（老存档/同步来的标注）→ 选文件解析
+  try{await loadPdfBlob(f.blob,tr.name,h)}
+  catch(err){msg('打开失败：'+err.message,1)}
+}
+async function delTrack(h){
+  const t=await idbGet(idb,'tracks',h);if(!t)return;
+  if(!confirm('删除曲目《'+t.name+'》？它的标注和文件都会从库里移除。'))return;
+  await idbDel(idb,'anns',h);
+  await idbDel(idb,'tracks',h);
+  await idbDel(idb,'files',h);                     // PDF 和曲目 1:1
+  const others=await idbAll(idb,'tracks');
+  const used=new Set();
+  for(const o of others)for(const a of (o.audios||[]))used.add(a.hash);
+  for(const a of (t.audios||[]))if(!used.has(a.hash))await idbDel(idb,'files',a.hash);
+  if(track&&track.hash===h){resetTrack();syncAudSel()}
+  drawLib();
+}
+
+/* ---------- 批量导出 / 导入（跨设备同步标注，不搬文件） ---------- */
+$('libExpAll').onclick=async()=>{
+  const trs=await idbAll(idb,'tracks');
+  const items=[];
+  for(const t of trs){
+    if(t.hash.startsWith('legacy:'))continue;      // 没解析出哈希的没法对端匹配
+    const a=await idbGet(idb,'anns',t.hash);
+    if(a)items.push({name:t.name,pdfHash:t.hash,data:a.data});
+  }
+  if(!items.length)return msg('没有可导出的标注',1);
+  const b=new Blob([JSON.stringify({app:'sheetplayer',v:1,ts:Date.now(),items},null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  const d=new Date();
+  a.href=URL.createObjectURL(b);
+  a.download='sheetplayer-标注-'+(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+
+    String(d.getDate()).padStart(2,'0'))+'.json';
+  a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  msg('已导出 '+items.length+' 首曲目的标注');
+};
+$('libImpAll').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());
+    if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('不是 SheetPlayer 批量标注文件');
+    if(!confirm('导入 '+j.items.length+' 首曲目的标注？已有的同名标注会被覆盖。'))return;
+    let n=0;
+    for(const it of j.items){
+      if(!(it.pdfHash&&it.data))continue;
+      await idbPut(idb,'anns',{hash:it.pdfHash,data:it.data});
+      const tr=await idbGet(idb,'tracks',it.pdfHash);
+      if(!tr)await idbPut(idb,'tracks',{hash:it.pdfHash,name:it.name||it.pdfHash.slice(0,8),
+        createdAt:Date.now(),updatedAt:Date.now(),audios:[],lastAudio:null,noFile:true});
+      if(track&&track.hash===it.pdfHash){applyAnn(it.data);msg('当前曲目的标注已更新')}
+      n++;
+    }
+    drawLib();
+    if(n)msg('已导入 '+n+' 首曲目的标注');
+  }catch(err){msg('导入失败：'+err.message,1)}
+  finally{e.target.value=''}
+};
+function applyAnn(s){
+  snap();
+  M=s.M||[];E=s.E||[];offset=s.offset||0;$('off').value=offset;
+  loadStruct(s);if(s.FORM)FORM=s.FORM;
+  syncNext();tapM=null;lastSeek=null;
+  layout();refresh();
+}
+
+/* ---------- 启动 ---------- */
+const direct=/[?&]direct=1/.test(location.search);   // 逃生模式：跳过曲目库，行为与旧版一致
+let pdfHash='',track=null,idb=null;
+async function boot(){
+  if(direct){$('audSel').style.display='none';$('bLib').style.display='none';return}
+  idb=await initStore();
+  if(!idb){
+    $('bLib').style.display='none';$('audSel').style.display='none';
+    msg('曲目库不可用（此浏览器不支持 IndexedDB），已退回按文件名存档的传统模式',1);
+    return;
+  }
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
+  await sweepLegacy();          // 扫完再画列表，否则 legacy 曲目要等下次重开才出现
+  showLib(true);
+}
 updLoop();stat();
+boot();
 </script>
 </body>
 </html>

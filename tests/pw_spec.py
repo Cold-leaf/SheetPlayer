@@ -14,7 +14,7 @@ async def main():
         b=await p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
         pg=await b.new_page(viewport={"width":1500,"height":1000})
         pg.on("pageerror",lambda e:errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8742/player.html")
+        await pg.goto("http://127.0.0.1:8742/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
 
         # 无音频时的占位
@@ -98,14 +98,18 @@ async def main():
         print(ok(await pg.is_visible("#specBox")), "切到「打时间」自动展开")
 
         # 换音频要重新分析（必须用不同文件：同一路径浏览器不触发 change）
+        # specSeq 是取消令牌，每次换音频会递增（可能不止 +1：先作废旧分析再开新分析），只断言递增
         await pg.evaluate("window.__old=SPEC")
+        s0=await pg.evaluate("specSeq")
         await pg.set_input_files("#fAud","/tmp/other.mp3")
         await pg.wait_for_function("()=>SPEC!==null&&SPEC!==window.__old",timeout=60000)
-        print(ok(await pg.evaluate("specSeq")==2), f"换音频后重新分析 specSeq={await pg.evaluate('specSeq')}")
+        s1=await pg.evaluate("specSeq")
+        print(ok(s1>s0), f"换音频后重新分析 specSeq={s0}->{s1}")
         # 清空 value 后，同一路径也能再次触发
         await pg.evaluate("window.__old=SPEC")
+        s0=await pg.evaluate("specSeq")
         await pg.set_input_files("#fAud","/tmp/other.mp3")
-        await pg.wait_for_function("()=>specSeq===3",timeout=10000)
+        await pg.wait_for_function("()=>specSeq>"+str(s0),timeout=10000)
         print(ok(True), "重选同名文件也能重新分析（value 已清空）")
         await pg.wait_for_function("()=>SPEC!==null",timeout=60000)
 

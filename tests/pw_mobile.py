@@ -14,7 +14,7 @@ async def main():
         # 模拟平板：触屏 + 窄视口
         pg=await b.new_page(viewport={"width":768,"height":1024}, has_touch=True, device_scale_factor=2)
         pg.on("pageerror",lambda e:errs.append(str(e)))
-        await pg.goto("http://127.0.0.1:8758/player.html")
+        await pg.goto("http://127.0.0.1:8758/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
