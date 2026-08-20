@@ -1,0 +1,1994 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>谱音同步播放器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+body{margin:0;font:14px system-ui;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+#bar{background:#222;color:#eee;padding:5px 6px;display:flex;flex-direction:column;gap:5px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#bar button,#bar label{background:#444;color:#eee;border:0;padding:4px 8px;border-radius:4px;cursor:pointer;
+   white-space:nowrap;flex:none}
+#bar #aud{flex:none}
+#bar label{display:inline-flex;gap:4px;align-items:center}
+#bar select,#bar input[type=number]{background:#333;color:#eee;border:1px solid #555;border-radius:3px;padding:2px}
+#bar input[type=number]{width:62px}
+#bar #barWin{width:46px}
+#bar input[type=range]{width:120px;accent-color:#0a6}
+#bar input[type=range]::-webkit-slider-thumb{width:22px;height:22px;margin-top:-8px}
+#bar input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px}
+#bar input[type=range]::-moz-range-thumb{width:22px;height:22px}
+#zoomVal{min-width:38px;color:#9cf;font-variant-numeric:tabular-nums}
+
+/* 窄屏（手机/小窗）：工具条每行横滑不折行，面板改底部抽屉 */
+@media (max-width:700px){
+  .row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .row::-webkit-scrollbar{display:none}
+  #panel{left:8px;right:8px;top:auto;bottom:8px;min-width:0;max-height:62vh}
+  #aud{flex:none}
+}
+.sep{width:1px;height:20px;background:#555}
+#stat{color:#9cf}
+#msg{color:#8f8}
+#msg.err{color:#f88}
+
+#nowBox{color:#fd8;font-weight:600;flex:none;min-width:112px}
+#chipWrap{display:none;flex:1;min-width:0;align-items:center;gap:8px}
+#chips{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;padding:2px 0}
+.chip{background:#3a3a3a;color:#ddd;border:1px solid #555;border-radius:15px;padding:5px 13px;
+      cursor:pointer;white-space:nowrap;font-size:13px;flex:none;user-select:none}
+.chip:hover{background:#4a4a4a}
+.chip.on{background:#0a6;border-color:#0f8;color:#fff}
+.chip small{opacity:.65;margin-left:7px}
+#loopBox{display:flex;gap:4px;align-items:center;flex:none}
+#loopTxt{color:#9cf;min-width:130px}
+#bar #loopBox button.arm{background:#c60;color:#fff}
+#bar #loopBox button.on{background:#0a6;color:#fff}
+#bar #bSpec.on{background:#0a6;color:#fff}
+#bar button:disabled{opacity:.4;cursor:default}
+
+#wrap{flex:1;overflow:auto;background:#777;position:relative;min-height:0;touch-action:pan-x pan-y}
+body.hidebar #bar{display:none}
+#barShow{position:fixed;top:6px;right:10px;z-index:30;display:none;background:rgba(40,40,40,.9);
+   color:#eee;border:1px solid #555;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:13px}
+#menu{position:fixed;top:42px;right:8px;background:#181818;color:#eee;border:1px solid #444;
+   border-radius:6px;padding:10px 14px;z-index:25;max-height:82vh;overflow:auto;min-width:240px;
+   box-shadow:0 6px 20px rgba(0,0,0,.55)}
+#menu .msec{color:#9cf;font-size:12px;font-weight:600;margin:10px 0 4px;border-top:1px solid #333;padding-top:10px}
+#menu .msec:first-child{margin-top:0;border-top:0;padding-top:0}
+#menu label{display:flex;gap:6px;align-items:center;margin:4px 0;white-space:nowrap;cursor:pointer}
+#menu .mrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#menu button{background:#444;color:#eee;border:0;padding:3px 9px;border-radius:4px;cursor:pointer;margin:3px 5px 3px 0}
+#menu .mbtn{background:#444;color:#eee;border:0;padding:3px 9px;border-radius:4px;cursor:pointer;
+   margin:3px 5px 3px 0;display:inline-block}     /* 文件选择的 label 也做成按钮样子，跟导出JSON一致 */
+#menu input[type=number]{width:58px;background:#333;color:#eee;border:1px solid #555;border-radius:3px;padding:2px}
+#pages.horiz{display:flex;flex-direction:row;align-items:flex-start;width:max-content}
+#pages.horiz .page{margin:10px;flex:none}
+
+#specBox{display:none;flex-direction:column;background:#0b0b0b;border-top:1px solid #333;flex:none}
+#specBox.on{display:flex}
+#specHdr{display:flex;gap:10px;align-items:center;padding:3px 8px;background:#1a1a1a;
+   font-size:12px;color:#999}
+#specHdr select{background:#333;color:#eee;border:1px solid #555;border-radius:3px;padding:1px}
+#specHdr input[type=number]{background:#333;color:#eee;border:1px solid #555;border-radius:3px;
+   padding:1px 3px;width:52px;flex:none}
+#specHdr label{display:inline-flex;gap:3px;align-items:center;white-space:nowrap}
+#specHdr button{background:#444;color:#eee;border:0;padding:2px 9px;border-radius:3px;cursor:pointer}
+#specMsg{color:#8f8}
+#specTip{color:#666}
+#specCv{width:100%;height:112px;display:block;cursor:grab;touch-action:none}
+#specCv.grab{cursor:grabbing}
+#pages{padding:1px 0}
+.page{position:relative;margin:10px auto;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.page canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.mk{position:absolute;width:44px;background:transparent;transform:translateX(-50%);
+    pointer-events:auto;box-sizing:border-box;z-index:1}
+#pages.editing .mk{touch-action:none}              /* 编辑模式下抓竖线拖动，不滚动 */
+.mk>b{position:absolute;left:50%;top:0;width:3px;height:100%;transform:translateX(-50%);
+    border-radius:2px;background:#0af;opacity:.85}
+.mk>i{position:absolute;left:50%;top:-13px;transform:translateX(-50%);font-style:normal;
+    font:600 10px/1 system-ui;color:#0af;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff;
+    pointer-events:none}
+.mk.noT>b{background:#6b6b6b}                       /* 完全没有时间 */
+.mk.noT>i{color:#666}
+.mk.calc>b{background:rgba(0,170,255,.5)}           /* 推算出来的时间 */
+.mk.cur>b{background:#f80;opacity:1;width:4px;box-shadow:0 0 7px rgba(255,136,0,.9)}
+.mk.cur{z-index:2}
+.mk.cur>i{color:#f60}
+.mk.tap>b{box-shadow:0 0 0 2px #0f8,0 0 8px #0f8}
+.mk.tap{z-index:3}
+#pages.noNum .mk>i{display:none}
+/* 当前小节的流动进度 */
+#band{position:absolute;background:rgba(255,136,0,.15);border-left:2px solid rgba(255,136,0,.55);
+    pointer-events:none;z-index:0;display:none}
+#sweep{position:absolute;width:2px;background:#ff8c00;box-shadow:0 0 7px rgba(255,140,0,.85);
+    pointer-events:none;z-index:2;display:none}
+
+#panel{position:fixed;right:10px;top:96px;background:#111;color:#eee;padding:10px;
+    border:1px solid #555;border-radius:6px;display:none;min-width:260px;max-height:70vh;overflow:auto;z-index:9}
+#panel button{background:#444;color:#eee;border:0;padding:2px 6px;border-radius:4px;cursor:pointer;margin:0 2px}
+#panel input{width:78px;background:#333;color:#eee;border:1px solid #555;border-radius:3px}
+#panel .ip{color:#fa6}
+
+#help{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:20;
+    align-items:center;justify-content:center}
+#help>div{background:#181818;color:#eee;padding:18px 22px;border-radius:8px;max-width:560px;line-height:1.8}
+#help kbd{background:#333;border:1px solid #666;border-bottom-width:2px;border-radius:4px;padding:1px 6px;font:12px monospace}
+#help h3{margin:.2em 0 .6em}
+
+#gen{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:21;
+     align-items:center;justify-content:center}
+#gen>div{background:#181818;color:#eee;padding:18px 22px;border-radius:8px;width:660px;
+     max-width:94vw;max-height:88vh;overflow:auto;line-height:1.7}
+#gen h3{margin:.1em 0 .5em;font-size:15px}
+#gen h4{margin:16px 0 6px;font-size:13px;color:#9cf;font-weight:600;
+     border-top:1px solid #333;padding-top:12px}
+#gen input,#gen select{background:#2b2b2b;color:#eee;border:1px solid #555;border-radius:3px;padding:3px 5px}
+#gen input[type=number]{width:66px}
+#gen input.wide{width:100%;box-sizing:border-box}
+#gen button{background:#444;color:#eee;border:0;padding:5px 12px;border-radius:4px;cursor:pointer;margin-right:6px}
+#gen button.pri{background:#0a6;color:#fff;font-weight:600}
+#gen .grow{margin:5px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#gen .ginfo{color:#999;font-size:12px}
+#gen .gwarn{color:#fc6;font-size:12px}
+#gen .gerr{color:#f88;font-size:12px}
+#gen label{margin-right:14px;white-space:nowrap}
+#gen code{background:#2b2b2b;padding:1px 5px;border-radius:3px;color:#9cf}
+#gen input.sig{width:62px;font-family:monospace;text-align:center;font-weight:600}
+#gen input.rng{width:270px;font-family:monospace}
+#gStrip .cell.dup{outline:1.5px solid #fa3}
+#gAncList{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:7px 0}
+#gAncList .anc{background:#24405a;border:1px solid #3a6a92;border-radius:13px;
+   padding:2px 4px 2px 11px;font-size:12px;display:inline-flex;align-items:center;gap:3px}
+#gAncList .anc.bad{background:#5a3a24;border-color:#a06a3a;color:#fc9}
+#gen #gAncList .anc button{background:transparent;color:#9bd;padding:0 4px;margin:0;font-size:14px;line-height:1}
+#gen #gAncList .anc button:hover{color:#f88}
+#gAncList .lnk{font-size:11px;color:#7a7a7a;font-family:monospace}
+#gAncList .lnk.off{color:#fc6;font-weight:600}
+#gAncList.dim .anc,#gAncList.dim .lnk{opacity:.4;text-decoration:line-through}
+#gStrip{display:flex;flex-wrap:wrap;gap:2px;max-height:118px;overflow:auto;
+   background:#111;padding:6px;border-radius:4px}
+#gStrip .cell{display:inline-flex;flex-direction:column;align-items:center;min-width:36px;
+   padding:2px 3px;border-radius:3px;font-size:10px;line-height:1.3;color:#eaf4ff;opacity:.8}
+#gStrip .cell b{font-size:9px;font-weight:400;opacity:.65}
+#gStrip .cell.decl{outline:1.5px solid #fff;opacity:1}
+</style>
+</head>
+<body>
+<div id="bar">
+ <div class="row">
+  <label>PDF<input type="file" id="fPdf" hidden accept=".pdf"></label>
+  <label>音频<input type="file" id="fAud" hidden accept="audio/*"></label>
+  <label>模式<select id="mode">
+    <option value="mark">标小节</option>
+    <option value="time">打时间</option>
+    <option value="play">播放</option>
+    <option value="edit">编辑点</option>
+  </select></label>
+  <label>缩放<input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3"></label>
+  <button id="bFitW" title="纵向：适应宽度；横向：适应高度">适应</button>
+  <span id="zoomVal">130%</span>
+  <input type="checkbox" id="chkHoriz" hidden>
+  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">纵向</button>
+  <span class="sep"></span>
+  <button id="bUndo">撤销</button>
+  <button id="bSpec">频谱</button>
+  <button id="bMenu" title="更多设置与数据">☰ 菜单</button>
+  <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
+ </div>
+ <div class="row">
+  <audio id="aud" controls style="width:270px;height:32px"></audio>
+  <label>速度<select id="rate">
+    <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
+    <option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option>
+  </select></label>
+  <span class="sep"></span>
+  <span id="msg"></span>
+ </div>
+ <div class="row">
+  <span id="stat"></span>
+ </div>
+ <div class="row">
+  <span id="nowBox">现在 —</span>
+  <span class="sep"></span>
+  <span id="chipWrap"><span style="color:#999;flex:none">段落</span><span id="chips"></span></span>
+  <span class="sep"></span>
+  <span id="loopBox">
+   <span style="color:#999;flex:none">练习循环</span>
+   <button id="bA" title="按下后在谱面上点一个小节，设为循环起点">起点</button>
+   <button id="bB" title="按下后在谱面上点一个小节，设为循环终点（这一小节会唱完）">终点</button>
+   <button id="bLoop">循环</button>
+   <span id="loopTxt">未设区间</span>
+   <button id="bLoopClr" title="清除循环区间">×</button>
+  </span>
+ </div>
+</div>
+<button id="barShow" title="显示工具栏">▼</button>
+<div id="menu" style="display:none">
+ <div class="msec">小节</div>
+ <div class="mrow">
+  <label>下一编号<input type="number" id="nextN" min="1" step="1" value="1"></label>
+  <label title="谱上印着多小节休止(如 6)：填 6 再点，下一编号 = 最后一小节 + 6">跨小节<input type="number" id="skipN" min="1" step="1" value="1"></label>
+  <button id="bSkip" title="下一编号 = 最后一个小节号 + 上面填的数，用完复位成 1">跳</button>
+ </div>
+ <button id="bClr">清空时间</button>
+ <div class="msec">打点 / 时间</div>
+ <div class="mrow">
+  <label title="补偿人的反应延迟：打点时记录的时间 = 当前时间 − 补偿">补偿ms<input type="number" id="off" step="10" value="0"></label>
+  <label title="把所有已打的时间点整体前后移动">平移ms<input type="number" id="shift" step="10" value="0"></label>
+  <button id="bShift">应用平移</button>
+ </div>
+ <div class="msec">视图</div>
+ <label><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
+ <label><input type="checkbox" id="chkNum" checked>显示编号</label>
+ <label><input type="checkbox" id="chkProg" checked>小节进度</label>
+ <div class="msec">竖线吸附</div>
+ <label title="放下或拖完后，抄同一行最近那条竖线的高度和纵向位置"><input type="checkbox" id="chkAlignY" checked>对齐同行</label>
+ <label title="在窗口内找印刷的小节线并横向吸过去"><input type="checkbox" id="chkSnapX" checked>吸小节线</label>
+ <label>窗口<input type="number" id="barWin" value="12" step="2" min="2">px</label>
+ <div class="msec">生成 / 数据</div>
+ <button id="bGen">自动生成</button>
+ <button id="bExp">导出JSON</button>
+ <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
+ <button id="bWipe">清除存档</button>
+ <button id="bHelp">? 快捷键</button>
+</div>
+<div id="wrap"><div id="pages"></div></div>
+<div id="specBox">
+ <div id="specHdr">
+  <b>频谱</b>
+  <label>横向 <select id="specZoom">
+    <option value="60">60 px/s</option><option value="100">100 px/s</option>
+    <option value="160" selected>160 px/s</option><option value="260">260 px/s</option>
+    <option value="420">420 px/s</option>
+  </select></label>
+  <label><input type="checkbox" id="chkOnset" checked>显示起音</label>
+  <label title="打点时自动吸到窗口内最近/最强的音头"><input type="checkbox" id="chkSnap">打点吸附</label>
+  <input type="number" id="snapWin" value="120" step="10" min="10" title="吸附窗口，单边毫秒">ms
+  <button id="bAlign" title="把「自动生成」推算出来的点整体吸到音头上">全部对齐</button>
+  <span id="specMsg"></span>
+  <span style="flex:1"></span>
+  <span id="specTip">拖动走带 · 单击定位 · 拖竖线微调</span>
+  <button id="specClose">收起</button>
+ </div>
+ <canvas id="specCv"></canvas>
+</div>
+<div id="panel"></div>
+<div id="help"><div>
+ <h3>快捷键（焦点不在输入框时生效）</h3>
+ <kbd>空格</kbd> 打时间模式：给当前目标小节打点并自动前进；其他模式：播放/暂停<br>
+ <kbd>Enter</kbd> 同上（只在打时间模式打点）<br>
+ <kbd>Backspace</kbd> 撤销上一步<br>
+ <kbd>[</kbd> <kbd>]</kbd> 打点目标 −1 / +1 个小节<br>
+ <kbd>←</kbd> <kbd>→</kbd> 后退 / 前进 2 秒（按住 Shift 为 5 秒）<br>
+ <kbd>K</kbd> 播放 / 暂停 &nbsp; <kbd>-</kbd> <kbd>=</kbd> 减速 / 加速 &nbsp; <kbd>0</kbd> 速度归 1<br>
+ <kbd>H</kbd> 或 <kbd>Esc</kbd> 开关本窗口
+ <h3>鼠标 / 触摸</h3>
+ 标小节：点谱面加点 · 打时间：点圆点记时间（Shift+点 = 只把目标移过去，不记）<br>
+ 播放：点圆点跳到<b>当前段落</b>的那一遍；<b>2 秒内再点同一个点</b>就换到下一遍<br>
+ 编辑点：拖竖线中段挪位置，拖上/下端改长度，单击开面板（可设高度并应用到全部）
+ <h3>反复 / 练习</h3>
+ <b>段落条</b>自动从打点数据切出来（小节号往回跳 = 新的一遍），点一下跳到那一段；<br>
+ 播放时当前段落会自动高亮，所以点小节默认就落在你正在听的那一遍。<br>
+ <b>练习循环</b>：按「起点」再在谱面点一个小节 = 循环起点，「终点」同理（那一小节会唱完），再按「循环」开关。
+</div></div>
+
+<div id="gen"><div>
+ <h3>自动生成时间轴</h3>
+ <div class="ginfo">只生成<b>时间</b>；小节在纸上的<b>位置</b>仍然要自己标。
+   手动卡的时间点会被当成硬锚点保留，生成的时间在锚点之间按比例拉伸对齐。</div>
+
+ <h4>速度 <span class="ginfo">（很少变，通常就一行）</span></h4>
+ <div id="gTempo"></div>
+ <button id="gAddT">+ 变速</button>
+
+ <h4>拍号 <span class="ginfo">（一个拍号一行，后面写它管哪些小节，写法同播放顺序：<code>1, 3, 5-25, 27</code>；<b>留空</b>的那行兜底管其余全部）</span></h4>
+ <div id="gMeter"></div>
+ <button id="gAddM">+ 加一种拍号</button>
+
+ <h4>每小节实际拍号 <span class="ginfo">（白框 = 被某一行明确指定，其余靠兜底行）</span></h4>
+ <div id="gStrip"></div>
+ <div id="gMeterInfo"></div>
+
+ <h4>播放顺序 <span class="ginfo">（留空 = 全曲从头到尾一遍）</span></h4>
+ <input id="gForm" class="wide" placeholder="有反复就写成：1-8, 3-8, 9-12">
+ <div id="gFormInfo" class="ginfo"></div>
+
+ <h4>锚点 <span class="ginfo">（决定整条时间轴的绝对位置）</span></h4>
+ <div class="grow">
+  <label><input type="radio" name="ganc" id="gAncTap">用已卡的实测点（<span id="gTapN">0</span> 个）</label>
+  <label><input type="radio" name="ganc" id="gAncMan" checked><span id="gAncManTxt">手动指定</span></label>
+ </div>
+ <div id="gAncList"></div>
+ <div class="grow" id="gManRow">小节 <input type="number" id="gAncM" value="1" min="1">
+  = <input type="number" id="gAncT" step="0.01" value="0"> 秒
+  <button id="gAncNow">用当前播放位置</button></div>
+
+ <h4>校准</h4>
+ <div class="grow"><button id="gCal">按已卡的实测点反推 BPM</button>
+  <span id="gCalInfo" class="ginfo">MP3 是 MIDI 渲染的话，反推值多半接近某个整数，手动取整会更准</span></div>
+
+ <h4>预览</h4>
+ <div id="gPrev" class="ginfo"></div>
+ <div style="margin-top:16px"><button id="gRun" class="pri">生成</button><button id="gCancel">取消</button></div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const CDN='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const DPR=Math.min(2,window.devicePixelRatio||1);
+pdfjsLib.GlobalWorkerOptions.workerSrc=CDN+'pdf.worker.min.js';
+
+let pdf=null,pdfName='',pageObj=[],pageVP=[],boxes=[],cvs=[];
+let M=[],E=[],OCC=[],RUNS=[],nextM=1,offset=0,zoom=1.3,repeats=0;
+// 速度和拍号变化频率差着量级（BPM 常常全曲一个，拍号可能每小节都变），所以分成两张表。
+// METER 一行 = 一个拍号 + 它管的小节区间（写法同播放顺序）；ranges 留空的那行兜底管"其余全部"。
+let TEMPO=[{m:1,bpm:120}],METER=[{sig:[4,4],ranges:[]}],FORM=[];
+let loop={a:null,b:null,on:false},arm=null,lastIdx=-2,lastRun=-2;
+let mkEl=new Map(),byM=new Map(),mkByM=new Map();   // marker→DOM ／ 小节号→DOM数组 ／ 小节号→marker
+const DEF_H=0.05;                          // 小节竖线默认高度（页高的比例）
+let lastH=DEF_H,bandEl=null,sweepEl=null;
+const hOf=mk=>mk.h==null?DEF_H:mk.h;
+let drag=null,curM=null,lastCur=null,lastSeek=null,tapM=null;
+let hist=[],dirty=true,lastT=-1,userScrollUntil=0,audUrl=null;
+const pagesEl=$('pages'),wrap=$('wrap'),aud=$('aud'),panel=$('panel');
+
+/* ---------- 小工具 ---------- */
+let msgT=null;
+function msg(s,err){const e=$('msg');e.textContent=s;e.className=err?'err':'';
+  clearTimeout(msgT);msgT=setTimeout(()=>{e.textContent=''},err?5000:2600)}
+function pureM(){return M.map(x=>({page:x.page,nx:x.nx,ny:x.ny,m:x.m,h:hOf(x)}))}   // 剥掉可能挂上的引用再序列化
+function maxM(){return M.reduce((a,x)=>x.m>a?x.m:a,0)}
+function syncNext(){nextM=maxM()+1;$('nextN').value=nextM}           // 永远由 M 推导，不做 ++/--
+
+/* ---------- 撤销：整体快照，覆盖所有改动路径 ---------- */
+function snap(){hist.push(JSON.stringify({M:pureM(),E}));if(hist.length>200)hist.shift()}
+function undo(){
+  if(!hist.length)return msg('没有可撤销的操作',1);
+  const s=JSON.parse(hist.pop());M=s.M;E=s.E;
+  syncNext();if(tapM!=null&&!M.some(x=>x.m===tapM))tapM=null;
+  layout();save();
+}
+
+/* ---------- PDF ---------- */
+// 先用真 worker；file:// 下建不出跨域 worker 时，再把 worker 装进主线程重试
+async function openPdf(file){
+  try{return await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise}
+  catch(err){
+    if(globalThis.pdfjsWorker)throw err;
+    await new Promise((ok,no)=>{const s=document.createElement('script');
+      s.src=CDN+'pdf.worker.min.js';s.onload=ok;s.onerror=()=>no(new Error('worker 加载失败'));
+      document.head.appendChild(s)});
+    return await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  }
+}
+$('fPdf').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    msg('打开中…');pdf=await openPdf(f);pdfName=f.name;
+    const note=tryRestore();
+    await buildPages();
+    msg(note||('共 '+pdf.numPages+' 页'));    // 恢复存档的提示优先，别被页数覆盖掉
+  }catch(err){msg('PDF加载失败：'+err.message,1)}
+};
+
+async function buildPages(){
+  pagesEl.innerHTML='';boxes=[];cvs=[];pageObj=[];pageVP=[];
+  mkEl.clear();byM.clear();mkByM.clear();visible.clear();bandEl=sweepEl=null;
+  for(let n=1;n<=pdf.numPages;n++){
+    const p=await pdf.getPage(n);pageObj[n]=p;pageVP[n]=p.getViewport({scale:1});
+    const box=document.createElement('div');
+    box.className='page';box.dataset.page=n;
+    boxes[n]=box;pagesEl.appendChild(box);
+  }
+  applyZoom();layout();observe();
+}
+function setPageSizes(){
+  for(let n=1;n<boxes.length;n++){
+    const b=boxes[n];if(!b)continue;
+    b.style.width=Math.round(pageVP[n].width*zoom)+'px';
+    b.style.height=Math.round(pageVP[n].height*zoom)+'px';
+  }
+}
+function applyZoom(){
+  setPageSizes();
+  for(let n=1;n<boxes.length;n++){const b=boxes[n];if(b)delete b.dataset.done}   // 尺寸变了，已渲染的作废
+  rerenderVisible();
+}
+
+/* 按需渲染：只画视口附近的页，离开就释放 canvas（大谱子不炸内存） */
+const visible=new Set(),tasks=new Map();
+let io=null;
+function observe(){
+  io?.disconnect();
+  io=new IntersectionObserver(es=>{for(const e of es){
+    const n=+e.target.dataset.page;
+    if(e.isIntersecting){visible.add(n);renderPage(n)}else{visible.delete(n);freePage(n)}
+  }},{root:wrap,rootMargin:'1500px 1500px'});       // 纵向/横向都预留，横向展开时也能提前渲染
+  for(let n=1;n<boxes.length;n++)if(boxes[n])io.observe(boxes[n]);
+}
+function rerenderVisible(){for(const n of visible)renderPage(n)}
+async function renderPage(n){
+  const box=boxes[n],p=pageObj[n];if(!box||!p)return;
+  const want=zoom+'@'+DPR;
+  if(box.dataset.done===want||tasks.has(n))return;
+  // 超大缩放时把渲染分辨率封顶，超出部分交给浏览器放大（会糊一点但不至于爆 canvas）
+  const MAXDIM=4096,base=p.getViewport({scale:1});
+  let scale=zoom*DPR;
+  if(Math.max(base.width,base.height)*scale>MAXDIM)scale=MAXDIM/Math.max(base.width,base.height);
+  const vp=p.getViewport({scale});
+  let c=cvs[n];
+  if(!c){c=document.createElement('canvas');cvs[n]=c;box.insertBefore(c,box.firstChild)}
+  c.width=Math.round(vp.width);c.height=Math.round(vp.height);   // 背板按 DPR 放大，CSS 尺寸由 .page 撑满 → 高清屏不糊
+  const task=p.render({canvasContext:c.getContext('2d'),viewport:vp});
+  tasks.set(n,task);
+  try{await task.promise;box.dataset.done=want}
+  catch(err){}
+  finally{tasks.delete(n)}
+}
+function freePage(n){
+  const t=tasks.get(n);if(t){try{t.cancel()}catch(e){}tasks.delete(n)}
+  const c=cvs[n];if(!c)return;
+  c.width=c.height=0;c.remove();cvs[n]=null;
+  if(boxes[n])delete boxes[n].dataset.done;
+}
+let zoomDeb=null;
+$('zoom').oninput=()=>{
+  zoom=+$('zoom').value;
+  $('zoomVal').textContent=Math.round(zoom*100)+'%';
+  if(!pdf)return;
+  const anchor=wrap.scrollTop/Math.max(1,wrap.scrollHeight);
+  setPageSizes();                                // 实时缩放：只改尺寸，便宜
+  wrap.scrollTop=anchor*Math.max(1,wrap.scrollHeight);
+  clearTimeout(zoomDeb);
+  zoomDeb=setTimeout(applyZoom,120);             // 停顿后再重画 canvas
+};
+$('bFitW').onclick=()=>{                         // 纵向：适应宽度；横向：适应高度
+  if(!pdf||!boxes[1])return;
+  let w=0,h=0;for(let n=1;n<boxes.length;n++)if(pageVP[n]){w=Math.max(w,pageVP[n].width);h=Math.max(h,pageVP[n].height)}
+  const avail=$('chkHoriz').checked?wrap.clientHeight-24:wrap.clientWidth-24;
+  const dim=$('chkHoriz').checked?h:w;
+  zoom=Math.max(0.05,Math.min(10,avail/dim));
+  $('zoom').value=zoom;$('zoomVal').textContent=Math.round(zoom*100)+'%';
+  applyZoom();wrap.scrollTop=0;wrap.scrollLeft=0;
+};
+$('chkHoriz').onchange=()=>{                     // 页面左右铺开
+  const v=$('chkHoriz').checked;
+  pagesEl.classList.toggle('horiz',v);
+  $('bHoriz').textContent=v?'横向':'纵向';        // 按钮显示当前方向
+  wrap.scrollTop=0;wrap.scrollLeft=0;
+};
+$('bHoriz').onclick=()=>$('chkHoriz').click();
+
+/* 缩放并锚定在视口某个点（触控板捏合 / 双指缩放），该点下的内容保持不动 */
+function zoomAt(z,ax,ay){
+  z=Math.max(0.05,Math.min(10,z));
+  const zr=z/zoom;if(Math.abs(zr-1)<1e-9)return;
+  const cx=wrap.scrollLeft+ax,cy=wrap.scrollTop+ay;      // 锚点下的内容坐标
+  zoom=z;
+  $('zoom').value=z;$('zoomVal').textContent=Math.round(z*100)+'%';
+  setPageSizes();
+  wrap.scrollLeft=cx*zr-ax;wrap.scrollTop=cy*zr-ay;
+  clearTimeout(zoomDeb);zoomDeb=setTimeout(applyZoom,120);
+}
+// 桌面触控板捏合 = ctrl+wheel，拦截成只缩放 PDF
+window.addEventListener('wheel',e=>{
+  if(!e.ctrlKey)return;
+  if(e.target.closest('#gen,#help,#panel'))return;       // 别抢对话框里的缩放
+  e.preventDefault();
+  const r=wrap.getBoundingClientRect();
+  const ax=Math.max(0,Math.min(wrap.clientWidth,e.clientX-r.left));
+  const ay=Math.max(0,Math.min(wrap.clientHeight,e.clientY-r.top));
+  zoomAt(zoom*Math.exp(-e.deltaY*0.0025),ax,ay);
+},{passive:false});
+// 平板双指缩放：只缩放 PDF，不缩放工具栏
+const pinchTouches=new Map();let pinchStart=null;
+wrap.addEventListener('touchstart',e=>{
+  for(const t of e.changedTouches)pinchTouches.set(t.identifier,{x:t.clientX,y:t.clientY});
+  if(pinchTouches.size>=2){
+    const a=[...pinchTouches.values()];
+    pinchStart={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),z:zoom};
+    userScrollUntil=performance.now()+2500;
+    e.preventDefault();
+  }
+},{passive:false});
+wrap.addEventListener('touchmove',e=>{
+  if(pinchTouches.size<2)return;
+  for(const t of e.changedTouches)if(pinchTouches.has(t.identifier))pinchTouches.set(t.identifier,{x:t.clientX,y:t.clientY});
+  const a=[...pinchTouches.values()];
+  const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+  if(pinchStart&&pinchStart.d>0){
+    const r=wrap.getBoundingClientRect();
+    const mx=Math.max(0,Math.min(wrap.clientWidth,(a[0].x+a[1].x)/2-r.left));
+    const my=Math.max(0,Math.min(wrap.clientHeight,(a[0].y+a[1].y)/2-r.top));
+    zoomAt(pinchStart.z*d/pinchStart.d,mx,my);
+  }
+  e.preventDefault();
+},{passive:false});
+const pinchEnd=e=>{for(const t of e.changedTouches)pinchTouches.delete(t.identifier);if(pinchTouches.size<2)pinchStart=null};
+wrap.addEventListener('touchend',pinchEnd);
+wrap.addEventListener('touchcancel',pinchEnd);
+
+/* 工具栏收起 / 展开 */
+$('bBar').onclick=()=>{document.body.classList.add('hidebar');$('barShow').style.display='block'};
+$('barShow').onclick=()=>{document.body.classList.remove('hidebar');$('barShow').style.display='none'};
+
+/* 菜单：点外面关闭，且这一次点击只用来关菜单，不落到谱面上（否则标小节会误加点） */
+document.addEventListener('click',e=>{
+  if($('menu').style.display!=='none'&&!e.target.closest('#menu')){
+    $('menu').style.display='none';
+    e.stopPropagation();
+  }
+},{capture:true});
+$('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
+
+/* ---------- 标记 DOM ---------- */
+function styleMkEl(d,mk){
+  d.style.left=(mk.nx*100)+'%';
+  d.style.top=(mk.ny*100)+'%';
+  d.style.height=(hOf(mk)*100)+'%';
+}
+function styleMk(mk){const d=mkEl.get(mk);if(d)styleMkEl(d,mk)}
+function layout(){                       // 结构变了才调用（增删标记 / 缩放 / 导入 / 撤销）
+  pagesEl.querySelectorAll('.mk').forEach(x=>x.remove());
+  mkEl.clear();byM.clear();mkByM.clear();lastCur=null;
+  const sm=[...M].sort((a,b)=>a.m-b.m);           // 算每根的"下一根"，标签显示覆盖范围
+  const nextMk=new Map();
+  for(let k=0;k<sm.length;k++)nextMk.set(sm[k].m,sm[k+1]||null);
+  for(const mk of M){
+    const box=boxes[mk.page];if(!box)continue;
+    const d=document.createElement('div');
+    d.className='mk';d.dataset.m=mk.m;
+    const bar=document.createElement('b');                  // 可见的 3px 竖线
+    const nxt=nextMk.get(mk.m),gap=nxt?nxt.m-mk.m-1:0;
+    const lab=document.createElement('i');
+    lab.textContent=gap>0?mk.m+'–'+(nxt.m-1):mk.m;         // 多小节休止：显示成 1–6
+    d.appendChild(bar);d.appendChild(lab);
+    styleMkEl(d,mk);
+    box.appendChild(d);mkEl.set(mk,d);
+    if(!byM.has(mk.m))byM.set(mk.m,[]);
+    byM.get(mk.m).push(d);
+    if(!mkByM.has(mk.m))mkByM.set(mk.m,mk);
+  }
+  refresh();
+}
+function refresh(){                      // 只改状态，不重建 DOM
+  buildOcc();
+  const meas=new Set(),comp=new Set();   // 三态：实测 / 推算（生成+插值） / 完全没时间
+  for(const o of OCC)(o.exact&&!o.gen?meas:comp).add(o.m);
+  for(const [mk,d] of mkEl){
+    d.classList.toggle('noT',!meas.has(mk.m)&&!comp.has(mk.m));
+    d.classList.toggle('calc',!meas.has(mk.m)&&comp.has(mk.m));
+    d.classList.toggle('tap',mk.m===tapM);
+  }
+  dirty=true;lastIdx=-2;drawChips();updLoop();stat();
+}
+function stat(){
+  $('stat').textContent='已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
+    +(RUNS.length>1?' / '+RUNS.length+' 段':'')
+    +(tapM!=null?' / 目标 → 小节 '+tapM:'');
+}
+
+/* ---------- 命中测试（全部用 CSS 像素，缩放无关） ---------- */
+function geo(e){
+  const box=e.target.closest('.page');if(!box)return null;
+  const r=box.getBoundingClientRect();
+  return {page:+box.dataset.page,r,nx:(e.clientX-r.left)/r.width,ny:(e.clientY-r.top)/r.height};
+}
+function distBar(mk,g){                  // 点到竖线段的距离（CSS 像素）；纵向更宽松，手指常在竖线上下方
+  const dx=(mk.nx-g.nx)*g.r.width;
+  const y0=mk.ny,y1=mk.ny+hOf(mk);
+  const dy=g.ny<y0?(y0-g.ny)*g.r.height:g.ny>y1?(g.ny-y1)*g.r.height:0;
+  return Math.hypot(dx,dy/1.6);
+}
+function near(g,rad){
+  let best=null,bd=rad||44;
+  for(const mk of M){
+    if(mk.page!==g.page)continue;
+    const d=distBar(mk,g);
+    if(d<bd){bd=d;best=mk}
+  }
+  return best;
+}
+/* ---------- 竖线吸附 ---------- */
+// 同一行（同页、纵向接近）的其他竖线
+function lineMates(mk){
+  const tol=Math.max(.03,hOf(mk)*.6);
+  return M.filter(o=>o!==mk&&o.page===mk.page&&Math.abs(o.ny-mk.ny)<tol);
+}
+function lineSpan(mk){                   // 同一行相邻竖线的中位间距
+  const xs=lineMates(mk).map(o=>o.nx).concat(mk.nx).sort((a,b)=>a-b);
+  const g=[];for(let i=1;i<xs.length;i++)g.push(xs[i]-xs[i-1]);
+  if(!g.length)return .12;
+  g.sort((a,b)=>a-b);return g[Math.floor(g.length/2)];
+}
+// ① 纵向对齐：抄同一行里横向最近那条的 ny 和高度
+function alignNy(mk){
+  const ms=lineMates(mk);
+  if(!ms.length)return false;
+  let best=ms[0],bd=Math.abs(best.nx-mk.nx);
+  for(const o of ms){const d=Math.abs(o.nx-mk.nx);if(d<bd){bd=d;best=o}}
+  if(mk.ny===best.ny&&hOf(mk)===hOf(best))return false;
+  mk.ny=best.ny;mk.h=hOf(best);return true;
+}
+// 检测五线谱表：横向占比高的行 = 谱线，5 条等距一组 = 一个谱表。按画布尺寸缓存。
+const staffCache=new Map();
+function staves(page){
+  const c=cvs[page];
+  if(!c||!c.width)return null;
+  const key=page+'@'+c.width+'x'+c.height;
+  if(staffCache.has(key))return staffCache.get(key);
+  const W=c.width,H=c.height;
+  let d;
+  try{d=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,W,H).data}catch(err){return null}
+  const ct=[];let grp=[];
+  for(let y=0;y<H;y++){
+    let n=0,tot=0;
+    for(let x=0;x<W;x+=2){tot++;const p=(y*W+x)*4;
+      if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<140)n++}
+    if(n/tot>0.35){if(grp.length&&y-grp[grp.length-1]<=2)grp.push(y);else{
+      if(grp.length)ct.push(grp.reduce((a,b)=>a+b)/grp.length);grp=[y]}}
+  }
+  if(grp.length)ct.push(grp.reduce((a,b)=>a+b)/grp.length);
+  const out=[];
+  for(let i=0;i+4<ct.length;){
+    const g=ct.slice(i,i+5),sp=(g[4]-g[0])/4;
+    if(sp>2&&g.every((v,k)=>k===0||Math.abs(v-g[k-1]-sp)<=2.5)){
+      out.push({top:g[0]/H,bot:g[4]/H});i+=5;
+    }else i++;
+  }
+  staffCache.set(key,out);
+  return out;
+}
+// ② 横向吸到印刷的小节线：竖线覆盖到的【每一个谱表】都得有一条通到底的竖线才算数。
+//    合唱谱的小节线通常不跨谱表相连，所以不能拿整段高度算占比；分谱表判定顺带就是跨声部校验。
+function snapBarX(mk,winPx){
+  const box=boxes[mk.page],c=cvs[mk.page];
+  if(!box||!c||!c.width)return null;                    // 页面没渲染就不吸
+  const st=staves(mk.page);
+  if(!st||!st.length)return null;
+  const W=c.width,H=c.height;
+  const y0=mk.ny,y1=mk.ny+hOf(mk);
+  const hit=st.filter(s=>s.bot>y0&&s.top<y1);
+  if(!hit.length)return null;
+  const sc=W/(box.clientWidth||W);
+  const w=Math.max(2,Math.round(winPx*sc)),cx=Math.round(mk.nx*W);
+  const x0=Math.max(1,cx-w),x1=Math.min(W-2,cx+w);
+  if(x1<=x0)return null;
+  const ys=Math.max(0,Math.round(hit[0].top*H)-1);
+  const ye=Math.min(H-1,Math.round(hit[hit.length-1].bot*H)+1);
+  let img;
+  try{img=c.getContext('2d',{willReadFrequently:true}).getImageData(x0-1,ys,x1-x0+3,ye-ys+1)}
+  catch(err){return null}
+  const d2=img.data,iw=img.width;
+  const dark=(ix,y)=>{                                  // 吸收抗锯齿：左右各扩 1px
+    const iy=y-ys;
+    for(let k=Math.max(0,ix-1);k<=Math.min(iw-1,ix+1);k++){
+      const p=(iy*iw+k)*4;
+      if(d2[p]*.299+d2[p+1]*.587+d2[p+2]*.114<175)return true;
+    }
+    return false;
+  };
+  const okCol=[];
+  for(let ix=1;ix<iw-1;ix++){
+    let okAll=true;
+    for(const s of hit){
+      const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
+      const hh=bb-a+1;
+      if(hh<6){okAll=false;break}
+      let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
+      if(n/hh<0.93){okAll=false;break}
+    }
+    if(okAll)okCol.push(x0-1+ix);
+  }
+  if(!okCol.length)return null;
+  // 相邻的合格列属于同一条线（线有宽度还有抗锯齿），取每段中心，
+  // 这样从左边靠近还是右边靠近，落点都一样
+  const runs=[];
+  for(const x of okCol){
+    const r=runs[runs.length-1];
+    if(r&&x-r[1]<=2)r[1]=x;else runs.push([x,x]);
+  }
+  let best=null,bd=1/0;
+  for(const[a,b]of runs){
+    const mid=(a+b)/2,dd=Math.abs(mid-cx);
+    if(dd<bd){bd=dd;best=mid}
+  }
+  return best==null?null:best/W;
+}
+function applySnaps(mk){
+  let hit='';
+  if($('chkAlignY').checked&&alignNy(mk))hit='对齐同行';
+  if($('chkSnapX').checked){
+    const nx=snapBarX(mk,+$('barWin').value||12);
+    if(nx!=null&&nx!==mk.nx){mk.nx=nx;hit=hit?hit+' + 吸到小节线':'吸到小节线'}
+  }
+  return hit;
+}
+
+function grabMode(mk,g){                 // 靠近上/下端 = 改长度，其余 = 挪位置
+  const H=g.r.height,py=g.ny*H,hpx=hOf(mk)*H;
+  const hz=Math.min(7,hpx*0.25);         // 竖线短时手柄跟着缩小，中段永远抓得到
+  if(Math.abs(py-(mk.ny+hOf(mk))*H)<hz)return 'bottom';
+  if(Math.abs(py-mk.ny*H)<hz)return 'top';
+  return 'move';
+}
+
+/* ---------- 时间点 ---------- */
+function addTime(m,t){
+  snap();
+  const i=E.findIndex(e=>e.m===m&&Math.abs(e.t-t)<1);   // 同一小节 1 秒内视作手抖重复，覆盖而非新增
+  if(i>=0){E[i].t=t;E[i].src='tap';return}              // 手改过的点升级为实测，重新生成时当硬锚点保留
+  // 修正生成的点：替换时间上最近的那个。生成值是推导出来的，覆盖没有损失；
+  // 而实测点是真数据，隔得远就当成另一遍新增，不动它。
+  let gi=-1,bd=1/0;
+  E.forEach((e,k)=>{if(e.m===m&&e.src==='gen'){const d=Math.abs(e.t-t);if(d<bd){bd=d;gi=k}}});
+  if(gi>=0){E[gi].t=t;E[gi].src='tap';return}
+  E.push({m,t,src:'tap'});
+}
+function stamp(){return Math.max(0,aud.currentTime-offset/1000)}
+function sortedM(){return [...new Set(M.map(x=>x.m))].sort((a,b)=>a-b)}
+function stepM(m,dir){
+  const L=sortedM();if(!L.length)return null;
+  if(m==null)return dir>0?L[0]:L[L.length-1];
+  const i=L.indexOf(m);
+  if(i<0)return dir>0?(L.find(x=>x>m)??L[L.length-1]):([...L].reverse().find(x=>x<m)??L[0]);
+  return L[Math.min(L.length-1,Math.max(0,i+dir))];
+}
+function firstUntimed(){
+  const has=new Set(E.map(e=>e.m)),L=sortedM();
+  return L.find(m=>!has.has(m))??L[0]??null;
+}
+function setTap(m){tapM=m;refresh();if(m!=null)follow(byM.get(m)?.[0],true)}
+function tap(){
+  if(!M.length)return msg('还没有标记小节',1);
+  if(tapM==null)tapM=firstUntimed();
+  if(tapM==null)return;
+  addTime(tapM,maybeSnap(stamp(),tapM));
+  const nx=stepM(tapM,1);
+  if(nx===tapM)msg('已到最后一个小节');
+  tapM=nx;
+  refresh();follow(byM.get(tapM)?.[0],true);save();
+}
+
+/* ---------- 鼠标 ---------- */
+pagesEl.onclick=e=>{
+  if(!pdf)return;
+  const mode=$('mode').value;if(mode==='edit')return;
+  const g=geo(e);if(!g)return;
+  const best=near(g);
+
+  if(mode==='mark'){
+    snap();
+    const nmk={page:g.page,nx:g.nx,ny:g.ny,m:nextM,h:lastH};   // 新点沿用上次的高度
+    M.push(nmk);
+    const hit=applySnaps(nmk);
+    syncNext();layout();save();
+    if(hit)msg('小节 '+nmk.m+'：'+hit);
+    return;
+  }
+  if(!best){                                   // 之前这里是静默 return，跟着音频打点时根本发现不了漏点
+    const any=near(g,1e9);
+    msg(any?('没点中标记（最近的是小节 '+any.m+'）'):'这一页还没有标记',1);
+    return;
+  }
+  if(arm){setAB(arm,best.m);return}            // A-B 待命中：只设边界，不跳转
+  if(mode==='time'){
+    if(e.shiftKey){setTap(best.m);msg('目标 → 小节 '+best.m);return}
+    addTime(best.m,maybeSnap(stamp(),best.m));
+    tapM=stepM(best.m,1);
+    refresh();save();
+    return;
+  }
+  // play：默认落在当前段落的那一遍；2 秒内再点同一个点 = 循环切到下一遍（触摸端替代 Shift）
+  const p=pickOcc(best.m);
+  if(!p)return msg('小节 '+best.m+' 还没有时间信息',1);
+  const now=performance.now(),again=lastSeek&&lastSeek.m===best.m&&now-lastSeek.at<2000;
+  let i=(again||e.shiftKey)?((lastSeek&&lastSeek.m===best.m?lastSeek.i+1:0)%p.c.length):p.i;
+  lastSeek={m:best.m,i,at:now};
+  aud.currentTime=p.c[i].t;
+  if(p.c.length>1)msg('小节 '+best.m+' · 第 '+(i+1)+'/'+p.c.length+' 遍（再点一下换下一遍）');
+};
+
+/* 编辑模式：拖动改位置，单击开面板。用 Pointer Events，鼠标和触屏同一套 */
+function dragMove(e){
+  if(!drag.moved){
+    if(Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)<3)return;
+    drag.moved=true;snap();
+  }
+  const mk=drag.mk;
+  const dx=(e.clientX-drag.x0)/drag.r.width,dy=(e.clientY-drag.y0)/drag.r.height;
+  if(drag.mode==='move'){                  // 用位移而不是绝对位置，抓哪拖哪不会跳
+    mk.nx=Math.min(1,Math.max(0,drag.nx0+dx));
+    mk.ny=Math.min(1,Math.max(0,drag.ny0+dy));
+  }else if(drag.mode==='bottom'){
+    mk.h=Math.max(.004,Math.min(1-mk.ny,drag.h0+dy));
+    lastH=mk.h;
+  }else{                                   // 拖上端：顶端跟着走，底端钉住
+    const bot=drag.ny0+drag.h0;
+    mk.ny=Math.min(bot-.004,Math.max(0,drag.ny0+dy));
+    mk.h=bot-mk.ny;lastH=mk.h;
+  }
+  styleMk(mk);
+}
+function dragEnd(){
+  const mk=drag.mk,moved=drag.moved,mode=drag.mode;drag=null;
+  if(!moved)return openPanel(mk.m);
+  const hit=mode==='move'?applySnaps(mk):'';       // 改长度时不吸，免得手一松位置又跑了
+  styleMk(mk);save();
+  if(hit)msg('小节 '+mk.m+'：'+hit);
+}
+pagesEl.onpointerdown=e=>{
+  if($('mode').value!=='edit'||!pdf)return;
+  const g=geo(e);if(!g)return;
+  const mk=near(g);
+  if(!mk)return;
+  drag={mk,mode:grabMode(mk,g),r:g.r,x0:e.clientX,y0:e.clientY,
+        nx0:mk.nx,ny0:mk.ny,h0:hOf(mk),moved:false,pid:e.pointerId};
+  pagesEl.setPointerCapture(e.pointerId);   // 拖出页面也继续收到 move/up
+  e.preventDefault();
+};
+pagesEl.onpointermove=e=>{
+  if(drag&&drag.pid===e.pointerId)return dragMove(e);
+  if($('mode').value!=='edit'||!pdf)return;
+  const g=geo(e);const mk=g&&near(g);
+  pagesEl.style.cursor=!mk?'':(grabMode(mk,g)==='move'?'move':'ns-resize');
+};
+pagesEl.onpointerup=e=>{if(drag&&drag.pid===e.pointerId)dragEnd()};
+pagesEl.onpointercancel=e=>{if(drag&&drag.pid===e.pointerId)drag=null};   // 系统接管手势就放弃
+
+/* ---------- 面板 ---------- */
+function openPanel(m){curM=m;renderPanel()}
+function renderPanel(){
+  if(curM==null)return;
+  const m=curM;
+  const mk=mkByM.get(m),ph=mk&&boxes[mk.page]?boxes[mk.page].clientHeight:1000;
+  let html='<b>小节 '+m+'</b> <button id="pClose">关闭</button> <button id="pTap">设为打点目标</button>'+
+           ' <button id="pDelMk">删标记</button>';
+  if(mk)html+='<div style="margin:6px 0">竖线高度 <input type="number" id="pH" step="2" min="2" '+
+    'value="'+Math.round(hOf(mk)*ph)+'"> px <button id="pHAll">应用到整行</button></div>';
+  let n=0;
+  E.forEach((ev,i)=>{
+    if(ev.m!==m)return;n++;
+    html+='<div style="margin:6px 0">t<input type="number" step="0.05" value="'+ev.t.toFixed(2)+'" data-i="'+i+'"> '+
+      '<button data-set="'+i+'">设为当前</button><button data-del="'+i+'">删除</button></div>';
+  });
+  const ip=OCC.filter(o=>o.m===m&&!o.exact);
+  if(!n&&ip.length)html+='<div class="ip" style="margin:6px 0">无实测点，插值得到 '+ip.map(o=>o.t.toFixed(2)).join(' / ')+'</div>';
+  if(!n&&!ip.length)html+='<div class="ip" style="margin:6px 0">还没有时间信息</div>';
+  html+='<button id="pAdd">加时间点(当前)</button>';
+  panel.innerHTML=html;panel.style.display='block';
+  panel.querySelector('#pClose').onclick=()=>{panel.style.display='none';curM=null};
+  panel.querySelector('#pTap').onclick=()=>setTap(m);
+  const ih=panel.querySelector('#pH');
+  if(ih){
+    ih.onchange=()=>{snap();mk.h=lastH=Math.max(.004,(+ih.value||10)/ph);styleMk(mk);save()};
+    panel.querySelector('#pHAll').onclick=()=>{
+      snap();const v=Math.max(.004,(+ih.value||10)/ph);lastH=v;
+      const row=[mk,...lineMates(mk)];                 // 只动这一行，别的系统高度可能不同
+      row.forEach(x=>x.h=v);row.forEach(styleMk);save();
+      msg('已把高度应用到整行 '+row.length+' 条竖线');
+    };
+  }
+  panel.querySelector('#pDelMk').onclick=()=>{
+    snap();M=M.filter(x=>x.m!==m);E=E.filter(x=>x.m!==m);
+    if(tapM===m)tapM=null;
+    syncNext();panel.style.display='none';curM=null;layout();save();
+  };
+  panel.querySelector('#pAdd').onclick=()=>{addTime(m,stamp());renderPanel();refresh();save()};
+  panel.querySelectorAll('input[data-i]').forEach(inp=>inp.onchange=()=>{   // 只绑时间输入框，别把高度输入框也覆盖了
+    snap();E[+inp.dataset.i].t=+inp.value;renderPanel();refresh();save()});
+  panel.querySelectorAll('[data-set]').forEach(b=>b.onclick=()=>{
+    snap();E[+b.dataset.set].t=stamp();renderPanel();refresh();save()});
+  panel.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    snap();E.splice(+b.dataset.del,1);renderPanel();refresh();save()});
+}
+
+/* ---------- 时间轴：实测点 + 线性插值，小节号回退视为反复 ---------- */
+function buildOcc(){
+  OCC=[];repeats=0;
+  const ev=[...E].sort((a,b)=>a.t-b.t);
+  for(let i=0;i<ev.length;i++){
+    OCC.push({m:ev[i].m,t:ev[i].t,exact:true,gen:ev[i].src==='gen',seg:ev[i].seg});
+    if(i+1>=ev.length)continue;
+    if(ev[i+1].m>ev[i].m){
+      const A=ev[i],B=ev[i+1];
+      for(let m=A.m+1;m<B.m;m++)
+        OCC.push({m,t:A.t+(B.t-A.t)*(m-A.m)/(B.m-A.m),exact:false,gen:true,seg:A.seg});
+    }else if(ev[i+1].m<ev[i].m)repeats++;
+  }
+  buildRuns();
+  buildCover();
+}
+// 每根竖线覆盖到下一根为止（多小节休止）：给 OCC 里每个时间点标出它的"覆盖竖线"和"下一根"
+function buildCover(){
+  const sm=[...M].sort((a,b)=>a.m-b.m);
+  for(const o of OCC){
+    let cover=null,ci=-1;
+    for(let k=0;k<sm.length;k++)if(sm[k].m<=o.m){cover=sm[k];ci=k}else break;
+    o.cover=cover;
+    o.coverNext=ci>=0?sm[ci+1]||null:null;
+  }
+}
+// 当前遍（时间序列里离 index i 最近）里小节 m 的起始时间
+function occTimeNear(m,i,dir){
+  if(dir<0){for(let k=i;k>=0;k--)if(OCC[k].m===m)return OCC[k].t}
+  else{for(let k=i;k<OCC.length;k++)if(OCC[k].m===m)return OCC[k].t}
+  return null;
+}
+function occIndex(t){                     // OCC 按 t 递增，二分找最后一个 <= t
+  let lo=0,hi=OCC.length-1,r=-1;
+  while(lo<=hi){const mid=(lo+hi)>>1;if(OCC[mid].t<=t){r=mid;lo=mid+1}else hi=mid-1}
+  return r;
+}
+
+/* ---------- 段落：小节号不再前进 = 新的一遍，直接从 OCC 切出来 ---------- */
+function buildRuns(){
+  RUNS=[];
+  let lastSeg=null;
+  for(let i=0;i<OCC.length;i++){
+    const b=OCC[i];
+    const bs=b.seg!=null?b.seg:lastSeg;                    // 没段号的野点跟随前一个点所在的段
+    let split;
+    if(i===0)split=true;
+    else if(lastSeg!=null&&bs!=null)split=bs!==lastSeg;    // 声明过播放顺序就完全按它切，不再叠加启发式
+    else split=b.m<=OCC[i-1].m;                            // 没声明才用"小节号不再前进 = 新的一遍"
+    if(split)RUNS.push({t0:b.t,m0:b.m,m1:b.m});
+    else{const r=RUNS[RUNS.length-1];
+      if(b.m<r.m0)r.m0=b.m;if(b.m>r.m1)r.m1=b.m}          // 取 min/max，个别乱序点不会让标签变怪
+    OCC[i].run=RUNS.length-1;lastSeg=bs;
+  }
+}
+function runAt(t){const i=occIndex(t);return i<0?-1:OCC[i].run}
+function fmt(t){t=Math.max(0,t||0);return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')}
+const CIRC='①②③④⑤⑥⑦⑧⑨⑩⑪⑫';
+function runLabel(k){return k<0?'':(CIRC[k]||'('+(k+1)+')')}
+
+// 当前段落里的那一遍优先；当前段落没有这个小节再退回时间上最近的
+function pickOcc(m){
+  const c=OCC.filter(o=>o.m===m);
+  if(!c.length)return null;
+  const r=runAt(aud.currentTime);
+  let i=c.findIndex(o=>o.run===r);
+  if(i<0){let bd=1/0;i=0;c.forEach((o,k)=>{const d=Math.abs(o.t-aud.currentTime);if(d<bd){bd=d;i=k}})}
+  return {c,i};
+}
+
+function drawChips(){
+  const box=$('chips');
+  if(RUNS.length<2){box.innerHTML='';$('chipWrap').style.display='none';return}
+  $('chipWrap').style.display='flex';
+  box.innerHTML=RUNS.map((r,k)=>'<div class="chip" data-k="'+k+'">'+runLabel(k)+' 小节 '+r.m0+'–'+r.m1+
+    '<small>'+fmt(r.t0)+'</small></div>').join('');
+  box.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+    const k=+c.dataset.k,r=RUNS[k];
+    aud.currentTime=r.t0;lastSeek=null;          // 段落一跳，后续点小节就落在这一段
+    msg(runLabel(k)+' 小节 '+r.m0+'–'+r.m1);
+  });
+  lastRun=-2;markChip();
+}
+function markChip(){
+  const k=runAt(aud.currentTime);
+  $('chips').querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',+c.dataset.k===k));
+}
+function updateNow(o){
+  $('nowBox').textContent='现在 '+(o?((RUNS.length>1?runLabel(o.run)+' ':'')+'小节 '+o.m):'—');
+}
+
+/* ---------- A-B 循环：存小节+起始时间，范围每次现算，E 改了也不会指错 ---------- */
+function loopRange(){
+  if(!loop.a||!loop.b)return null;
+  const [lo,hi]=loop.a.t<=loop.b.t?[loop.a,loop.b]:[loop.b,loop.a];
+  const gi=OCC.findIndex(o=>o.m===hi.m&&o.t===hi.t);
+  const end=(gi>=0&&gi+1<OCC.length)?OCC[gi+1].t                 // B 要唱完，所以终点取下一小节的起点
+           :(isFinite(aud.duration)&&aud.duration>hi.t?aud.duration:hi.t+5);
+  return {t0:lo.t,t1:end,m0:lo.m,m1:hi.m};
+}
+function setAB(which,m){
+  const p=pickOcc(m);
+  if(!p)return msg('小节 '+m+' 还没有时间信息',1);
+  loop[which]={m,t:p.c[p.i].t};
+  arm=null;updLoop();
+  const R=loopRange();
+  msg(R?('循环区间 小节 '+R.m0+' → '+R.m1)
+       :(which==='a'?'起点 = 小节 '+m+'，再按「终点」':'终点 = 小节 '+m+'，再按「起点」'));
+}
+function updLoop(){
+  const R=loopRange();
+  $('bA').classList.toggle('arm',arm==='a');
+  $('bB').classList.toggle('arm',arm==='b');
+  $('bLoop').classList.toggle('on',loop.on);
+  $('bLoop').disabled=!R;
+  $('loopTxt').textContent=R?('小节 '+R.m0+'→'+R.m1+'  '+fmt(R.t0)+'–'+fmt(R.t1))
+    :loop.a?('起点=小节 '+loop.a.m+'，再设终点')
+    :loop.b?('终点=小节 '+loop.b.m+'，再设起点'):'未设区间';
+}
+function armAB(which){
+  arm=arm===which?null:which;
+  if(arm&&$('mode').value!=='play'){$('mode').value='play';syncMode()}   // 待命时自动切到播放模式，免得点谱面变成打点
+  updLoop();
+  msg(arm?('点一个小节设为循环'+(arm==='a'?'起点':'终点')+'（再按一次取消）'):'已取消');
+}
+$('bA').onclick=()=>armAB('a');
+$('bB').onclick=()=>armAB('b');
+$('bLoop').onclick=()=>{
+  const R=loopRange();if(!R)return;
+  loop.on=!loop.on;updLoop();
+  if(loop.on){
+    if(aud.currentTime<R.t0||aud.currentTime>=R.t1)aud.currentTime=R.t0;
+    msg('循环开：小节 '+R.m0+'→'+R.m1);
+  }else msg('循环关');
+};
+$('bLoopClr').onclick=()=>{loop={a:null,b:null,on:false};arm=null;updLoop();msg('已清除 A-B')};
+
+/* ================= 自动生成时间轴 =================
+   速度表决定小节之间的相对比例，播放顺序决定小节排列次序，
+   实测点（src!=='gen'）当硬锚点：相邻锚点之间按比例线性拉伸对齐。
+   现有的"两点线性插值"就是速度表恒定时的特例。                      */
+function measDurOf(n,d,bpm){return n*(4/d)*(60/bpm)}     // 拍数 ×(4/分母)×(60/BPM)
+function meterAt(m){
+  let fb=null;
+  for(const r of METER){
+    if(!r.ranges.length){if(!fb)fb=r;continue}           // 留空的行 = 兜底
+    for(const g of r.ranges)if(m>=g.from&&m<=g.to)return r.sig;
+  }
+  return fb?fb.sig:(METER[0]?METER[0].sig:[4,4]);
+}
+function meterCovered(m){
+  for(const r of METER){
+    if(!r.ranges.length)return true;
+    for(const g of r.ranges)if(m>=g.from&&m<=g.to)return true;
+  }
+  return false;
+}
+// 谁管哪一小节：查重叠、查漏、查多个兜底行
+function meterCoverage(hi){
+  const owner=new Array(hi+1).fill(-1),dup=new Set();
+  METER.forEach((r,i)=>{
+    for(const g of r.ranges)
+      for(let m=Math.max(1,g.from);m<=Math.min(hi,g.to);m++){
+        if(owner[m]<0)owner[m]=i;else if(owner[m]!==i)dup.add(m);
+      }
+  });
+  const fb=METER.filter(r=>!r.ranges.length).length;
+  const gaps=[];
+  if(!fb)for(let m=1;m<=hi;m++)if(owner[m]<0)gaps.push(m);
+  return {owner,dup:[...dup].sort((a,b)=>a-b),gaps,fb};
+}
+function bpmAt(m){
+  let r=null;
+  for(const x of TEMPO)if(x.m<=m)r=x;else break;
+  if(!r)r=TEMPO[0];
+  return r&&r.bpm>0?r.bpm:120;
+}
+function measDur(m){const s=meterAt(m);return measDurOf(s[0],s[1],bpmAt(m))}
+function minM(){return M.length?M.reduce((a,x)=>x.m<a?x.m:a,1/0):1}
+
+function parseSig(s){
+  const mm=String(s||'').trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+  if(!mm)throw new Error('看不懂拍号 "'+s+'"，应该写成 6/8');
+  const n=+mm[1],d=+mm[2];
+  if(!(n>0&&n<=64))throw new Error('拍数不合理："'+s+'"');
+  if(![1,2,4,8,16,32].includes(d))throw new Error('分母只能是 1/2/4/8/16/32："'+s+'"');
+  return [n,d];
+}
+function sigText(s){return s[0]+'/'+s[1]}
+function normRanges(rs){                                  // 排序 + 合并相邻/重叠
+  const a=[...rs].sort((x,y)=>x.from-y.from),out=[];
+  for(const g of a){
+    const l=out[out.length-1];
+    if(l&&g.from<=l.to+1)l.to=Math.max(l.to,g.to);
+    else out.push({from:g.from,to:g.to});
+  }
+  return out;
+}
+function rangeCount(rs){return rs.reduce((a,g)=>a+(g.to-g.from+1),0)}
+
+// v3 老格式 [{m,n,d,bpm}]（起始小节 + 向后继承）→ 拆成速度表 + 拍号区间表
+function migrateSig(sig,hi){
+  const s=[...(sig||[])].sort((a,b)=>a.m-b.m);
+  const top=Math.max(hi||1,s.length?s[s.length-1].m:1);
+  const T=[],by=new Map();
+  s.forEach((x,i)=>{
+    if(!T.length||T[T.length-1].bpm!==x.bpm)T.push({m:x.m,bpm:x.bpm});
+    const to=i+1<s.length?s[i+1].m-1:top;
+    if(to<x.m)return;
+    const k=x.n+'/'+x.d;
+    if(!by.has(k))by.set(k,{sig:[x.n,x.d],ranges:[]});
+    by.get(k).ranges.push({from:x.m,to});
+  });
+  const ME=[...by.values()].map(r=>({sig:r.sig,ranges:normRanges(r.ranges)}));
+  return {TEMPO:T.length?T:[{m:1,bpm:120}],METER:ME.length?ME:[{sig:[4,4],ranges:[]}]};
+}
+// v4 短命的循环序列格式 → 区间表
+function migrateSeq(meter,hi){
+  const s=[...(meter||[])].sort((a,b)=>a.m-b.m);
+  const top=Math.max(hi||1,s.length?s[s.length-1].m:1),by=new Map();
+  s.forEach((r,i)=>{
+    const to=i+1<s.length?s[i+1].m-1:top,L=r.seq.length;
+    if(!L)return;
+    for(let m=r.m;m<=to;m++){
+      const g=r.seq[(((m-r.m)%L)+L)%L],k=g[0]+'/'+g[1];
+      if(!by.has(k))by.set(k,{sig:[g[0],g[1]],ranges:[]});
+      by.get(k).ranges.push({from:m,to:m});
+    }
+  });
+  const ME=[...by.values()].map(r=>({sig:r.sig,ranges:normRanges(r.ranges)}));
+  return ME.length?ME:[{sig:[4,4],ranges:[]}];
+}
+
+function parseForm(s){
+  s=String(s||'').trim();
+  if(!s)return [];
+  return s.split(/[,，;；]+/).map(x=>x.trim()).filter(Boolean).map(p=>{
+    const mm=p.match(/^(\d+)\s*(?:[-–—~～至到]\s*(\d+))?$/);
+    if(!mm)throw new Error('看不懂 "'+p+'"，应该写成 1-8 或 12');
+    const a=+mm[1],b=mm[2]?+mm[2]:a;
+    if(b<a)throw new Error('"'+p+'" 的区间反了');
+    return {from:a,to:b};
+  });
+}
+function formText(f){return f.map(x=>x.from===x.to?String(x.from):x.from+'-'+x.to).join(', ')}
+function expandForm(form){
+  const seq=[];
+  form.forEach((f,si)=>{for(let m=f.from;m<=f.to;m++)seq.push({m,seg:si})});
+  return seq;
+}
+// 把实测点按时间顺序贪心地对应到展开序列上的具体某一遍；ai 是它在 taps 里的下标
+function matchAnchors(seq,taps){
+  const out=[];let from=0;
+  for(let ai=0;ai<taps.length;ai++){
+    const a=taps[ai];
+    const k=seq.findIndex((s,i)=>i>=from&&s.m===a.m);
+    if(k<0)continue;
+    out.push({k,t:a.t,ai});from=k+1;
+  }
+  return out;
+}
+function relTimeline(seq){                                // 相对时间轴（只管比例）
+  const rel=[];let acc=0;
+  for(const s of seq){rel.push(acc);acc+=measDur(s.m)}
+  return rel;
+}
+function formOrAll(){return FORM.length?FORM:[{from:minM(),to:Math.max(minM(),maxM())}]}
+// 锚点体检：哪些对得上播放顺序，相邻锚点之间实际用时 / 速度表预测用时 的比值
+function anchorInfo(){
+  const taps=E.filter(e=>e.src!=='gen').sort((a,b)=>a.t-b.t);
+  let anc=[],ratios=[];
+  try{
+    const seq=expandForm(formOrAll()),rel=relTimeline(seq);
+    anc=matchAnchors(seq,taps);
+    for(let i=0;i+1<anc.length;i++){
+      const dr=rel[anc[i+1].k]-rel[anc[i].k],dt=anc[i+1].t-anc[i].t;
+      ratios.push(Math.abs(dr)>1e-9?dt/dr:null);
+    }
+  }catch(err){}
+  return {taps,anc,ratios,matched:new Set(anc.map(a=>a.ai))};
+}
+function genTimeline(manual,ignoreTaps){
+  if(!TEMPO.length)throw new Error('速度表是空的');
+  if(!METER.length)throw new Error('拍号表是空的');
+  for(const t of TEMPO)if(!(t.bpm>0))throw new Error('速度表里有非法 BPM');
+  for(const r of METER)if(!(r.sig[0]>0&&r.sig[1]>0))throw new Error('拍号表里有非法拍号');
+  if(METER.filter(r=>!r.ranges.length).length>1)throw new Error('只能有一行留空当兜底');
+  TEMPO.sort((a,b)=>a.m-b.m);
+  const form=FORM.length?FORM:[{from:minM(),to:Math.max(minM(),maxM())}];
+  const seq=expandForm(form);
+  if(!seq.length)throw new Error('播放顺序展开后是空的');
+  if(seq.length>20000)throw new Error('小节数过多（'+seq.length+'），检查一下播放顺序');
+  const nosig=[...new Set(seq.map(s=>s.m))].filter(m=>!meterCovered(m));
+  if(nosig.length)throw new Error('这些小节没有指定拍号：'+nosig.slice(0,10).join(',')+
+    (nosig.length>10?'…（共 '+nosig.length+' 个）':''));
+
+  const rel=relTimeline(seq);
+  const taps=ignoreTaps?[]:E.filter(e=>e.src!=='gen').sort((a,b)=>a.t-b.t);
+  let anc=matchAnchors(seq,taps),fromE=anc.length>0;
+  if(!fromE){
+    if(!manual)throw new Error('没有可用的锚点');
+    const k=seq.findIndex(s=>s.m===manual.m);
+    if(k<0)throw new Error('锚点小节 '+manual.m+' 不在播放顺序里');
+    anc=[{k,t:manual.t}];
+  }
+  const A0=anc[0],AZ=anc[anc.length-1];
+  const gdr=anc.length>1?rel[AZ.k]-rel[A0.k]:0;
+  const gs=(anc.length>1&&Math.abs(gdr)>1e-9)?(AZ.t-A0.t)/gdr:1;
+  const scales=[];
+  for(let i=0;i+1<anc.length;i++){
+    const dr=rel[anc[i+1].k]-rel[anc[i].k];
+    scales.push(Math.abs(dr)>1e-9?(anc[i+1].t-anc[i].t)/dr:null);
+  }
+  // 首尾之外用【首末锚点的全局比例】外推。原来拿相邻那一小段的比例外推，
+  // 只要那一段短又不准（比如相邻两小节被打歪了），后面几十小节会被整体放大到离谱。
+  const mapT=k=>{
+    if(anc.length===1)return anc[0].t+(rel[k]-rel[anc[0].k]);
+    if(k<=A0.k)return A0.t+(rel[k]-rel[A0.k])*gs;
+    if(k>=AZ.k)return AZ.t+(rel[k]-rel[AZ.k])*gs;
+    let i=0;while(i<anc.length-2&&k>=anc[i+1].k)i++;
+    const A=anc[i],B=anc[i+1],dr=rel[B.k]-rel[A.k];
+    return A.t+(rel[k]-rel[A.k])*(Math.abs(dr)>1e-9?(B.t-A.t)/dr:gs);
+  };
+  const drop=fromE?new Set(anc.map(a=>a.k)):new Set();    // 锚点本身已经在 E 里，别生成重复的
+  // 保留的实测点要按【这一次】匹配到的位置重新定段号，否则上次生成留下的 seg
+  // 会在段落条上劈出一个假的单小节段（就是 ② 小节 17–17 那种）
+  const segOf=new Map(anc.map(a=>[a.ai,seq[a.k].seg]));
+  const keptTaps=taps.map((tp,i)=>{
+    const o={m:tp.m,t:tp.t,src:'tap'};
+    if(segOf.has(i))o.seg=segOf.get(i);
+    return o;
+  });
+  const gen=seq.map((s,k)=>({m:s.m,t:Math.max(0,mapT(k)),src:'gen',seg:s.seg}))
+               .filter((_,k)=>!drop.has(k));
+  return {E:[...keptTaps,...gen],seq,anc,fromE,scales,gs,
+          unmatched:taps.length-anc.length,
+          span:[mapT(0),mapT(seq.length-1)]};
+}
+// 用实测点反推速度：整张速度表按同一比例缩放
+function calibrate(){
+  const taps=E.filter(e=>e.src!=='gen').sort((a,b)=>a.t-b.t);
+  if(taps.length<2)throw new Error('至少要有 2 个实测时间点才能反推');
+  const seq=expandForm(formOrAll()),anc=matchAnchors(seq,taps);
+  if(anc.length<2)throw new Error('实测点对不上播放顺序');
+  const rel=relTimeline(seq);
+  const A=anc[0],B=anc[anc.length-1],dr=rel[B.k]-rel[A.k];
+  if(Math.abs(dr)<1e-9)throw new Error('两个锚点之间没有跨度');
+  const scale=(B.t-A.t)/dr;                               // 实际用时 / 按当前速度表预测用时
+  if(!(scale>0.1&&scale<10))throw new Error('反推结果离谱（×'+scale.toFixed(2)+'），检查拍号或锚点');
+  TEMPO.forEach(t=>t.bpm=+(t.bpm/scale).toFixed(3));       // 时长 ∝ 1/BPM
+  return {scale,span:[A,B]};
+}
+
+/* ---------- 高亮跟随（rAF，200ms 轮询的滞后没了） ---------- */
+function follow(el,force){
+  if(!el)return;
+  if(!force&&(!$('chkFollow').checked||performance.now()<userScrollUntil))return;
+  const wr=wrap.getBoundingClientRect();
+  if($('chkHoriz').checked){
+    // 横向展开：按「页」跟随，而不是按小节。谱子里换行(系统)时竖线的 x 会跳回行首，
+    // 按小节横向判断会在一页内来回抖；整页贴左才是稳定的一页一页推进。
+    const box=el.closest('.page');if(!box)return;
+    const r=box.getBoundingClientRect();
+    if(r.left<wr.left+8||r.right>wr.left+wr.width-8)
+      wrap.scrollLeft+=r.left-(wr.left+8);
+  }else{                                            // 纵向：上下跟随
+    const r=el.getBoundingClientRect();
+    if(r.top<wr.top+wr.height*0.2||r.bottom>wr.top+wr.height*0.8)
+      wrap.scrollTop+=r.top-(wr.top+wr.height*0.35);
+  }
+}
+['wheel','touchmove'].forEach(ev=>wrap.addEventListener(ev,()=>{userScrollUntil=performance.now()+2500},{passive:true}));
+/* 当前小节的流动进度：一条高亮带盖住这一小节，一条扫描线在里面从左走到右。
+   下一小节换行/换页时就扫到本行右边缘。 */
+function hideProg(){
+  if(bandEl)bandEl.style.display='none';
+  if(sweepEl)sweepEl.style.display='none';
+}
+function updateProg(t,i,o){
+  if(!$('chkProg').checked||i<0||!o)return hideProg();
+  const mk=o.cover,box=mk&&boxes[mk.page];
+  if(!mk||!box)return hideProg();          // 没有覆盖竖线（比如没标位置）就不显示
+  if(!bandEl){bandEl=document.createElement('div');bandEl.id='band'}
+  if(!sweepEl){sweepEl=document.createElement('div');sweepEl.id='sweep'}
+  if(bandEl.parentElement!==box){box.appendChild(bandEl);box.appendChild(sweepEl)}
+  const nk=o.coverNext;
+  // 下一根竖线在同一行才扫到它，否则扫到本行右边缘
+  const same=nk&&nk.page===mk.page&&Math.abs(nk.ny-mk.ny)<0.03&&nk.nx>mk.nx;
+  const x0=mk.nx,x1=same?nk.nx:Math.min(1,mk.nx+lineSpan(mk));  // 行末按同行中位间距收边
+  // 扫描线：从覆盖竖线的时间走到下一根的时间，跨多小节休止时平滑走完全程，而不是每小节重置
+  const t0=occTimeNear(mk.m,i,-1),t1=nk?occTimeNear(nk.m,i,1):null;
+  const p=(t0!=null&&t1!=null&&t1>t0)?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;
+  const top=mk.ny*100,hh=hOf(mk)*100;
+  bandEl.style.cssText='display:block;left:'+(x0*100)+'%;width:'+((x1-x0)*100)+
+    '%;top:'+top+'%;height:'+hh+'%';
+  sweepEl.style.cssText='display:block;left:'+((x0+(x1-x0)*p)*100)+'%;top:'+top+'%;height:'+hh+'%';
+}
+
+function tick(){
+  requestAnimationFrame(tick);
+  if(loop.on&&!aud.paused){                     // A-B 循环：越过终点就弹回起点
+    const R=loopRange();
+    if(R&&aud.currentTime>=R.t1){aud.currentTime=R.t0;return}
+  }
+  const t=aud.currentTime,moved=t!==lastT;
+  if(specOn()&&(moved||dirty||specDirty)){drawSpec();specDirty=false}
+  if(!moved&&!dirty)return;
+  lastT=t;dirty=false;
+  const i=occIndex(t),o=i<0?null:OCC[i],m=o?o.m:null;
+  updateProg(t,i,o);                      // 每帧都要动，不能等小节切换
+  if(i!==lastIdx){lastIdx=i;updateNow(o)}
+  const run=o?o.run:-1;
+  if(run!==lastRun){lastRun=run;markChip()}
+  const covM=o?(o.cover?o.cover.m:m):null;      // 多小节休止期间，覆盖竖线不变，高亮一直停在那根上
+  if(covM===lastCur)return;
+  if(lastCur!=null)(byM.get(lastCur)||[]).forEach(d=>d.classList.remove('cur'));
+  if(covM!=null)(byM.get(covM)||[]).forEach(d=>d.classList.add('cur'));
+  lastCur=covM;
+  if(covM!=null)follow(byM.get(covM)?.[0]);
+}
+requestAnimationFrame(tick);
+
+/* ---------- 键盘打点 ---------- */
+window.addEventListener('keydown',e=>{
+  if($('help').style.display==='flex'&&(e.key==='Escape'||e.key.toLowerCase()==='h')){toggleHelp(false);return}
+  const a=document.activeElement;
+  if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return;
+  const k=e.key,timeMode=$('mode').value==='time';
+  if(k===' '||k==='Enter'){
+    e.preventDefault();
+    if(timeMode)tap();else if(k===' ')aud.paused?aud.play():aud.pause();
+  }
+  else if(k==='Backspace'){e.preventDefault();undo()}
+  else if(k==='['||k===']'){e.preventDefault();
+    setTap(tapM==null?firstUntimed():stepM(tapM,k===']'?1:-1))}
+  else if(k==='ArrowLeft'){e.preventDefault();aud.currentTime=Math.max(0,aud.currentTime-(e.shiftKey?5:2))}
+  else if(k==='ArrowRight'){e.preventDefault();aud.currentTime+=e.shiftKey?5:2}
+  else if(k==='k'||k==='K'){e.preventDefault();aud.paused?aud.play():aud.pause()}
+  else if(k==='-'||k==='='){e.preventDefault();bumpRate(k==='='?1:-1)}
+  else if(k==='0'){e.preventDefault();setRate(1)}
+  else if(k==='h'||k==='H'||k==='?'){e.preventDefault();toggleHelp()}
+});
+function bumpRate(d){
+  const opts=[...$('rate').options].map(o=>+o.value);
+  const i=opts.indexOf(aud.playbackRate);
+  setRate(opts[Math.min(opts.length-1,Math.max(0,(i<0?opts.indexOf(1):i)+d))]);
+}
+function setRate(r){aud.playbackRate=r;$('rate').value=String(r);msg('速度 '+r+'x')}
+$('rate').onchange=()=>{aud.playbackRate=+$('rate').value};
+aud.preservesPitch=aud.mozPreservesPitch=aud.webkitPreservesPitch=true;
+/* ================= 频谱条 =================
+   解码 → 重采样成 11025 单声道 → STFT → 一次性画进离屏 canvas，
+   之后每帧只是 drawImage 一个切片。分析分片跑，不卡界面。        */
+const SP_SR=11025,SP_N=1024,SP_H=112,SP_FMIN=55,SP_FMAX=3500;
+let SPEC=null,specPPS=160,specDrag=null,specDirty=false,specSeq=0;
+
+function fftIP(re,im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){
+    let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;
+    if(i<j){let x=re[i];re[i]=re[j];re[j]=x;x=im[i];im[i]=im[j];im[j]=x}
+  }
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let cr=1,ci=0;
+      for(let k=0;k<len/2;k++){
+        const p=i+k+len/2,ur=re[i+k],ui=im[i+k];
+        const vr=re[p]*cr-im[p]*ci,vi=re[p]*ci+im[p]*cr;
+        re[i+k]=ur+vr;im[i+k]=ui+vi;re[p]=ur-vr;im[p]=ui-vi;
+        const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t;
+      }
+    }
+  }
+}
+const SP_LUT=(()=>{const L=new Uint8Array(768);
+  for(let i=0;i<256;i++){const v=i/255;let r,g,b;
+    if(v<.35){const k=v/.35;r=8+k*10;g=10+k*62;b=28+k*92}
+    else if(v<.72){const k=(v-.35)/.37;r=18+k*62;g=72+k*132;b=120+k*18}
+    else{const k=(v-.72)/.28;r=80+k*175;g=204+k*51;b=138-k*36}
+    L[i*3]=r;L[i*3+1]=g;L[i*3+2]=b}
+  return L})();
+
+function specMsg(s){$('specMsg').textContent=s||''}
+async function analyzeAudio(file){
+  const my=++specSeq;                                   // 换音频时作废旧的分析
+  SPEC=null;specDirty=true;
+  try{
+    specMsg('解码中…');
+    const AC=window.AudioContext||window.webkitAudioContext;
+    const ac=new AC(),ab=await ac.decodeAudioData(await file.arrayBuffer());
+    try{ac.close()}catch(e){}
+    if(my!==specSeq)return;
+    specMsg('重采样…');
+    const oc=new OfflineAudioContext(1,Math.max(1,Math.ceil(ab.duration*SP_SR)),SP_SR);
+    const s=oc.createBufferSource();s.buffer=ab;s.connect(oc.destination);s.start();
+    const mono=(await oc.startRendering()).getChannelData(0);
+    if(my!==specSeq)return;
+    await buildSpec(mono,ab.duration,my);
+  }catch(err){specMsg('');msg('音频分析失败：'+err.message,1)}
+}
+function buildSpec(mono,dur,my){
+  return new Promise(resolve=>{
+    const half=SP_N/2;
+    let hop=256;                                        // canvas 宽度上限 ~32767，长曲子自动降精度
+    while(Math.floor((mono.length-SP_N)/hop)+1>32000)hop*=2;
+    const frames=Math.max(1,Math.floor((mono.length-SP_N)/hop)+1);
+    const win=new Float32Array(SP_N);
+    for(let i=0;i<SP_N;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/SP_N);
+    const lo=new Int32Array(SP_H),hi=new Int32Array(SP_H),k=SP_N/SP_SR;
+    for(let y=0;y<SP_H;y++){                            // 对数频率轴：一个八度占等高
+      const f2=SP_FMAX*Math.pow(SP_FMIN/SP_FMAX,(y+.5)/(SP_H-1));
+      const f1=SP_FMAX*Math.pow(SP_FMIN/SP_FMAX,(y-.5)/(SP_H-1));
+      lo[y]=Math.max(0,Math.min(half-1,Math.round(f2*k)));
+      hi[y]=Math.max(lo[y],Math.min(half-1,Math.round(f1*k)));
+    }
+    const q=new Uint8Array(frames*SP_H);          // 先存原始 dB（0.5dB 一档）
+    let qmax=0;
+    const re=new Float32Array(SP_N),im=new Float32Array(SP_N),mag=new Float32Array(half);
+    // 顺带算谱通量（起音强度）：对数压缩后逐帧的正向增量之和，只看 60–3000Hz
+    const fLo=Math.max(1,Math.round(60*SP_N/SP_SR)),fHi=Math.min(half-1,Math.round(3000*SP_N/SP_SR));
+    const prevC=new Float32Array(half),flux=new Float32Array(frames);
+    let f=0;
+    const step=()=>{
+      if(my!==specSeq)return resolve();
+      const t0=performance.now();
+      while(f<frames&&performance.now()-t0<14){
+        const o=f*hop;
+        for(let i=0;i<SP_N;i++){re[i]=mono[o+i]*win[i];im[i]=0}
+        fftIP(re,im);
+        for(let i=0;i<half;i++)mag[i]=Math.sqrt(re[i]*re[i]+im[i]*im[i]);
+        let fl=0;
+        for(let i=fLo;i<=fHi;i++){
+          const c=Math.log(1+100*mag[i]),d=c-prevC[i];
+          if(d>0)fl+=d;prevC[i]=c;
+        }
+        flux[f]=fl;
+        for(let y=0;y<SP_H;y++){
+          let m=0;for(let i=lo[y];i<=hi[y];i++)if(mag[i]>m)m=mag[i];
+          const v=Math.max(0,Math.min(255,Math.round((20*Math.log10(m+1e-9)+100)*2)));
+          q[y*frames+f]=v;if(v>qmax)qmax=v;
+        }
+        f++;
+      }
+      if(f<frames){specMsg('分析中 '+Math.round(f/frames*100)+'%');requestAnimationFrame(step);return}
+      // 上色时才定标：以整首的峰值为 0dB 参考，往下取 70dB 动态范围
+      const RANGE=140,base=qmax-RANGE,sc=255/RANGE;
+      const data=new Uint8ClampedArray(frames*SP_H*4);
+      for(let i=0,n=q.length;i<n;i++){
+        const c=Math.max(0,Math.min(255,Math.round((q[i]-base)*sc)))*3,p=i*4;
+        data[p]=SP_LUT[c];data[p+1]=SP_LUT[c+1];data[p+2]=SP_LUT[c+2];data[p+3]=255;
+      }
+      const cv=document.createElement('canvas');
+      cv.width=frames;cv.height=SP_H;
+      cv.getContext('2d').putImageData(new ImageData(data,frames,SP_H),0,0);
+      const on=pickOnsets(flux,frames,hop,SP_SR);
+      SPEC={cv,frames,hop,sr:SP_SR,dur,onsets:on.t,onsetStr:on.s};
+      specMsg('检出 '+on.t.length+' 个起音');specDirty=true;resolve();
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/* 谱通量峰值 = 起音。局部最大 + 高于邻域均值 + 最小间距，避免平台期重复出峰 */
+function pickOnsets(flux,frames,hop,sr){
+  let mx=0;for(let i=0;i<frames;i++)if(flux[i]>mx)mx=flux[i];
+  const ts=[],ss=[];
+  if(!mx)return {t:new Float32Array(0),s:new Float32Array(0)};
+  const W=6,MINGAP=0.035;
+  for(let i=W;i<frames-W;i++){
+    const v=flux[i];let mean=0;
+    for(let j=i-W;j<=i+W;j++)mean+=flux[j];
+    mean/=(2*W+1);
+    // 左侧严格、右侧非严格：平台期只认最左那一帧，否则一段渐强会每 MINGAP 冒一个假起音
+    let peak=true;
+    for(let j=i-W;j<i;j++)if(flux[j]>=v){peak=false;break}
+    if(peak)for(let j=i+1;j<=i+W;j++)if(flux[j]>v){peak=false;break}
+    if(!(peak&&v>mean*1.45&&v>mx*0.05))continue;
+    const t=i*hop/sr;
+    if(ts.length&&t-ts[ts.length-1]<MINGAP){            // 挨太近的只留强的那个
+      if(v/mx>ss[ss.length-1]){ts[ts.length-1]=t;ss[ss.length-1]=v/mx}
+      continue;
+    }
+    ts.push(t);ss.push(v/mx);
+  }
+  return {t:Float32Array.from(ts),s:Float32Array.from(ss)};
+}
+// 窗口内综合"强度 × 离预测位置的近度"挑一个，纯挑最近的容易吸到旁边的弱音头
+function bestOnset(t,win){
+  const O=SPEC&&SPEC.onsets;
+  if(!O||!O.length||!(win>0))return null;
+  let lo=0,hi=O.length-1,i=O.length;
+  while(lo<=hi){const m=(lo+hi)>>1;if(O[m]>=t-win){i=m;hi=m-1}else lo=m+1}
+  let best=null,bs=-1;
+  for(let k=i;k<O.length&&O[k]<=t+win;k++){
+    const d=(O[k]-t)/(win*0.6),sc=SPEC.onsetStr[k]*Math.exp(-0.5*d*d);
+    if(sc>bs){bs=sc;best=O[k]}
+  }
+  return best;
+}
+function snapWinFor(m){                                 // 窗口再窄也不能超过小节时长的 40%，否则会吸到隔壁
+  const ms=+$('snapWin').value||120;
+  return Math.min(ms/1000,measDur(m)*0.4);
+}
+function maybeSnap(t,m){
+  if(!$('chkSnap').checked)return t;
+  const o=bestOnset(t,snapWinFor(m));
+  return o==null?t:o;
+}
+// 第 3 层：把推算出来的点整体吸到最近的音头上
+function alignToOnsets(){
+  if(!SPEC||!SPEC.onsets.length)return msg('还没有起音数据，先选音频',1);
+  const cand=E.filter(e=>e.src==='gen');
+  if(!cand.length)return msg('没有推算出来的点可以对齐（先「自动生成」）',1);
+  snap();
+  let moved=0;const sh=[];
+  for(const ev of cand){
+    const o=bestOnset(ev.t,snapWinFor(ev.m));
+    if(o==null)continue;
+    sh.push(o-ev.t);ev.t=o;ev.src='snap';moved++;
+  }
+  if(!moved){hist.pop();return msg('窗口内没找到可吸附的起音，试试放大窗口',1)}
+  sh.sort((a,b)=>a-b);
+  const med=sh[Math.floor(sh.length/2)];
+  layout();save();
+  msg('已对齐 '+moved+'/'+cand.length+' 个点，'+(cand.length-moved)+' 个窗口内没有起音；'+
+      '中位偏移 '+(med*1000>=0?'+':'')+Math.round(med*1000)+'ms');
+}
+
+function specOn(){return $('specBox').classList.contains('on')}
+function specShow(v){
+  $('specBox').classList.toggle('on',v);
+  $('bSpec').classList.toggle('on',v);
+  if(v){fitSpec();specDirty=true}
+}
+function fitSpec(){
+  const cv=$('specCv'),dpr=Math.min(2,window.devicePixelRatio||1);
+  const w=cv.clientWidth||800,h=cv.clientHeight||SP_H;
+  cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);
+  cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);   // 之后一律按 CSS 像素画
+  specDirty=true;
+}
+const specW=()=>$('specCv').clientWidth||800;
+const specT0=()=>aud.currentTime-(specW()/2)/specPPS;
+
+function drawSpec(){
+  const cv=$('specCv'),ctx=cv.getContext('2d');
+  const W=specW(),H=cv.clientHeight||SP_H;
+  ctx.clearRect(0,0,W,H);
+  const t0=specT0(),t1=t0+W/specPPS,X=t=>(t-t0)*specPPS;
+
+  if(SPEC){
+    const fx0=t0*SPEC.sr/SPEC.hop,fx1=t1*SPEC.sr/SPEC.hop;
+    const sx0=Math.max(0,fx0),sx1=Math.min(SPEC.frames,fx1);
+    if(sx1>sx0){
+      ctx.imageSmoothingEnabled=true;
+      const dx0=(sx0-fx0)/(fx1-fx0)*W,dx1=(sx1-fx0)/(fx1-fx0)*W;
+      ctx.drawImage(SPEC.cv,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,H);
+    }
+  }else{
+    ctx.fillStyle='#151515';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#777';ctx.font='13px system-ui';ctx.textAlign='center';
+    ctx.fillText(aud.src?'正在分析音频…':'先在上面选一个音频文件',W/2,H/2);
+    ctx.textAlign='left';
+  }
+  // 循环区间
+  const R=loop.on?loopRange():null;
+  if(R){ctx.fillStyle='rgba(0,255,136,.10)';ctx.fillRect(X(R.t0),0,(R.t1-R.t0)*specPPS,H)}
+  // 秒刻度
+  ctx.strokeStyle='rgba(255,255,255,.13)';ctx.fillStyle='#8a8a8a';ctx.font='10px system-ui';
+  const stepS=specPPS>=260?0.5:specPPS>=100?1:2;
+  for(let s=Math.ceil(t0/stepS)*stepS;s<t1;s+=stepS){
+    const x=Math.round(X(s))+.5;
+    ctx.beginPath();ctx.moveTo(x,H-12);ctx.lineTo(x,H);ctx.stroke();
+    if(Math.abs(s%1)<1e-6)ctx.fillText(fmt(s),x+2,H-3);
+  }
+  // 起音刻度：底部小竖条，高度按强度；再叠一条极淡的通天线方便比对齐
+  if(SPEC&&SPEC.onsets&&$('chkOnset').checked){
+    const O=SPEC.onsets,S=SPEC.onsetStr;
+    let lo=0,hi=O.length-1,i=O.length;
+    while(lo<=hi){const m=(lo+hi)>>1;if(O[m]>=t0){i=m;hi=m-1}else lo=m+1}
+    for(let k=i;k<O.length&&O[k]<=t1;k++){
+      const x=Math.round(X(O[k]))+.5,h=5+S[k]*17;
+      ctx.strokeStyle='rgba(255,255,255,'+(0.06+S[k]*0.10).toFixed(3)+')';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H-13);ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,'+(0.35+S[k]*0.5).toFixed(3)+')';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(x,H-13);ctx.lineTo(x,H-13-h);ctx.stroke();
+    }
+  }
+  // 插值出来的小节（细虚线，不可拖）
+  ctx.strokeStyle='rgba(120,190,255,.45)';ctx.setLineDash([2,3]);ctx.lineWidth=1;
+  for(const o of OCC){
+    if(o.exact||o.t<t0||o.t>t1)continue;
+    const x=Math.round(X(o.t))+.5;
+    ctx.beginPath();ctx.moveTo(x,14);ctx.lineTo(x,H-13);ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // E 里的点：实测=亮实线，生成=虚线；都可以拖
+  let lastLabel=-99;
+  const vis=E.map((ev,i)=>({ev,i})).filter(o=>o.ev.t>=t0&&o.ev.t<=t1).sort((a,b)=>a.ev.t-b.ev.t);
+  for(const {ev} of vis){
+    const x=Math.round(X(ev.t))+.5;
+    const col=ev.src==='gen'?'#5ab0ff':ev.src==='snap'?'#4ade80':'#ffd24a';  // 推算/已吸附/手打
+    ctx.strokeStyle=col;
+    ctx.lineWidth=ev.src==='gen'?1.5:2;
+    ctx.setLineDash(ev.src==='gen'?[5,3]:[]);
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H-13);ctx.stroke();
+    if(x-lastLabel>20){
+      lastLabel=x;
+      ctx.fillStyle=col;ctx.font='bold 10px system-ui';
+      ctx.fillText(ev.m,x+2,10);
+    }
+  }
+  ctx.setLineDash([]);
+  // 播放头
+  const px=Math.round(W/2)+.5;
+  ctx.strokeStyle='#ff4d4d';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,H);ctx.stroke();
+}
+
+/* 交互：拖空白 = 像拖胶片一样连续走带；单击 = 定位；拖竖线 = 改时间点 */
+const audMax=()=>isFinite(aud.duration)?aud.duration:1e9;
+$('specCv').onpointerdown=e=>{
+  const cv=$('specCv'),r=cv.getBoundingClientRect(),x=e.clientX-r.left;
+  let best=-1,bd=7;
+  E.forEach((ev,i)=>{const d=Math.abs((ev.t-specT0())*specPPS-x);if(d<bd){bd=d;best=i}});
+  cv.setPointerCapture(e.pointerId);
+  if(best>=0){snap();specDrag={mode:'line',i:best,x0:e.clientX,moved:false}}
+  else{specDrag={mode:'scrub',x0:e.clientX,t0:aud.currentTime,moved:false};cv.classList.add('grab')}
+};
+$('specCv').onpointermove=e=>{
+  if(!specDrag)return;
+  const dx=e.clientX-specDrag.x0;
+  if(!specDrag.moved){if(Math.abs(dx)<3)return;specDrag.moved=true}
+  if(specDrag.mode==='line'){
+    const r=$('specCv').getBoundingClientRect();
+    E[specDrag.i].t=Math.max(0,specT0()+(e.clientX-r.left)/specPPS);
+    E[specDrag.i].src='tap';                            // 手拖过 = 实测，重新生成时当锚点
+    dirty=true;
+  }else{                                                // 往左拖 = 往后走，跟拖胶片一致
+    aud.currentTime=Math.max(0,Math.min(audMax(),specDrag.t0-dx/specPPS));
+  }
+  specDirty=true;
+};
+$('specCv').onpointerup=e=>{
+  if(!specDrag)return;
+  const d=specDrag;specDrag=null;
+  $('specCv').classList.remove('grab');
+  if(d.mode==='line'){
+    if(d.moved){
+      const ev=E[d.i],o=$('chkSnap').checked?bestOnset(ev.t,snapWinFor(ev.m)):null;
+      if(o!=null){ev.t=o;ev.src='snap'}
+      refresh();save();
+    }else hist.pop();                                   // 没拖动就把多余的快照撤掉
+  }else if(!d.moved&&(SPEC||aud.src)){                  // 单击才跳，拖动过就不要再跳一下
+    const r=$('specCv').getBoundingClientRect();
+    aud.currentTime=Math.max(0,Math.min(audMax(),specT0()+(e.clientX-r.left)/specPPS));
+    lastSeek=null;specDirty=true;
+  }
+};
+$('specCv').onwheel=e=>{                                // 滚轮/触控板横向也能走带
+  if(e.ctrlKey)return;                                  // ctrl+滚轮(捏合)交给全局缩放
+  if(!SPEC&&!aud.src)return;
+  e.preventDefault();
+  const d=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
+  aud.currentTime=Math.max(0,Math.min(audMax(),aud.currentTime+d/specPPS));
+  specDirty=true;
+};
+$('specZoom').onchange=()=>{specPPS=+$('specZoom').value;specDirty=true};
+$('chkOnset').onchange=()=>{specDirty=true};
+$('bAlign').onclick=alignToOnsets;
+$('specClose').onclick=()=>specShow(false);
+$('bSpec').onclick=()=>specShow(!specOn());
+new ResizeObserver(()=>{if(specOn())fitSpec()}).observe($('specCv'));
+
+/* ---------- 生成面板 ---------- */
+function openGen(){
+  if(!M.length)return msg('先标几个小节位置',1);
+  $('gForm').value=formText(FORM);
+  const nTap=E.filter(e=>e.src!=='gen').length;
+  if(nTap)$('gAncTap').checked=true;else $('gAncMan').checked=true;   // 有实测点就默认用它们
+  $('gAncM').value=minM();
+  $('gen').style.display='flex';
+  drawSig();
+}
+function drawSig(){drawTempo();drawMeter();drawStrip();preview()}
+
+function drawTempo(){
+  $('gTempo').innerHTML=TEMPO.map((t,i)=>
+    '<div class="grow">从小节 <input type="number" min="1" value="'+t.m+'" data-f="m" data-i="'+i+'"> 起 '+
+    '&nbsp;♩=<input type="number" min="1" step="0.001" value="'+t.bpm+'" data-f="bpm" data-i="'+i+'">'+
+    (TEMPO.length>1?' <button data-del="'+i+'">×</button>':'')+'</div>').join('');
+  // 只改模型，不在自己的 change(blur) 里重写父节点 —— 那会被浏览器拒绝
+  $('gTempo').querySelectorAll('input').forEach(el=>el.onchange=()=>{
+    const t=TEMPO[+el.dataset.i],v=+el.value;
+    if(el.dataset.f==='m')t.m=Math.max(1,Math.round(v)||1);else t.bpm=v;
+    drawStrip();preview();
+  });
+  $('gTempo').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    TEMPO.splice(+b.dataset.del,1);setTimeout(drawSig,0)});
+}
+
+function drawMeter(){
+  $('gMeter').innerHTML=METER.map((r,i)=>
+    '<div class="grow"><input class="sig" data-f="sig" data-i="'+i+'" value="'+sigText(r.sig)+'">'+
+    ' 小节 <input class="rng" data-f="rng" data-i="'+i+'" value="'+formText(r.ranges)+
+    '" placeholder="留空 = 其余全部">'+
+    (METER.length>1?' <button data-del="'+i+'">×</button>':'')+
+    ' <span class="ginfo" data-dur="'+i+'">'+durHint(r)+'</span></div>').join('');
+  $('gMeter').querySelectorAll('input').forEach(el=>el.onchange=()=>{
+    const i=+el.dataset.i,r=METER[i],info=$('gMeter').querySelector('[data-dur="'+i+'"]');
+    try{
+      if(el.dataset.f==='sig')r.sig=parseSig(el.value);
+      else r.ranges=normRanges(parseForm(el.value));     // 区间写法跟播放顺序完全一样
+      el.style.borderColor='#555';
+    }catch(err){
+      el.style.borderColor='#f88';
+      if(info){info.textContent=err.message;info.className='gerr'}
+      drawStrip();preview();return;
+    }
+    if(info){info.textContent=durHint(r);info.className='ginfo'}
+    drawStrip();preview();
+  });
+  $('gMeter').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    METER.splice(+b.dataset.del,1);setTimeout(drawSig,0)});
+}
+function durHint(r){
+  const bpm=bpmAt(r.ranges.length?r.ranges[0].from:1);
+  // 复拍子（x/8 且拍数是 3 的倍数）大家习惯按附点四分记速度，顺手换算一下
+  const c=r.sig[1]===8&&r.sig[0]%3===0&&r.sig[0]>3;
+  return '每小节 '+measDurOf(r.sig[0],r.sig[1],bpm).toFixed(3)+'s'+(c?'（♩.='+(bpm/1.5).toFixed(1)+'）':'')+
+    ' · '+(r.ranges.length?('管 '+rangeCount(r.ranges)+' 小节'):'管其余全部');
+}
+
+const STRIP_PAL=['#2d5a7a','#7a5528','#2a6b45','#5f2d7a','#7a2d3f','#3a5a2d'];
+function drawStrip(){
+  const box=$('gStrip'),info=$('gMeterInfo');
+  const hi=Math.max(maxM(),FORM.reduce((a,g)=>Math.max(a,g.to),1),
+                    ...METER.map(r=>r.ranges.reduce((a,g)=>Math.max(a,g.to),1)),1);
+  const N=Math.min(hi,400),cov=meterCoverage(N),col=new Map();
+  let html='';
+  for(let m=1;m<=N;m++){
+    const s=meterAt(m),key=sigText(s);
+    if(!col.has(key))col.set(key,STRIP_PAL[col.size%STRIP_PAL.length]);
+    const gap=cov.owner[m]<0&&!cov.fb, dup=cov.dup.includes(m);
+    html+='<span class="cell'+(cov.owner[m]>=0?' decl':'')+(gap?' gap':'')+(dup?' dup':'')+
+          '" style="background:'+(gap?'#7a2020':col.get(key))+'">'+
+          '<b>'+m+'</b>'+(gap?'?':key)+'</span>';
+  }
+  box.innerHTML=html||'<span class="ginfo">还没有小节</span>';
+  if(hi>N)box.innerHTML+='<span class="ginfo">…只显示前 '+N+' 小节</span>';
+
+  const msgs=[];
+  if(cov.fb>1)msgs.push('<span class="gerr">有 '+cov.fb+' 行留空，只能有一行兜底</span>');
+  if(cov.dup.length)msgs.push('<span class="gerr">小节 '+cov.dup.slice(0,12).join(',')+
+    (cov.dup.length>12?'…':'')+' 被多行重复指定（按最靠上那行算）</span>');
+  if(cov.gaps.length)msgs.push('<span class="gerr">小节 '+cov.gaps.slice(0,12).join(',')+
+    (cov.gaps.length>12?'…':'')+' 没有拍号（留一行小节栏空着可以兜底）</span>');
+  info.innerHTML=msgs.join('　');
+}
+function readForm(){
+  try{FORM=parseForm($('gForm').value);$('gFormInfo').className='ginfo';
+    const seq=expandForm(FORM);
+    $('gFormInfo').textContent=FORM.length?('解析：'+FORM.length+' 段，共 '+seq.length+' 个小节'):'解析：全曲一遍';
+    return true;
+  }catch(err){$('gFormInfo').className='gerr';$('gFormInfo').textContent=err.message;return false}
+}
+function genOpts(){
+  const useTap=$('gAncTap').checked&&!$('gAncTap').disabled;
+  return {manual:{m:+$('gAncM').value||1,t:+$('gAncT').value||0},ignoreTaps:!useTap};
+}
+// 选「用已卡的实测点」时，把真正当锚点用的那些点列出来，而不是留一行改了也没用的输入框
+function drawAnchors(){
+  const info=anchorInfo(),taps=info.taps,box=$('gAncList');
+  $('gTapN').textContent=taps.length;
+  $('gAncTap').disabled=!taps.length;
+  if(!taps.length)$('gAncMan').checked=true;
+  const useTap=$('gAncTap').checked&&!$('gAncTap').disabled;
+  $('gManRow').style.display=useTap?'none':'flex';
+  $('gAncManTxt').textContent=taps.length?('手动指定（丢弃下面 '+taps.length+' 个实测点）'):'手动指定';
+
+  box.className=useTap?'':'dim';
+  if(!taps.length){box.innerHTML='<span class="ginfo">还没有手动卡过时间点</span>';return}
+  const nb=taps.length-info.matched.size;
+  if(taps.length>12){                                   // 「全部对齐」之后动辄上百个，逐个列会撑爆面板
+    const off=info.ratios.filter(r=>r!=null&&Math.abs(r-1)>0.05).length;
+    box.innerHTML='<span class="anc">'+taps.length+' 个实测/已吸附的点</span>'+
+      (nb?'<span class="anc bad">其中 '+nb+' 个对不上播放顺序</span>':'')+
+      (off?'<span class="lnk off">'+off+' 段比例偏离超过 5%</span>':'<span class="lnk">各段比例都接近 ×1</span>')+
+      (nb?'<button id="gDropBad">删掉这 '+nb+' 个对不上的点</button>':'');
+    const b2=box.querySelector('#gDropBad');
+    if(b2)b2.onclick=()=>{
+      const kill=new Set(taps.filter((_,i)=>!info.matched.has(i)));
+      snap();E=E.filter(x=>!kill.has(x));layout();save();setTimeout(drawSig,0);
+      msg('已删掉 '+kill.size+' 个对不上播放顺序的点');
+    };
+    return;
+  }
+  let html='',seen=0;
+  taps.forEach((a,i)=>{
+    const isM=info.matched.has(i);
+    if(isM&&seen>0){
+      const r=info.ratios[seen-1],off=r!=null&&Math.abs(r-1)>0.05;
+      html+='<span class="lnk'+(off?' off':'')+'">──'+(r!=null?'×'+r.toFixed(3):'?')+'──</span>';
+    }
+    if(isM)seen++;
+    html+='<span class="anc'+(isM?'':' bad')+'">小节 '+a.m+' = '+a.t.toFixed(2)+'s'+
+          (isM?'':'（对不上播放顺序）')+'<button data-anc="'+i+'" title="删掉这个锚点">×</button></span>';
+  });
+  const nbad=taps.length-info.matched.size;
+  if(nbad)html+='<button id="gDropBad">删掉这 '+nbad+' 个对不上的点</button>';
+  if(info.ratios.some(r=>r!=null&&Math.abs(r-1)>0.05))
+    html+='<span class="gwarn">×是这一段的实际用时÷速度表预测用时。偏离 1 太多，多半是某个锚点卡错了</span>';
+  box.innerHTML=html;
+  box.querySelectorAll('[data-anc]').forEach(b=>b.onclick=()=>{
+    const k=E.indexOf(taps[+b.dataset.anc]);
+    if(k<0)return;
+    snap();E.splice(k,1);layout();save();setTimeout(drawSig,0);
+  });
+  const db=box.querySelector('#gDropBad');
+  if(db)db.onclick=()=>{
+    const kill=new Set(taps.filter((_,i)=>!info.matched.has(i)));
+    snap();E=E.filter(x=>!kill.has(x));layout();save();setTimeout(drawSig,0);
+    msg('已删掉 '+kill.size+' 个对不上播放顺序的点');
+  };
+}
+function preview(){
+  const box=$('gPrev');
+  drawAnchors();
+  if(!readForm())return box.textContent='';
+  try{
+    const o=genOpts(),r=genTimeline(o.manual,o.ignoreTaps);
+    const marked=new Set(M.map(x=>x.m));
+    const missing=[...new Set(r.seq.map(s=>s.m))].filter(m=>!marked.has(m));
+    const dur=isFinite(aud.duration)?aud.duration:0;
+    const over=dur&&r.span[1]>dur*1.02;
+    const badSc=r.scales.filter(s=>s!=null&&(s<0.5||s>2));
+    box.className='ginfo';
+    box.innerHTML='将生成 <b>'+r.E.filter(e=>e.src==='gen').length+'</b> 个时间点，'+
+      '覆盖 '+r.seq.length+' 个小节，全长 '+fmt(r.span[0])+' – '+fmt(r.span[1])+
+      (dur?('　音频长 '+fmt(dur)):'')+'<br>'+
+      '锚点：'+(r.fromE?(r.anc.length+' 个实测点'):'手动指定 1 个')+
+      (r.anc.length>=2?'（相邻锚点之间会按比例拉伸对齐）':'（只有 1 个锚点，整条时间轴按速度表平移）')+
+      (over?'<br><span class="gerr">生成的时间轴到 '+fmt(r.span[1])+'，比音频还长 '+
+        fmt(r.span[1]-dur)+'。多半是锚点配错了或速度表不对</span>':'')+
+      (badSc.length?'<br><span class="gerr">有 '+badSc.length+' 段锚点之间的速度比例是 '+
+        badSc.slice(0,4).map(s=>'×'+s.toFixed(2)).join('、')+
+        '，偏离 1 太多。检查上面锚点行里标黄的那几段</span>':'')+
+      (r.unmatched>0?'<br><span class="gwarn">有 '+r.unmatched+' 个实测点对不上播放顺序，会原样保留</span>':'')+
+      (missing.length?'<br><span class="gwarn">'+missing.length+' 个小节还没标位置（'+
+        missing.slice(0,12).join(',')+(missing.length>12?'…':'')+'），时间会生成但谱面上看不到</span>':'');
+  }catch(err){box.className='gerr';box.textContent=err.message}
+}
+$('bGen').onclick=openGen;
+$('gCancel').onclick=()=>$('gen').style.display='none';
+$('gen').onclick=e=>{if(e.target===$('gen'))$('gen').style.display='none'};
+$('gAddT').onclick=()=>{const l=TEMPO[TEMPO.length-1];
+  TEMPO.push({m:(l?l.m:1)+1,bpm:l?l.bpm:120});drawSig()};
+$('gAddM').onclick=()=>{METER.push({sig:[4,4],ranges:[]});drawSig()};
+$('gForm').oninput=preview;
+['gAncM','gAncT','gAncTap','gAncMan'].forEach(id=>$(id).onchange=preview);
+$('gAncNow').onclick=()=>{$('gAncT').value=stamp().toFixed(2);$('gAncMan').checked=true;preview()};
+$('gCal').onclick=()=>{
+  readForm();
+  try{
+    const r=calibrate();
+    $('gCalInfo').className='ginfo';
+    $('gCalInfo').textContent='反推完成：实际比预测 ×'+r.scale.toFixed(4)+
+      '，速度已更新为 ♩='+TEMPO.map(t=>t.bpm).join(' / ')+'（多半该取整）';
+    drawSig();
+  }catch(err){$('gCalInfo').className='gerr';$('gCalInfo').textContent=err.message}
+};
+$('gRun').onclick=()=>{
+  if(!readForm())return;
+  try{
+    const o=genOpts(),r=genTimeline(o.manual,o.ignoreTaps);
+    snap();
+    E=r.E;tapM=null;lastSeek=null;
+    layout();save();
+    $('gen').style.display='none';
+    if($('mode').value!=='play'){$('mode').value='play';syncMode()}
+    msg('已生成 '+r.E.filter(e=>e.src==='gen').length+' 个时间点，'+RUNS.length+' 段，'+
+        '锚点 '+r.anc.length+' 个');
+  }catch(err){msg('生成失败：'+err.message,1)}
+};
+
+function toggleHelp(v){$('help').style.display=(v===undefined?$('help').style.display!=='flex':v)?'flex':'none'}
+$('bHelp').onclick=()=>toggleHelp();
+$('help').onclick=e=>{if(e.target===$('help'))toggleHelp(false)};
+
+/* ---------- 工具条 ---------- */
+$('fAud').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(audUrl)URL.revokeObjectURL(audUrl);
+  audUrl=URL.createObjectURL(f);aud.src=audUrl;
+  analyzeAudio(f);
+  e.target.value='';       // 清掉，这样重新导出同名 MP3 后再选一次仍然会触发
+};
+function syncMode(){pagesEl.classList.toggle('editing',$('mode').value==='edit')}
+$('mode').onchange=()=>{
+  syncMode();
+  if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
+  if($('mode').value!=='play'&&arm){arm=null;updLoop()}
+  if($('mode').value==='time'&&!specOn())specShow(true);   // 打时间时把频谱条自动拉出来
+  msg({mark:'点谱面加小节标记',time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍',
+       edit:'拖中段挪位置，拖两端改长度，单击开面板'}[$('mode').value]);
+};
+$('nextN').onchange=()=>{const v=Math.max(1,Math.round(+$('nextN').value||1));nextM=v;$('nextN').value=v};
+$('bSkip').onclick=()=>{
+  const n=Math.max(1,Math.round(+$('skipN').value||1));
+  nextM=maxM()+n;                                    // 从最后一个标记往后跳 n 个小节
+  $('nextN').value=nextM;$('skipN').value=1;
+  msg('下一编号 → '+nextM+'（跳过了 '+(n-1)+' 个小节）');
+};
+$('skipN').onkeydown=e=>{if(e.key==='Enter')$('bSkip').click()};
+$('off').onchange=()=>{offset=+$('off').value||0;save()};
+$('chkNum').onchange=()=>pagesEl.classList.toggle('noNum',!$('chkNum').checked);
+$('chkProg').onchange=()=>{if(!$('chkProg').checked)hideProg();dirty=true};
+$('bUndo').onclick=undo;
+$('bClr').onclick=()=>{if(!E.length)return;snap();E=[];refresh();save();msg('时间点已清空（可撤销）')};
+$('bShift').onclick=()=>{
+  const d=(+$('shift').value||0)/1000;
+  if(!d||!E.length)return;
+  snap();E.forEach(e=>e.t=Math.max(0,e.t+d));refresh();save();
+  msg('已平移 '+E.length+' 个时间点 '+(d>0?'+':'')+(d*1000)+'ms');
+};
+
+/* ---------- 存档 ---------- */
+// v4 用 TEMPO/METER 两张表；v3 及以前是单张 SIG，读进来自动迁移
+function loadStruct(s){
+  const hi=Math.max(maxM(),1);
+  if(s.METER?.length){
+    if(s.TEMPO?.length)TEMPO=s.TEMPO;
+    METER=s.METER[0].ranges!==undefined?s.METER:migrateSeq(s.METER,hi);   // v5 区间表 / v4 循环序列
+  }
+  else if(s.SIG?.length){const g=migrateSig(s.SIG,hi);TEMPO=g.TEMPO;METER=g.METER}
+}
+const KEY=()=>'player:'+pdfName;
+// localStorage 在隐私模式 / 禁用 Cookie 的浏览器里会变成 null，直接读写会抛 "Cannot read properties of null"
+const LS=(()=>{try{const k='__ls_test';localStorage.setItem(k,'1');localStorage.removeItem(k);return localStorage}catch(err){return null}})();
+let lsWarned=false;
+function warnLS(){if(!lsWarned){lsWarned=true;
+  msg('此浏览器禁用了本地存储（隐私模式或已阻止 Cookie），自动保存失效，请用「导出JSON」备份',1)}}
+let saveT=null;
+function save(){
+  if(!pdfName)return;
+  clearTimeout(saveT);
+  saveT=setTimeout(()=>{
+    if(!LS)return warnLS();
+    try{LS.setItem(KEY(),JSON.stringify({v:5,M:pureM(),E,TEMPO,METER,FORM,offset,ts:Date.now()}))}
+    catch(err){warnLS()}
+  },400);
+}
+function tryRestore(){
+  if(!pdfName||M.length||E.length)return;          // 已有内容（比如先导了 JSON）就不覆盖
+  let s=null;try{s=LS?JSON.parse(LS.getItem(KEY())||'null'):null}catch(err){}
+  if(!s||!(s.M?.length||s.E?.length))return;
+  M=s.M||[];E=s.E||[];offset=s.offset||0;$('off').value=offset;
+  loadStruct(s);
+  if(s.FORM)FORM=s.FORM;
+  syncNext();
+  return '已恢复本地存档（'+new Date(s.ts||Date.now()).toLocaleString()+'）：'
+    +M.length+' 标记 / '+E.length+' 时间点';
+}
+$('bWipe').onclick=()=>{
+  if(!pdfName)return msg('还没打开 PDF',1);
+  if(!LS)return msg('本地存储不可用，没有存档可删',1);
+  if(!confirm('删除《'+pdfName+'》的本地存档？当前画面上的内容不受影响。'))return;
+  LS.removeItem(KEY());msg('存档已删除');
+};
+
+/* ---------- 导入导出 ---------- */
+$('bExp').onclick=()=>{
+  const data={v:5,pdf:pdfName,offset,TEMPO,METER,FORM,M:pureM(),E:[...E].sort((a,b)=>a.t-b.t)};
+  const b=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);
+  a.download=(pdfName.replace(/\.pdf$/i,'')||'map')+'.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+$('fMap').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());
+    snap();
+    if(j.M&&j.E){M=j.M;E=j.E;if(j.offset!=null){offset=j.offset;$('off').value=offset}
+      loadStruct(j);if(j.FORM)FORM=j.FORM}
+    else if(Array.isArray(j)){M=j;E=j.filter(x=>x.t!=null).map(x=>({m:x.m,t:x.t}))}   // 老格式：点上直接带 t
+    else{E=Object.keys(j).map(k=>({m:+k,t:j[k]}))}                                     // 老格式：{小节:时间}
+    M=M.filter(x=>x&&x.page&&x.m!=null);
+    E=E.filter(x=>x&&x.m!=null&&isFinite(x.t));
+    syncNext();tapM=null;lastSeek=null;
+    const bad=pdf?M.filter(x=>x.page<1||x.page>pdf.numPages).length:0;
+    layout();save();
+    if(bad)msg('注意：'+bad+' 个标记的页码超出当前 PDF（'+pdf.numPages+' 页），这些点不会显示',1);
+    else msg('已导入 '+M.length+' 标记 / '+E.length+' 时间点');
+  }catch(err){msg('导入失败：'+err.message,1)}
+  finally{e.target.value=''}
+};
+
+updLoop();stat();
+</script>
+</body>
+</html>
