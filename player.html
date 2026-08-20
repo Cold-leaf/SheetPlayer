@@ -290,8 +290,9 @@ body.hidebar #bar{display:none}
    <span id="libInfo"></span>
    <span style="flex:1"></span>
    <button id="libAdd">＋ 导入谱子</button>
-   <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON（跨设备同步用）">导出全部标注</button>
-   <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
+   <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button>
+   <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来（按时间戳保留较新的）">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
+   <button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来（按时间戳保留较新的）">从 GitHub 同步</button>
    <button id="libClose" title="回到谱面">✕</button>
   </div>
   <div id="libList"></div>
@@ -2433,28 +2434,51 @@ $('libExpAll').onclick=async()=>{
   a.download='sheetplayer-标注-'+(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+
     String(d.getDate()).padStart(2,'0'))+'.json';
   a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  msg('已导出 '+items.length+' 首曲目的标注');
+  msg('已导出 '+items.length+' 首曲目的标注'+(items.length?'（提交到仓库存成 annotations.json）':''));
 };
 $('libImpAll').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
     const j=JSON.parse(await f.text());
     if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('不是 SheetPlayer 批量标注文件');
-    if(!confirm('导入 '+j.items.length+' 首曲目的标注？已有的同名标注会被覆盖。'))return;
-    let n=0;
-    for(const it of j.items){
-      if(!(it.pdfHash&&it.data))continue;
-      await idbPut(idb,'anns',{hash:it.pdfHash,data:it.data});
-      const tr=await idbGet(idb,'tracks',it.pdfHash);
-      if(!tr)await idbPut(idb,'tracks',{hash:it.pdfHash,name:it.name||it.pdfHash.slice(0,8),
-        createdAt:Date.now(),updatedAt:Date.now(),audios:[],lastAudio:null,noFile:true});
-      if(track&&track.hash===it.pdfHash){applyAnn(it.data);msg('当前曲目的标注已更新')}
-      n++;
-    }
+    if(!confirm('导入 '+j.items.length+' 首曲目的标注？按时间戳保留较新的版本。'))return;
+    const r=await importAnns(j.items);
     drawLib();
-    if(n)msg('已导入 '+n+' 首曲目的标注');
+    msg('已导入 '+r.imported+' 首'+(r.skipped?'，跳过 '+r.skipped+' 首（本地较新）':''));
   }catch(err){msg('导入失败：'+err.message,1)}
   finally{e.target.value=''}
+};
+// 按时间戳合并导入（保留较新的）：跨设备同步 + 备份恢复共用这一条路径
+async function importAnns(items){
+  let imported=0,skipped=0;
+  for(const it of items){
+    if(!(it.pdfHash&&it.data))continue;
+    const existing=await idbGet(idb,'anns',it.pdfHash);
+    if(existing&&(+existing.data.ts||0)>(+it.data.ts||0)){skipped++;continue}
+    await idbPut(idb,'anns',{hash:it.pdfHash,data:it.data});
+    const tr=await idbGet(idb,'tracks',it.pdfHash);
+    if(!tr)await idbPut(idb,'tracks',{hash:it.pdfHash,name:it.name||it.pdfHash.slice(0,8),
+      createdAt:Date.now(),updatedAt:+it.data.ts||Date.now(),audios:[],lastAudio:null,noFile:true});
+    else if((+it.data.ts||0)>(tr.updatedAt||0)){tr.updatedAt=+it.data.ts;await idbPut(idb,'tracks',tr)}
+    if(track&&track.hash===it.pdfHash)applyAnn(it.data);
+    imported++;
+  }
+  return {imported,skipped};
+}
+// 从 GitHub 仓库拉取 annotations.json（公开 raw 地址，免鉴权可读；写靠桌面导出后人工提交）
+const SYNC_URL='https://raw.githubusercontent.com/Cold-leaf/SheetPlayer/main/annotations.json';
+$('bSync').onclick=async()=>{
+  if(!idb)return;
+  try{
+    msg('正在从 GitHub 同步…');
+    const r=await fetch(SYNC_URL,{cache:'no-store'});
+    if(!r.ok)throw new Error(r.status===404?'仓库里还没有 annotations.json（先在桌面导出并提交一次）':'HTTP '+r.status);
+    const j=await r.json();
+    if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('annotations.json 格式不对');
+    const res=await importAnns(j.items);
+    drawLib();
+    msg('同步完成：导入 '+res.imported+' 首'+(res.skipped?'，跳过 '+res.skipped+' 首（本地较新）':''));
+  }catch(err){msg('同步失败：'+err.message,1)}
 };
 function applyAnn(s){
   snap();
