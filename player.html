@@ -2524,10 +2524,10 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 function syncAudSel(){
   const sel=$('audSel');
   if(!idb||!track){
-    // 无曲目 / 传统模式：占位 + 添加。选完「添加」后复位，否则停留在此
-    // 选项上，下次再点 value 不变、change 不触发，就点不动了
+    // 无曲目 / 传统模式：占位 + 添加。选完「添加」后重建下拉复位，
+    // 否则停留在此选项上，下次再点 value 不变、change 不触发，就点不动了
     sel.innerHTML='<option value="">音频</option><option value="__add__">＋ 添加音频…</option>';
-    sel.onchange=()=>{if(sel.value==='__add__'){$('fAud').click();sel.value=''}};
+    sel.onchange=()=>{if(sel.value==='__add__'){$('fAud').click();setTimeout(syncAudSel,80)}};
     return;
   }
   sel.innerHTML=(track.audios&&track.audios.length?track.audios.map(a=>
@@ -2537,9 +2537,10 @@ function syncAudSel(){
   sel.onchange=async()=>{
     if(sel.value==='__add__'){
       $('fAud').click();
-      // 复位到当前音频，否则选中态留在「添加」上，取消选文件后再点它没反应
-      sel.value=(track.lastAudio&&(track.audios||[]).some(a=>a.hash===track.lastAudio))
-        ?track.lastAudio:'';
+      // 重建下拉（重新写 innerHTML + selected）而非只改 sel.value：
+      // 移动端原生选择器收尾时会用「添加」覆盖同步的 value 赋值，重建才靠得住。
+      // 延迟等原生选择器收起；就算用户又选了文件，fAud 完成后还会再 syncAudSel 覆盖。
+      setTimeout(syncAudSel,80);
       return;
     }
     const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;
