@@ -17,6 +17,9 @@ async def main():
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
 
+        # 默认已横向，显式切回纵向再测切换
+        await pg.evaluate("$('chkHoriz').checked=false;$('chkHoriz').onchange()"); await asyncio.sleep(0.2)
+
         # --- 横向/纵向 按钮 ---
         print(ok(await pg.is_visible("#bHoriz")), "按钮「纵向」可见（默认纵向）")
         print(ok(await pg.inner_text("#bHoriz")=="纵向"), "初始标签:", await pg.inner_text("#bHoriz"))

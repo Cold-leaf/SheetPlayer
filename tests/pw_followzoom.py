@@ -25,6 +25,8 @@ async def main():
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
 
+        await pg.evaluate("$('chkHoriz').checked=false;$('chkHoriz').onchange()"); await pg.wait_for_timeout(200)   # 测纵向分支，先切回纵向
+
         # 放大到页面明显比视口宽，一行里放 4 个小节（横跨整页宽度）
         await pg.evaluate("""()=>{zoom=3;$('zoom').value=3;applyZoom();
           M=[{page:1,nx:.10,ny:.30,m:1,h:.06},{page:1,nx:.40,ny:.30,m:2,h:.06},

@@ -18,6 +18,8 @@ async def main():
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         np=await pg.evaluate("document.querySelectorAll('.page').length")
 
+        await pg.evaluate("$('chkHoriz').checked=false;$('chkHoriz').onchange()"); await asyncio.sleep(0.2)   # 默认已横向，显式切回纵向再测
+
         # 纵向默认：页面上下堆叠
         v=await pg.evaluate("""()=>{const ps=[...document.querySelectorAll('.page')].map(p=>p.getBoundingClientRect());
             return {x0:ps[0].left, x1:ps[1].left, y0:ps[0].top, y1:ps[1].top}}""")

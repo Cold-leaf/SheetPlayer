@@ -202,8 +202,8 @@ body.hidebar #bar{display:none}
   <input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3" hidden>
   <button id="bFitW" title="纵向：适应宽度；横向：适应高度" hidden>适应</button>
   <span id="zoomVal" hidden>130%</span>
-  <input type="checkbox" id="chkHoriz" hidden>
-  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">纵向</button>
+  <input type="checkbox" id="chkHoriz" hidden checked>
+  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">横向</button>
   <span class="sep"></span>
   <button id="bUndo">撤销</button>
   <button id="bGen">自动生成</button>
@@ -2524,9 +2524,10 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 function syncAudSel(){
   const sel=$('audSel');
   if(!idb||!track){
-    // 无曲目 / 传统模式：只有「添加音频」一个入口（等价旧的音频按钮）
-    sel.innerHTML='<option value="__add__">＋ 添加音频…</option>';
-    sel.onchange=()=>{if(sel.value==='__add__')$('fAud').click()};
+    // 无曲目 / 传统模式：占位 + 添加。选完「添加」后复位，否则停留在此
+    // 选项上，下次再点 value 不变、change 不触发，就点不动了
+    sel.innerHTML='<option value="">音频</option><option value="__add__">＋ 添加音频…</option>';
+    sel.onchange=()=>{if(sel.value==='__add__'){$('fAud').click();sel.value=''}};
     return;
   }
   sel.innerHTML=(track.audios&&track.audios.length?track.audios.map(a=>
@@ -2534,7 +2535,13 @@ function syncAudSel(){
     :'<option value="">（还没有音频）</option>')+
     '<option value="__add__">＋ 添加音频…</option>';
   sel.onchange=async()=>{
-    if(sel.value==='__add__'){$('fAud').click();return}
+    if(sel.value==='__add__'){
+      $('fAud').click();
+      // 复位到当前音频，否则选中态留在「添加」上，取消选文件后再点它没反应
+      sel.value=(track.lastAudio&&(track.audios||[]).some(a=>a.hash===track.lastAudio))
+        ?track.lastAudio:'';
+      return;
+    }
     const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;
     const rec=await idbGet(idb,'files',a.hash);
     if(!rec)return msg('音频文件不在库里',1);
@@ -2705,6 +2712,7 @@ async function boot(){
   showLib(true);
 }
 updLoop();stat();syncAudSel();syncMode();   // 默认播放模式，同步一次 editing 类
+$('chkHoriz').onchange();                    // 初始横向：同步 horiz 类与按钮文字
 boot();
 
 /* ---------- PWA：注册 service worker（https 才生效，file:// 下静默跳过） ---------- */
