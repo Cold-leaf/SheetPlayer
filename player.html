@@ -690,7 +690,9 @@ function layout(){                       // 结构变了才调用（增删标记
     const bar=document.createElement('b');                  // 可见的 3px 竖线
     const nxt=nextMk.get(mk.m),gap=nxt?nxt.m-mk.m-1:0;
     const lab=document.createElement('i');
-    lab.textContent=gap>0?mk.m+'–'+(nxt.m-1):mk.m;         // 多小节休止：显示成 1–6
+    // 只有真的多小节休止（跳号 ≥2）才显示范围；gap=1 多半是删掉误标的小节，
+    // 那只是两个相邻小节之间空了一个号，不该谎称"这一小节覆盖两小节"
+    lab.textContent=gap>=2?mk.m+'–'+(nxt.m-1):mk.m;
     d.appendChild(bar);d.appendChild(lab);
     styleMkEl(d,mk);
     box.appendChild(d);mkEl.set(mk,d);

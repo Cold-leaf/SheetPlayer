@@ -26,6 +26,15 @@ async def main():
         lab=await pg.evaluate("document.querySelector('.mk[data-m=\"1\"] i').textContent")
         print(ok(lab=="1–6"), f"标签显示覆盖范围: 小节1 显示 '{lab}'")
 
+        # gap=1（如删掉误标的小节后剩 1、3）不谎称覆盖：标签仍是各自的小节号
+        await pg.evaluate("M=[{page:1,nx:.20,ny:.30,m:1,h:.08},{page:1,nx:.55,ny:.30,m:3,h:.08}];E=[];syncNext();layout()")
+        l1=await pg.evaluate("document.querySelector('.mk[data-m=\"1\"] i').textContent")
+        l3=await pg.evaluate("document.querySelector('.mk[data-m=\"3\"] i').textContent")
+        print(ok(l1=="1" and l3=="3"), f"gap=1 不显示范围: 1→'{l1}' 3→'{l3}'（不是 '1–2'）")
+        await pg.evaluate("""()=>{M=[{page:1,nx:.20,ny:.30,m:1,h:.08},{page:1,nx:.55,ny:.30,m:7,h:.08},
+            {page:1,nx:.70,ny:.30,m:8,h:.08}];
+          E=[{m:1,t:0,src:'tap'},{m:7,t:12,src:'tap'},{m:8,t:14,src:'tap'}];syncNext();layout();aud.pause()}""")
+
         async def probe(t):
             await pg.evaluate(f"aud.currentTime={t}"); await asyncio.sleep(0.18)
             return await pg.evaluate("""()=>{const i=occIndex(aud.currentTime),o=OCC[i];
