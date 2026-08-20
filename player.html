@@ -1146,8 +1146,12 @@ function renderPanel(){
     };
   }
   panel.querySelector('#pDelMk').onclick=()=>{
-    snap();M=M.filter(x=>x.m!==m);E=E.filter(x=>x.m!==m);
-    if(tapM===m)tapM=null;
+    snap();
+    M=M.filter(x=>x.m!==m);E=E.filter(x=>x.m!==m);
+    // 删掉中间的小节后，后面的编号顺位补上（1,2,3 删 2 → 1,2），时间点跟着一起 -1
+    M.forEach(x=>{if(x.m>m)x.m--});
+    E.forEach(x=>{if(x.m>m)x.m--});
+    if(tapM===m)tapM=null;else if(tapM!=null&&tapM>m)tapM--;
     syncNext();panel.style.display='none';curM=null;layout();save();
   };
   panel.querySelector('#pAdd').onclick=()=>{addTime(m,stamp());renderPanel();refresh();save()};
