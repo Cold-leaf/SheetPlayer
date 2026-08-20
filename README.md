@@ -1,10 +1,10 @@
 # SheetPlayer
 
-谱音同步打点播放器 —— 单 HTML 文件实现：在五线谱 PDF 上标记小节，按音频打时间点，播放时谱面跟随高亮滚动。
+谱音同步打点播放器 —— 单 HTML 文件实现：在五线谱 PDF 上标记小节，按音频打时间点，播放时谱面跟随高亮滚动。可安装成 PWA（独立全屏、离线可用、数据持久）。
 
 ## 使用
 
-直接双击打开 `player.html`（离线可用，无需安装、无需网络）：
+托管后（GitHub Pages）用浏览器打开 `https://<你的用户名>.github.io/SheetPlayer/`，建议「添加到主屏幕 / 安装应用」变成独立应用。本地也可以双击 `player.html`（file:// 下 PWA 不生效，其余功能一样）。
 
 1. 启动进入「曲目库」：「＋ 导入谱子」选一个 PDF（一个曲目 = 1 个 PDF + N 个音频变体 + 1 份标注）。
 2. 「标小节」模式：点谱面标记每个小节的位置。
@@ -14,9 +14,16 @@
 
 其他能力：自动生成时间轴（按拍号/播放顺序）、小节线吸附、频谱与起音吸附、多小节休止、横向铺开、练习循环、触屏适配、双指/触控板缩放、JSON 导入导出、自动存档。
 
+## 部署到 GitHub Pages
+
+1. 仓库 Settings → Pages → Source 选 **Deploy from a branch** → 分支 `main`、目录 `/ (root)` → Save。
+2. 等一两分钟，站点地址是 `https://<用户名>.github.io/SheetPlayer/`。
+3. 仓库须公开（GitHub Pages 免费账户的硬要求）；部署的只是播放器空壳，谱子/音频永不上传，留在本地 IndexedDB。
+
 ## 开发
 
-- 源码即 `player.html` 单文件（CSS + JS 内联）。
+- 源码即 `player.html` 单文件（CSS + JS 内联）。PWA 外壳：`manifest.json` + `sw.js` + `icon-*.png` + `index.html`（站点根重定向）；`lib/` 是本地化的 pdf.js（3.11.174），离线也能渲染谱子。
+- 发布后改动了内容记得 bump `sw.js` 里的 `VER`，否则旧缓存不清、用户拿不到更新（页面走网络优先，一般能自动更新，但 lib 走缓存优先）。
 - 测试在 `tests/`：
   - `tests/t*.js`：纯逻辑测试。t9 直接从 player.html 提取 `/*PURE*/` 块测真实代码；其余为手工拷贝的函数快照。
   - `tests/pw_*.py`：Playwright 浏览器端到端测试（`?direct=1` 参数让它们跳过曲目库、走传统 localStorage 路径；库功能由 `pw_lib*.py` / `pw_migrate.py` / `pw_idbnull.py` 覆盖）。

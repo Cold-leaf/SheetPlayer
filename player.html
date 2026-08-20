@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>谱音同步播放器</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#161616">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="lib/pdf.min.js"></script>
 <style>
 body{margin:0;font:14px system-ui;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
 #bar{background:#222;color:#eee;padding:5px 6px;display:flex;flex-direction:column;gap:5px}
@@ -354,7 +358,7 @@ body.hidebar #bar{display:none}
 
 <script>
 const $=id=>document.getElementById(id);
-const CDN='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const CDN='lib/';
 const DPR=Math.min(2,window.devicePixelRatio||1);
 pdfjsLib.GlobalWorkerOptions.workerSrc=CDN+'pdf.worker.min.js';
 
@@ -2477,6 +2481,11 @@ async function boot(){
 }
 updLoop();stat();
 boot();
+
+/* ---------- PWA：注册 service worker（https 才生效，file:// 下静默跳过） ---------- */
+if('serviceWorker' in navigator){
+  addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})});
+}
 </script>
 </body>
 </html>
