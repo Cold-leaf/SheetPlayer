@@ -220,6 +220,7 @@ body.hidebar #bar{display:none}
   <audio id="aud" controls controlsList="nodownload noplaybackrate noremoteplayback"
          style="width:270px;height:32px"></audio>
   <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
+  <label title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
   <label>速度<select id="rate">
     <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
     <option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option>
@@ -264,6 +265,16 @@ body.hidebar #bar{display:none}
  <div class="msec">视图</div>
  <label><input type="checkbox" id="chkNum" checked>显示编号</label>
  <label><input type="checkbox" id="chkProg" checked>小节进度</label>
+ <div class="msec">音频模式</div>
+ <div class="mrow">
+  <label>新建<input type="text" id="newMode" placeholder="模式名" style="width:90px"></label>
+  <button id="bNewMode">＋ 新建模式</button>
+ </div>
+ <div class="mrow">
+  <label>重命名<input type="text" id="renMode" placeholder="新名字" style="width:90px"></label>
+  <button id="bRenMode">改名当前模式</button>
+  <button id="bDelMode">删除当前模式</button>
+ </div>
  <div class="msec">竖线吸附</div>
  <label title="放下或拖完后，抄同一行最近那条竖线的高度和纵向位置"><input type="checkbox" id="chkAlignY" checked>对齐同行</label>
  <label title="在窗口内找印刷的小节线并横向吸过去"><input type="checkbox" id="chkSnapX" checked>吸小节线</label>
@@ -379,6 +390,11 @@ let M=[],E=[],OCC=[],RUNS=[],nextM=1,offset=0,zoom=1.3,repeats=0;
 // 速度和拍号变化频率差着量级（BPM 常常全曲一个，拍号可能每小节都变），所以分成两张表。
 // METER 一行 = 一个拍号 + 它管的小节区间（写法同播放顺序）；ranges 留空的那行兜底管"其余全部"。
 let TEMPO=[{m:1,bpm:120}],METER=[{sig:[4,4],ranges:[]}],FORM=[];
+// 音频模式：同一份谱子可以有多套时间点（MIDI 标准版 / 现场版各一套）。
+// MODES = { 模式名: {E,TEMPO,METER,FORM,offset} }；M（谱面位置）按 PDF 共享。
+// E/TEMPO/METER/FORM/offset 这几个全局变量始终是「当前模式」的那套。
+let MODES={},activeMode='标准';
+let pendingAudioMode=null;                        // 「＋ 添加音频」前先选模式，选完文件再挂上
 let loop={a:null,b:null,on:false},arm=null,lastIdx=-2,lastRun=-2;
 let mkEl=new Map(),byM=new Map(),mkByM=new Map();   // marker→DOM ／ 小节号→DOM数组 ／ 小节号→marker
 const DEF_H=0.05;                          // 小节竖线默认高度（页高的比例）
@@ -397,6 +413,74 @@ function pureM(){return M.map(x=>{const o={page:x.page,nx:x.nx,ny:x.ny,m:x.m,h:h
   if(x.span>1)o.span=x.span;return o})}          // 剥掉可能挂上的引用再序列化
 function maxM(){return M.reduce((a,x)=>x.m>a?x.m:a,0)}
 function syncNext(){nextM=maxM()+1;$('nextN').value=nextM}           // 永远由 M 推导，不做 ++/--
+
+/* ---------- 音频模式：多套时间点 ---------- */
+const deepClone=x=>JSON.parse(JSON.stringify(x));
+function defaultModeData(){return {E:[],TEMPO:[{m:1,bpm:120}],METER:[{sig:[4,4],ranges:[]}],FORM:[],offset:0}}
+// 当前全局（E/TEMPO/METER/FORM/offset）写回 MODES[activeMode]（深拷贝，避免和全局互相别名）
+function modeSnapshot(){MODES[activeMode]={E:deepClone(E),TEMPO:deepClone(TEMPO),
+  METER:deepClone(METER),FORM:deepClone(FORM),offset}}
+// 切换到某模式：把该模式的数据装进全局。新建/缺失时给默认空数据。
+function loadMode(name){
+  const d=MODES[name]||defaultModeData();
+  E=deepClone(d.E||[]);TEMPO=deepClone(d.TEMPO||[{m:1,bpm:120}]);
+  METER=deepClone(d.METER||[{sig:[4,4],ranges:[]}]);FORM=deepClone(d.FORM||[]);
+  offset=d.offset||0;$('off').value=offset;
+}
+function switchMode(name){                      // 切模式：先存旧、再装新、刷新界面
+  if(name===activeMode)return;
+  modeSnapshot();activeMode=name;loadMode(name);
+  tapM=null;lastSeek=null;loop={a:null,b:null,on:false};arm=null;
+  syncNext();layout();refresh();syncModeSel();
+}
+function newMode(name,fromCurrent){             // 新建模式；fromCurrent 时拷贝当前模式的结构（拍号/速度/顺序），时间点留空
+  const base=fromCurrent?deepClone({TEMPO,METER,FORM}):{TEMPO:[{m:1,bpm:120}],METER:[{sig:[4,4],ranges:[]}],FORM:[]};
+  MODES[name]={E:[],...base,offset:0};
+  return MODES[name];
+}
+/* 模式下拉：列出所有模式 + 新建入口 */
+function syncModeSel(){
+  const sel=$('modeSel');if(!sel)return;
+  sel.innerHTML=Object.keys(MODES).map(n=>
+    '<option value="'+esc(n)+'"'+(n===activeMode?' selected':'')+'>'+esc(n)+'</option>').join('')+
+    '<option value="__new__">＋ 新建模式…</option>';
+  sel.onchange=()=>{
+    if(sel.value==='__new__'){$('newMode').focus();sel.value=activeMode;return}
+    if(sel.value!==activeMode)switchMode(sel.value);
+  };
+}
+function doNewMode(name){
+  name=(name||'').trim();
+  if(!name)return msg('先填一个模式名',1);
+  if(MODES[name])return msg('模式「'+name+'」已存在',1);
+  snap();
+  newMode(name,true);                            // 拷贝当前结构（拍号/速度/顺序），时间点留空
+  switchMode(name);
+  msg('已新建模式「'+name+'」（时间点留空，拍号/速度沿用当前模式）');
+}
+const audioModeOf=a=>a&&a.mode?a.mode:'标准';      // 老音频没 mode 字段，视为「标准」
+$('bNewMode').onclick=()=>{doNewMode($('newMode').value);$('newMode').value=''};
+$('bRenMode').onclick=()=>{
+  const nn=($('renMode').value||'').trim();
+  if(!nn)return msg('先填一个新名字',1);
+  if(nn===activeMode)return;
+  if(MODES[nn])return msg('模式「'+nn+'」已存在',1);
+  snap();
+  const old=activeMode,d=MODES[old];delete MODES[old];MODES[nn]=d;activeMode=nn;
+  (track&&track.audios||[]).forEach(a=>{if(audioModeOf(a)===old)a.mode=nn});   // 挂在此模式的音频跟着改
+  syncModeSel();save();
+  msg('模式改名为「'+nn+'」');
+};
+$('bDelMode').onclick=()=>{
+  if(Object.keys(MODES).length<=1)return msg('至少保留一个模式',1);
+  if(!confirm('删除模式「'+activeMode+'」？它的时间点会一并删除。'))return;
+  snap();
+  const old=activeMode;delete MODES[old];
+  activeMode=Object.keys(MODES)[0];
+  (track&&track.audios||[]).forEach(a=>{if(audioModeOf(a)===old)a.mode=activeMode});   // 挂在此模式的音频挪到剩下的模式
+  loadMode(activeMode);syncNext();layout();refresh();syncModeSel();save();
+  msg('已删除模式「'+old+'」');
+};
 
 /* ---------- 撤销：整体快照，覆盖所有改动路径 ---------- */
 function snap(){hist.push(JSON.stringify({M:pureM(),E}));if(hist.length>200)hist.shift()}
@@ -477,10 +561,11 @@ async function loadPdfBlob(blob,name,H,pre){
   pdf=await openPdf(blob);pdfName=name;
   const note=await tryRestore();
   await buildPages();
-  if(track&&track.lastAudio){                 // 打开曲目时带上上次在听的那个音频变体
+  if(track&&track.lastAudio){                 // 打开曲目时带上上次在听的那个音频变体（并切到它的模式）
     const r=await idbGet(idb,'files',track.lastAudio);
-    if(r)await switchAudio(r.blob,track.lastAudio);
+    if(r)await selectAudio(track.lastAudio,r.blob);
   }
+  syncModeSel();
   syncAudSel();
   showLib(false);
   msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
@@ -493,6 +578,7 @@ function resetTrack(){
   pageObj=[];pageVP=[];boxes=[];cvs=[];
   M=[];E=[];OCC=[];RUNS=[];nextM=1;offset=0;repeats=0;
   TEMPO=[{m:1,bpm:120}];METER=[{sig:[4,4],ranges:[]}];FORM=[];
+  MODES={};activeMode='标准';modeSnapshot();          // 保证始终有个「标准」模式
   loop={a:null,b:null,on:false};arm=null;lastIdx=-2;lastRun=-2;
   mkEl.clear();byM.clear();mkByM.clear();
   lastH=DEF_H;bandEl=null;sweepEl=null;
@@ -736,6 +822,7 @@ function refresh(){                      // 只改状态，不重建 DOM
 }
 function stat(){
   $('stat').textContent=(track?'《'+track.name+'》　':'')+'已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
+    +(Object.keys(MODES).length>1?' / 模式 '+activeMode:'')
     +(RUNS.length>1?' / '+RUNS.length+' 段':'')
     +(tapM!=null?' / 目标 → 小节 '+tapM:'');
 }
@@ -2212,17 +2299,21 @@ $('fAud').onchange=async e=>{
   e.target.value='';       // 清掉，这样重新导出同名 MP3 后再选一次仍然会触发
   try{
     let blob=f,H='';
+    const mode=pendingAudioMode||activeMode;   // 添加前选的模式（没选就用当前）
+    pendingAudioMode=null;
     if(idb&&track){        // 有曲目就挂进去（按哈希去重），没有曲目就只当普通音频放
       H=await sha256Hex(f);
       if(!(await idbGet(idb,'files',H)))
         await idbPut(idb,'files',{hash:H,kind:'audio',name:f.name,size:f.size,blob:f});
       const rec=await idbGet(idb,'files',H);blob=rec.blob;
-      if(!track.audios.some(a=>a.hash===H))track.audios.push({hash:H,name:f.name});
+      if(!MODES[mode])newMode(mode,true);       // 输入的新名字就新建（结构沿用当前模式）
+      const ex=track.audios.find(a=>a.hash===H);
+      if(ex)ex.mode=mode;else track.audios.push({hash:H,name:f.name,mode});
       track.lastAudio=H;track.updatedAt=Date.now();
       await idbPut(idb,'tracks',track);
     }
-    await switchAudio(blob,H);
-    syncAudSel();
+    await selectAudio(H,blob);
+    syncAudSel();syncModeSel();
   }catch(err){msg('音频加载失败：'+err.message,1)}
 };
 function syncMode(){pagesEl.classList.toggle('editing',$('mode').value==='edit')}
@@ -2257,7 +2348,7 @@ $('bShift').onclick=()=>{
 
 /* ---------- 存档 ---------- */
 // v4 用 TEMPO/METER 两张表；v3 及以前是单张 SIG，读进来自动迁移
-function loadStruct(s){
+function loadStruct(s){                       // s 是一份「模式」的数据（含 TEMPO/METER/SIG），迁移后写进当前全局
   const hi=Math.max(maxM(),1);
   if(s.METER?.length){
     if(s.TEMPO?.length)TEMPO=s.TEMPO;
@@ -2278,8 +2369,9 @@ let saveT=null,memStore=new Map();
 function save(){
   if(!pdfName)return;
   clearTimeout(saveT);
+  modeSnapshot();                                // 当前全局写回 MODES[activeMode] 再存
   const key=idb?pdfHash:pdfName;
-  const payload=JSON.stringify({v:5,M:pureM(),E,TEMPO,METER,FORM,offset,ts:Date.now()});
+  const payload=JSON.stringify({v:6,M:pureM(),modes:MODES,activeMode,ts:Date.now()});
   saveT=setTimeout(()=>{storeSave(key,payload)},400);
 }
 function storeSave(key,payloadStr){
@@ -2294,17 +2386,28 @@ async function tryRestore(){
   if(idb){const rec=await idbGet(idb,'anns',pdfHash);s=rec?rec.data:null}
   else{try{s=LS?JSON.parse(LS.getItem(KEY())||'null'):null}catch(err){}
     if(!s){const p=memStore.get(pdfName);if(p)try{s=JSON.parse(p)}catch(err){}}}
-  if(!s||!(s.M?.length||s.E?.length))return;
-  M=s.M||[];E=s.E||[];offset=s.offset||0;$('off').value=offset;
-  loadStruct(s);
-  if(s.FORM)FORM=s.FORM;
+  // v6 起 modes 分套；老数据（v5 及更早）把整套时间点包进「标准」一个模式
+  let modes=s&&s.modes;
+  if(!modes){
+    if(!s)return;
+    modes={'标准':{E:s.E||[],TEMPO:s.TEMPO,METER:s.METER,SIG:s.SIG,FORM:s.FORM,offset:s.offset||0}};
+  }
+  const hasM=s.M?.length,hasE=Object.values(modes).some(m=>m&&m.E?.length);
+  if(!hasM&&!hasE)return;
+  M=s.M||[];MODES=modes;
+  activeMode=s.activeMode||'标准';
+  if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
+  if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
+  loadMode(activeMode);
+  loadStruct(MODES[activeMode]);
   syncNext();
   return '已恢复本地存档（'+new Date(s.ts||Date.now()).toLocaleString()+'）：'
-    +M.length+' 标记 / '+E.length+' 时间点';
+    +M.length+' 标记 / '+Object.keys(MODES).length+' 套时间点';
 }
 /* ---------- 导入导出 ---------- */
 $('bExp').onclick=()=>{
-  const data={v:5,pdf:pdfName,offset,TEMPO,METER,FORM,M:pureM(),E:[...E].sort((a,b)=>a.t-b.t)};
+  modeSnapshot();                                // 导出前把当前模式写回
+  const data={v:6,pdf:pdfName,M:pureM(),modes:MODES,activeMode};
   if(pdfHash)data.pdfHash=pdfHash;               // 带上内容哈希，换机/换浏览器也能校验谱子对不对
   const b=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
@@ -2318,19 +2421,28 @@ $('fMap').onchange=async e=>{
   try{
     const j=JSON.parse(await f.text());
     snap();
-    if(j.M&&j.E){M=j.M;E=j.E;if(j.offset!=null){offset=j.offset;$('off').value=offset}
-      loadStruct(j);if(j.FORM)FORM=j.FORM}
-    else if(Array.isArray(j)){M=j;E=j.filter(x=>x.t!=null).map(x=>({m:x.m,t:x.t}))}   // 老格式：点上直接带 t
-    else{E=Object.keys(j).map(k=>({m:+k,t:j[k]}))}                                     // 老格式：{小节:时间}
+    if(j.modes){                                // v6：带多套模式
+      M=j.M||[];MODES=j.modes;activeMode=j.activeMode||Object.keys(j.modes)[0]||'标准';
+      if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
+      if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
+      loadMode(activeMode);loadStruct(MODES[activeMode]);
+    }else if(j.M&&j.E){                         // v5 及更早：单套，包进「标准」
+      M=j.M;E=j.E;if(j.offset!=null){offset=j.offset;$('off').value=offset}
+      loadStruct(j);if(j.FORM)FORM=j.FORM;
+      modeSnapshot();
+    }
+    else if(Array.isArray(j)){M=j;E=j.filter(x=>x.t!=null).map(x=>({m:x.m,t:x.t}));modeSnapshot()}   // 老格式：点上直接带 t
+    else{E=Object.keys(j).map(k=>({m:+k,t:j[k]}));modeSnapshot()}                                     // 老格式：{小节:时间}
     M=M.filter(x=>x&&x.page&&x.m!=null);
     E=E.filter(x=>x&&x.m!=null&&isFinite(x.t));
+    modeSnapshot();
     syncNext();tapM=null;lastSeek=null;
     const bad=pdf?M.filter(x=>x.page<1||x.page>pdf.numPages).length:0;
     const hashBad=j.pdfHash&&pdfHash&&j.pdfHash!==pdfHash;
     layout();save();
     if(hashBad)msg('注意：JSON 里的 pdfHash 与当前打开的谱子不一致，可能标错谱子了',1);
     else if(bad)msg('注意：'+bad+' 个标记的页码超出当前 PDF（'+pdf.numPages+' 页），这些点不会显示',1);
-    else msg('已导入 '+M.length+' 标记 / '+E.length+' 时间点');
+    else msg('已导入 '+M.length+' 标记 / '+Object.keys(MODES).length+' 套时间点');
   }catch(err){msg('导入失败：'+err.message,1)}
   finally{e.target.value=''}
 };
@@ -2523,6 +2635,23 @@ function restoreSpec(rec){
   return SPEC;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+// 「＋ 添加音频…」先问挂到哪个模式（输入已有名复用 / 新名新建），再开文件选择器
+function askAudioMode(){
+  const names=Object.keys(MODES).join('、');
+  const v=prompt('音频挂到哪个模式？（已有：'+(names||'标准')+'；输入新名字则新建）',activeMode);
+  if(v===null)return false;
+  pendingAudioMode=(v.trim()||activeMode);
+  $('fAud').click();
+  return true;
+}
+// 选一个音频：切到它所属的模式（音频和那套时间点绑定），再换音频源
+async function selectAudio(hash,blob){
+  const a=(track&&track.audios||[]).find(x=>x.hash===hash);
+  const mode=a?audioModeOf(a):activeMode;
+  if(!MODES[mode])newMode(mode,true);
+  if(mode!==activeMode)switchMode(mode);
+  await switchAudio(blob,hash);
+}
 function syncAudSel(){
   const sel=$('audSel');
   if(!idb||!track){
@@ -2533,16 +2662,14 @@ function syncAudSel(){
     return;
   }
   sel.innerHTML=(track.audios&&track.audios.length?track.audios.map(a=>
-      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+'</option>').join('')
+      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+
+      '（'+esc(audioModeOf(a))+'）</option>').join('')
     :'<option value="">（还没有音频）</option>')+
     '<option value="__add__">＋ 添加音频…</option>';
   sel.onchange=async()=>{
     if(sel.value==='__add__'){
-      $('fAud').click();
-      // 重建下拉（重新写 innerHTML + selected）而非只改 sel.value：
-      // 移动端原生选择器收尾时会用「添加」覆盖同步的 value 赋值，重建才靠得住。
-      // 延迟等原生选择器收起；就算用户又选了文件，fAud 完成后还会再 syncAudSel 覆盖。
-      setTimeout(syncAudSel,80);
+      if(!askAudioMode())setTimeout(syncAudSel,80);   // 取消就复位；选了文件 fAud 完成后会再 syncAudSel
+      else setTimeout(syncAudSel,80);
       return;
     }
     const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;
@@ -2550,7 +2677,8 @@ function syncAudSel(){
     if(!rec)return msg('音频文件不在库里',1);
     track.lastAudio=a.hash;track.updatedAt=Date.now();
     await idbPut(idb,'tracks',track);
-    await switchAudio(rec.blob,a.hash);
+    await selectAudio(a.hash,rec.blob);
+    syncModeSel();
   };
 }
 
@@ -2693,8 +2821,13 @@ $('bSync').onclick=async()=>{
 };
 function applyAnn(s){
   snap();
-  M=s.M||[];E=s.E||[];offset=s.offset||0;$('off').value=offset;
-  loadStruct(s);if(s.FORM)FORM=s.FORM;
+  let modes=s.modes;
+  if(!modes)modes={'标准':{E:s.E||[],TEMPO:s.TEMPO,METER:s.METER,SIG:s.SIG,FORM:s.FORM,offset:s.offset||0}};
+  M=s.M||[];MODES=modes;
+  activeMode=s.activeMode||Object.keys(modes)[0]||'标准';
+  if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
+  if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
+  loadMode(activeMode);loadStruct(MODES[activeMode]);
   syncNext();tapM=null;lastSeek=null;
   layout();refresh();
 }
@@ -2714,7 +2847,7 @@ async function boot(){
   await sweepLegacy();          // 扫完再画列表，否则 legacy 曲目要等下次重开才出现
   showLib(true);
 }
-updLoop();stat();syncAudSel();syncMode();   // 默认播放模式，同步一次 editing 类
+updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
 $('chkHoriz').onchange();                    // 初始横向：同步 horiz 类与按钮文字
 boot();
 

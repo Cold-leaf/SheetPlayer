@@ -120,7 +120,7 @@ async def main():
         await pg.evaluate("$('bExp').onclick()")
         out = await pg.evaluate("window.__blob.text()")
         j = json.loads(out)
-        print("export keys:", list(j.keys()), "| E 已按时间排序:", j["E"]==sorted(j["E"],key=lambda x:x["t"]))
+        print("export keys:", list(j.keys()), "| E 已按时间排序:", j["modes"]["标准"]["E"]==sorted(j["modes"]["标准"]["E"],key=lambda x:x["t"]))
         print("export M[0]:", j["M"][0])
 
         print("\n--- page errors ---"); print("\n".join(errs) or "(none)")

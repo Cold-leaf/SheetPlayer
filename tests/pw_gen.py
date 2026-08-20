@@ -97,8 +97,9 @@ async def main():
         await pg.evaluate("window.__b=null;URL.createObjectURL=b=>{window.__b=b;return 'blob:x'}")
         await pg.evaluate("$('bExp').onclick()")
         import json; j=json.loads(await pg.evaluate("window.__b.text()"))
-        print(ok("METER" in j and "FORM" in j and j["FORM"]==[{"from":1,"to":8},{"from":3,"to":8}]),
-              f"导出含结构: TEMPO={j.get('TEMPO')} METER={j.get('METER')} FORM={j.get('FORM')}")
+        m=j["modes"]["标准"]
+        print(ok("METER" in m and "FORM" in m and m["FORM"]==[{"from":1,"to":8},{"from":3,"to":8}]),
+              f"导出含结构: TEMPO={m.get('TEMPO')} METER={m.get('METER')} FORM={m.get('FORM')}")
         await pg.reload(); await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length>0",timeout=30000)
         rs=await pg.evaluate("[METER,FORM,E.length]")

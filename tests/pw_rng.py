@@ -26,8 +26,9 @@ async def main():
              [(1,6),(2,9),(3,6),(4,9),(5,6),(26,9),(27,6),(28,9)]]
         await pg.evaluate("""s=>{const k='player:'+pdfName;
             const cur=JSON.parse(localStorage.getItem(k));
-            cur.v=3;cur.SIG=s;delete cur.TEMPO;delete cur.METER;
-            localStorage.setItem(k,JSON.stringify(cur))}""", old)
+            // 模拟 v3 老格式：整体换成 {v:3, M, SIG}（没有 modes）
+            const legacy={v:3,M:cur.M,E:[],SIG:s,offset:0,ts:Date.now()};
+            localStorage.setItem(k,JSON.stringify(legacy))}""", old)
         await pg.reload(); await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length>0",timeout=30000)
         ME=await pg.evaluate("METER.map(r=>sigText(r.sig)+': '+formText(r.ranges))")
@@ -96,8 +97,9 @@ async def main():
         await pg.evaluate("window.__b=null;URL.createObjectURL=b=>{window.__b=b;return 'blob:x'}")
         await pg.evaluate("$('bExp').onclick()")
         j=json.loads(await pg.evaluate("window.__b.text()"))
-        print(ok(j["v"]==5 and j["METER"][0]["ranges"][0]=={"from":1,"to":1}),
-              f"导出 v{j['v']} METER={json.dumps(j['METER'],ensure_ascii=False)}")
+        m=j["modes"]["标准"]
+        print(ok(j["v"]==6 and m["METER"][0]["ranges"][0]=={"from":1,"to":1}),
+              f"导出 v{j['v']} METER={json.dumps(m['METER'],ensure_ascii=False)}")
         await asyncio.sleep(0.7); await pg.reload(); await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length>0",timeout=30000)
         rs=await pg.evaluate("METER.map(r=>sigText(r.sig)+': '+formText(r.ranges))")
