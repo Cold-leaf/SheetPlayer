@@ -32,6 +32,7 @@ async def main():
         print(ok(d["backW"]==round(d["cssW"]*d["dpr"])), f"DPR 渲染: CSS {d['cssW']}px, 背板 {d['backW']}px, dpr={d['dpr']}")
 
         bb = await (await pg.query_selector('.page[data-page="1"]')).bounding_box()
+        await pg.select_option("#mode","mark")   # 默认是播放模式，标小节要先切
         for i in range(4):
             await pg.mouse.click(bb["x"]+120+i*100, bb["y"]+200)
 

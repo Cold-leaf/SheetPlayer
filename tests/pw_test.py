@@ -34,7 +34,8 @@ async def main():
             return {css:[b.clientWidth,b.clientHeight],back:[c.width,c.height],dpr:window.devicePixelRatio}}""")
         print("page css/backing/dpr:", dims)
 
-        # 1) 标小节：在第一页点 6 个点
+        # 1) 标小节：在第一页点 6 个点（默认已是播放模式，先切到标小节）
+        await pg.select_option("#mode", "mark")
         box = await pg.query_selector('.page[data-page="1"]')
         bb  = await box.bounding_box()
         for i in range(6):
