@@ -417,22 +417,38 @@ $('fPdf').onchange=async e=>{
       if(!(await idbGet(idb,'files',H)))
         await idbPut(idb,'files',{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f});
       const existFile=await idbGet(idb,'files',H);
-      // 找标注：先按哈希，再按 legacy 文件名（localStorage 时代的老存档）
+      // 找标注，三层：哈希 → legacy 文件名（老存档）→ 同名曲目（谱子结构不变、只加了笔记重导出）
       let rec=await idbGet(idb,'anns',H);
+      let relink=null,pre='';
       if(!rec){rec=await idbGet(idb,'anns',legacyKey(f.name));
         if(rec){
           await idbDel(idb,'anns',legacyKey(f.name));
           if(LS)try{LS.removeItem('player:'+f.name)}catch(e2){}   // 解析成哈希后才删老键
         }
       }
+      if(!rec){
+        // 加笔记重新导出：字节变了哈希变、文件名不变，按名接回原曲目（时间点/竖线照旧）
+        const byName=await findTrackByName(f.name);
+        if(byName&&byName.hash!==H){
+          const oldAnn=await idbGet(idb,'anns',byName.hash);
+          if(oldAnn){relink=byName;rec=oldAnn;pre='已按文件名关联到已有曲目《'+f.name+'》，时间点与竖线照旧'}
+        }
+      }
       if(rec&&!(await idbGet(idb,'anns',H)))await idbPut(idb,'anns',{hash:H,data:rec.data});
-      // 曲目记录：已有→复用；legacy 记录→按哈希重建；否则新建
+      // 曲目记录：已有→复用；同名重链接→沿用旧曲目元数据；legacy→按哈希重建；否则新建
       let tr=await idbGet(idb,'tracks',H);
+      if(!tr&&relink)tr={...relink,hash:H};
       if(!tr){tr=await idbGet(idb,'tracks',legacyKey(f.name));if(tr)await idbDel(idb,'tracks',legacyKey(f.name))}
       if(!tr)tr={hash:H,name:f.name,createdAt:Date.now(),updatedAt:Date.now(),audios:[],lastAudio:null};
       else{tr.hash=H;tr.name=f.name;tr.updatedAt=Date.now();tr.noFile=false}
       await idbPut(idb,'tracks',tr);
-      await loadPdfBlob(existFile.blob,f.name,H);
+      // 同名重链接：旧版（旧 PDF 文件 / 旧曲目记录 / 旧标注键）清理掉
+      if(relink&&relink.hash!==H){
+        await idbDel(idb,'anns',relink.hash);
+        await idbDel(idb,'tracks',relink.hash);
+        await idbDel(idb,'files',relink.hash);
+      }
+      await loadPdfBlob(existFile.blob,f.name,H,pre);
     }else{
       await loadPdfBlob(f,f.name,'');
     }
@@ -441,7 +457,7 @@ $('fPdf').onchange=async e=>{
 };
 
 // 曲目加载总入口：先整体重置（否则上一个曲目的标注/渲染/频谱会串过来），再从 Blob 走原有管线
-async function loadPdfBlob(blob,name,H){
+async function loadPdfBlob(blob,name,H,pre){
   msg('打开中…');
   resetTrack();
   pdfHash=H;track=idb?await idbGet(idb,'tracks',H):null;
@@ -454,7 +470,7 @@ async function loadPdfBlob(blob,name,H){
   }
   syncAudSel();
   showLib(false);
-  msg(note||('共 '+pdf.numPages+' 页'));       // 恢复存档的提示优先，别被页数覆盖掉
+  msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
 }
 
 // 切换曲目前必须整体清零。原来只重建 DOM，M/E/撤销栈/频谱/挂起的渲染任务全带过去，
@@ -2402,6 +2418,17 @@ async function openTrack(h){
   if(!f||tr.noFile){$('fPdf').click();return}     // 还没存 PDF（老存档/同步来的标注）→ 选文件解析
   try{await loadPdfBlob(f.blob,tr.name,h)}
   catch(err){msg('打开失败：'+err.message,1)}
+}
+// 按文件名找曲目（加笔记重新导出时哈希会变、名字不变，用这个接回原曲目）。
+// 只认有 PDF 的曲目，同名多条取最近更新的。
+async function findTrackByName(name){
+  const trs=await idbAll(idb,'tracks');
+  let best=null;
+  for(const t of trs){
+    if(t.name!==name||t.noFile)continue;
+    if(!best||(t.updatedAt||0)>(best.updatedAt||0))best=t;
+  }
+  return best;
 }
 async function delTrack(h){
   const t=await idbGet(idb,'tracks',h);if(!t)return;
