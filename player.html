@@ -206,7 +206,10 @@ body.hidebar #bar{display:none}
   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
  <div class="row">
-  <audio id="aud" controls style="width:270px;height:32px"></audio>
+  <!-- 关掉浏览器自带控件的「⋮」菜单：它的播放速度和我们的「速度」重复（改了还不同步），
+       下载也用不上；而且工具栏靠页面顶部，那个菜单往上弹会被截掉看不全 -->
+  <audio id="aud" controls controlsList="nodownload noplaybackrate noremoteplayback"
+         style="width:270px;height:32px"></audio>
   <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
   <label>速度<select id="rate">
     <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
@@ -1529,6 +1532,10 @@ function bumpRate(d){
 }
 function setRate(r){aud.playbackRate=r;$('rate').value=String(r);msg('速度 '+r+'x')}
 $('rate').onchange=()=>{aud.playbackRate=+$('rate').value};
+// 速度万一被别的途径改了（某些浏览器的原生控件仍有速度菜单），把下拉同步过来，
+// 免得显示 1x 实际在 1.5x，也免得 bumpRate 因为对不上选项而跳回 1
+aud.onratechange=()=>{const v=String(aud.playbackRate);
+  if([...$('rate').options].some(o=>o.value===v))$('rate').value=v};
 aud.preservesPitch=aud.mozPreservesPitch=aud.webkitPreservesPitch=true;
 /* ================= 频谱条 =================
    解码 → 重采样成 11025 单声道 → STFT → 一次性画进离屏 canvas，
