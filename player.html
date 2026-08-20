@@ -376,6 +376,7 @@ let mkEl=new Map(),byM=new Map(),mkByM=new Map();   // marker→DOM ／ 小节�
 const DEF_H=0.05;                          // 小节竖线默认高度（页高的比例）
 let lastH=DEF_H,bandEl=null,sweepEl=null;
 const hOf=mk=>mk.h==null?DEF_H:mk.h;
+const spanOf=mk=>mk.span||1;                    // 这根竖线覆盖几个小节（多小节休止用，默认 1）
 let drag=null,curM=null,lastCur=null,lastSeek=null,tapM=null;
 let hist=[],dirty=true,lastT=-1,userScrollUntil=0,audUrl=null;
 const pagesEl=$('pages'),wrap=$('wrap'),aud=$('aud'),panel=$('panel');
@@ -384,7 +385,8 @@ const pagesEl=$('pages'),wrap=$('wrap'),aud=$('aud'),panel=$('panel');
 let msgT=null;
 function msg(s,err){const e=$('msg');e.textContent=s;e.className=err?'err':'';
   clearTimeout(msgT);msgT=setTimeout(()=>{e.textContent=''},err?5000:2600)}
-function pureM(){return M.map(x=>({page:x.page,nx:x.nx,ny:x.ny,m:x.m,h:hOf(x)}))}   // 剥掉可能挂上的引用再序列化
+function pureM(){return M.map(x=>{const o={page:x.page,nx:x.nx,ny:x.ny,m:x.m,h:hOf(x)};
+  if(x.span>1)o.span=x.span;return o})}          // 剥掉可能挂上的引用再序列化
 function maxM(){return M.reduce((a,x)=>x.m>a?x.m:a,0)}
 function syncNext(){nextM=maxM()+1;$('nextN').value=nextM}           // 永远由 M 推导，不做 ++/--
 
@@ -690,9 +692,9 @@ function layout(){                       // 结构变了才调用（增删标记
     const bar=document.createElement('b');                  // 可见的 3px 竖线
     const nxt=nextMk.get(mk.m),gap=nxt?nxt.m-mk.m-1:0;
     const lab=document.createElement('i');
-    // 只有真的多小节休止（跳号 ≥2）才显示范围；gap=1 多半是删掉误标的小节，
-    // 那只是两个相邻小节之间空了一个号，不该谎称"这一小节覆盖两小节"
-    lab.textContent=gap>=2?mk.m+'–'+(nxt.m-1):mk.m;
+    // 显式设置的覆盖范围优先；否则只有真的多小节休止（跳号 ≥2）才显示范围，
+    // gap=1 多半是删掉误标的小节，不该谎称"这一小节覆盖两小节"
+    lab.textContent=spanOf(mk)>1?mk.m+'–'+(mk.m+spanOf(mk)-1):(gap>=2?mk.m+'–'+(nxt.m-1):mk.m);
     d.appendChild(bar);d.appendChild(lab);
     styleMkEl(d,mk);
     box.appendChild(d);mkEl.set(mk,d);
@@ -1120,6 +1122,8 @@ function renderPanel(){
   const mk=mkByM.get(m),ph=mk&&boxes[mk.page]?boxes[mk.page].clientHeight:1000;
   let html='<b>小节 '+m+'</b> <button id="pClose">关闭</button> <button id="pTap">设为打点目标</button>'+
            ' <button id="pDelMk">删标记</button>';
+  if(mk)html+='<div style="margin:6px 0">覆盖到 <input type="number" id="pEnd" min="'+m+'" step="1" '+
+    'value="'+(m+spanOf(mk)-1)+'"> 小节（多小节休止填结束节，后面的小节自动顺位）</div>';
   if(mk)html+='<div style="margin:6px 0">竖线高度 <input type="number" id="pH" step="2" min="2" '+
     'value="'+Math.round(hOf(mk)*ph)+'"> px <button id="pHAll">应用到整行</button></div>';
   let n=0;
@@ -1135,6 +1139,21 @@ function renderPanel(){
   panel.innerHTML=html;panel.style.display='block';
   panel.querySelector('#pClose').onclick=()=>{panel.style.display='none';curM=null};
   panel.querySelector('#pTap').onclick=()=>setTap(m);
+  const ie=panel.querySelector('#pEnd');
+  if(ie){
+    ie.onchange=()=>{                          // 设结束节 → 覆盖范围变 → 后面的小节号顺位
+      snap();
+      const end=Math.max(m,Math.round(+ie.value||m));
+      const delta=end-(m+spanOf(mk)-1);        // 覆盖范围的变化量
+      if(delta===0)return;
+      mk.span=end-m+1;
+      M.forEach(x=>{if(x.m>m)x.m+=delta});
+      E.forEach(x=>{if(x.m>m)x.m+=delta});
+      if(tapM!=null&&tapM>m)tapM+=delta;
+      syncNext();layout();save();
+      msg(delta>0?('小节 '+m+' 现在覆盖到 '+end+'，后面顺位 +'+delta):('小节 '+m+' 收回到 '+end));
+    };
+  }
   const ih=panel.querySelector('#pH');
   if(ih){
     ih.onchange=()=>{snap();mk.h=lastH=Math.max(.004,(+ih.value||10)/ph);styleMk(mk);save()};
@@ -1147,11 +1166,11 @@ function renderPanel(){
   }
   panel.querySelector('#pDelMk').onclick=()=>{
     snap();
+    const del=mkByM.get(m),sp=del?spanOf(del):1;      // 覆盖几个小节，删掉后后面顺位退几个
     M=M.filter(x=>x.m!==m);E=E.filter(x=>x.m!==m);
-    // 删掉中间的小节后，后面的编号顺位补上（1,2,3 删 2 → 1,2），时间点跟着一起 -1
-    M.forEach(x=>{if(x.m>m)x.m--});
-    E.forEach(x=>{if(x.m>m)x.m--});
-    if(tapM===m)tapM=null;else if(tapM!=null&&tapM>m)tapM--;
+    M.forEach(x=>{if(x.m>m)x.m-=sp});
+    E.forEach(x=>{if(x.m>m)x.m-=sp});
+    if(tapM===m)tapM=null;else if(tapM!=null&&tapM>m)tapM-=sp;
     syncNext();panel.style.display='none';curM=null;layout();save();
   };
   panel.querySelector('#pAdd').onclick=()=>{addTime(m,stamp());renderPanel();refresh();save()};
