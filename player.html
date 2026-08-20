@@ -489,6 +489,7 @@ function resetTrack(){
   tasks.clear();visible.clear();
   io?.disconnect();io=null;
   staffCache.clear();                              // 谱表检测缓存按页面尺寸为键，换 PDF 必须清
+  rowEdgeCache.clear();
   if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
   aud.src='';aud.load();aud.pause();
   SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
@@ -838,6 +839,52 @@ function snapBarX(mk,winPx){
     if(dd<bd){bd=dd;best=mid}
   }
   return best==null?null:best/W;
+}
+// ③ 行右边界：在渲染好的谱面上，从页右缘往左找「穿过该行所有谱表」的最右一条竖线
+//   （= 这一行的终止线）。行末小节的进度带精确收到这里，不再拿中位间距去猜。
+//   判定逻辑和 snapBarX 一致（跨声部校验），只是找的是最右那条而非离落点最近的。
+const rowEdgeCache=new Map();
+function rowRightEdge(mk){
+  const c=cvs[mk.page];
+  if(!c||!c.width)return null;
+  const key=mk.page+'@'+Math.round(mk.ny*1000)+'@'+c.width+'x'+c.height;
+  if(rowEdgeCache.has(key))return rowEdgeCache.get(key);
+  let out=null;
+  const st=staves(mk.page);
+  if(st&&st.length){
+    const W=c.width,H=c.height;
+    const y0=mk.ny,y1=mk.ny+hOf(mk);
+    const hit=st.filter(s=>s.bot>y0&&s.top<y1);
+    if(hit.length){
+      const cx=Math.round(mk.nx*W);
+      const ys=Math.max(0,Math.round(hit[0].top*H)-1);
+      const ye=Math.min(H-1,Math.round(hit[hit.length-1].bot*H)+1);
+      try{
+        const img=c.getContext('2d',{willReadFrequently:true}).getImageData(cx,ys,Math.max(1,W-cx),ye-ys+1);
+        const d2=img.data,iw=img.width;
+        const dark=(ix,y)=>{const iy=y-ys;
+          for(let k=Math.max(0,ix-1);k<=Math.min(iw-1,ix+1);k++){
+            const p=(iy*iw+k)*4;
+            if(d2[p]*.299+d2[p+1]*.587+d2[p+2]*.114<175)return true;
+          }
+          return false;
+        };
+        for(let ix=iw-2;ix>=1;ix--){                 // 从右往左，第一条通到底的竖线就是行末
+          let okAll=true;
+          for(const s of hit){
+            const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
+            const hh=bb-a+1;
+            if(hh<6){okAll=false;break}
+            let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
+            if(n/hh<0.93){okAll=false;break}
+          }
+          if(okAll){out=(cx+ix)/W;break}
+        }
+      }catch(err){}
+    }
+  }
+  rowEdgeCache.set(key,out);
+  return out;
 }
 function applySnaps(mk){
   let hit='';
@@ -1415,7 +1462,12 @@ function updateProg(t,i,o){
   const nk=o.coverNext;
   // 下一根竖线在同一行才扫到它，否则扫到本行右边缘
   const same=nk&&nk.page===mk.page&&Math.abs(nk.ny-mk.ny)<0.03&&nk.nx>mk.nx;
-  const x0=mk.nx,x1=same?nk.nx:Math.min(1,mk.nx+lineSpan(mk));  // 行末按同行中位间距收边
+  let x1=same?nk.nx:null;
+  if(!same){                                        // 行末：优先精确检测终止线，退回中位间距
+    const re=rowRightEdge(mk);
+    x1=(re!=null&&re>mk.nx+0.005)?re:Math.min(1,mk.nx+lineSpan(mk));
+  }
+  const x0=mk.nx;
   // 扫描线：从覆盖竖线的时间走到下一根的时间，跨多小节休止时平滑走完全程，而不是每小节重置
   const t0=occTimeNear(mk.m,i,-1),t1=nk?occTimeNear(nk.m,i,1):null;
   const p=(t0!=null&&t1!=null&&t1>t0)?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;

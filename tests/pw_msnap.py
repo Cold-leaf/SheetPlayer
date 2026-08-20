@@ -69,7 +69,7 @@ async def main():
         await pg.evaluate("aud.currentTime=4.5"); await asyncio.sleep(0.25)
         r=await pg.evaluate("""()=>{const b=document.getElementById('band'),W=b.parentElement.clientWidth;
           return {L:+(b.offsetLeft/W).toFixed(3),R:+((b.offsetLeft+b.offsetWidth)/W).toFixed(3)}}""")
-        print(ok(abs(r["R"]-.75)<.01), f"行末小节: 带子 {r['L']}→{r['R']} (同行间距 .20，期望收在 .75 而不是 1.0)")
+        print(ok(abs(r["R"]-.935)<.01), f"行末小节: 带子 {r['L']}→{r['R']} (精确检测行末终止线 .935，不再拿中位间距猜成 .75)")
         print(ok(abs(await pg.evaluate("lineSpan(M[2])")-.20)<1e-6), f"中位间距 = {await pg.evaluate('lineSpan(M[2])')}")
 
         # --- 实际点击标小节时生效 ---
