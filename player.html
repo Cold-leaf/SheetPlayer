@@ -131,6 +131,9 @@ body.hidebar #bar{display:none}
 #help kbd{background:#333;border:1px solid #666;border-bottom-width:2px;border-radius:4px;padding:1px 6px;font:12px monospace}
 #help h3{margin:.2em 0 .6em}
 
+#dlg{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:41;align-items:center;justify-content:center}
+#dlg>div{background:#181818;color:#eee;padding:18px 22px;border-radius:8px;width:320px;max-width:90vw}
+#dlg button{background:#444;color:#eee;border:0;padding:5px 14px;border-radius:4px;cursor:pointer}
 #gen{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:21;
      align-items:center;justify-content:center}
 #gen>div{background:#181818;color:#eee;padding:18px 22px;border-radius:8px;width:660px;
@@ -305,6 +308,11 @@ body.hidebar #bar{display:none}
  <canvas id="specCv"></canvas>
 </div>
 <div id="panel"></div>
+<div id="dlg" style="display:none"><div>
+ <div id="dlgMsg" style="margin-bottom:10px;font-size:14px"></div>
+ <input type="text" id="dlgInp" autocomplete="off" style="width:100%;box-sizing:border-box;background:#2b2b2b;color:#eee;border:1px solid #555;border-radius:4px;padding:6px 8px;font-size:15px">
+ <div style="margin-top:12px;text-align:right"><button id="dlgCancel">取消</button><button id="dlgOk" style="background:#0a6;color:#fff;margin-left:8px">确定</button></div>
+</div></div>
 <div id="lib">
  <div id="libBox">
   <div id="libHd">
@@ -430,7 +438,7 @@ function switchMode(name){                      // 切模式：先存旧、再�
   if(name===activeMode)return;
   modeSnapshot();activeMode=name;loadMode(name);
   tapM=null;lastSeek=null;loop={a:null,b:null,on:false};arm=null;
-  syncNext();layout();refresh();syncModeSel();
+  syncNext();layout();refresh();syncModeSel();syncAudSel();
 }
 function newMode(name,fromCurrent){             // 新建模式；fromCurrent 时拷贝当前模式的结构（拍号/速度/顺序），时间点留空
   const base=fromCurrent?deepClone({TEMPO,METER,FORM}):{TEMPO:[{m:1,bpm:120}],METER:[{sig:[4,4],ranges:[]}],FORM:[]};
@@ -457,14 +465,27 @@ function doNewMode(name){
   switchMode(name);
   msg('已新建模式「'+name+'」（时间点留空，拍号/速度沿用当前模式）');
 }
+// 应用内输入框：不用 window.prompt（Chrome 对原生弹窗有"阻止再显示"机制，PWA 里尤其容易被静默屏蔽）
+function askText(msg,def){
+  return new Promise(res=>{
+    $('dlgMsg').textContent=msg;
+    $('dlgInp').value=def||'';
+    $('dlg').style.display='flex';
+    const ok=()=>{$('dlg').style.display='none';res($('dlgInp').value)};
+    const cancel=()=>{$('dlg').style.display='none';res(null)};
+    $('dlgOk').onclick=ok;$('dlgCancel').onclick=cancel;
+    $('dlgInp').onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
+    $('dlgInp').focus();$('dlgInp').select();
+  });
+}
 const audioModeOf=a=>a&&a.mode?a.mode:'标准';      // 老音频没 mode 字段，视为「标准」
-$('bNewMode').onclick=()=>{
+$('bNewMode').onclick=async()=>{
   let name=($('newMode').value||'').trim();
   $('newMode').value='';
   if(!name){                                     // 直接点也弹输入框，不用非得先填文本框
-    const v=prompt('新建模式的名字？','');
-    if(v===null)return;
-    name=v.trim();
+    name=await askText('新建模式的名字？','');
+    if(name==null)return;
+    name=name.trim();
   }
   doNewMode(name);
 };
@@ -780,7 +801,7 @@ syncBarH();
 document.addEventListener('click',e=>{
   if($('menu').style.display!=='none'&&!e.target.closest('#menu')){
     $('menu').style.display='none';
-    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow'))e.stopPropagation();
+    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
@@ -2311,7 +2332,7 @@ $('fAud').onchange=async e=>{
       // 文件已经选好，此时问模式不会消耗文件选择器所需的用户激活
       //（之前是先 prompt 再开文件选择器，prompt 会把激活耗掉，偶发"File chooser dialog..."）
       const names=Object.keys(MODES).join('、');
-      const v=prompt('音频挂到哪个模式？（已有：'+(names||'标准')+'；输入新名字则新建）',activeMode);
+      const v=await askText('音频挂到哪个模式？（已有：'+(names||'标准')+'；输入新名字则新建）',activeMode);
       const mode=(v!=null&&v.trim())?v.trim():activeMode;
       H=await sha256Hex(f);
       if(!(await idbGet(idb,'files',H)))
@@ -2663,9 +2684,9 @@ function syncAudSel(){
     sel.onchange=()=>{if(sel.value==='__add__'){$('fAud').click();setTimeout(syncAudSel,80)}};
     return;
   }
-  sel.innerHTML=(track.audios&&track.audios.length?track.audios.map(a=>
-      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+
-      '（'+esc(audioModeOf(a))+'）</option>').join('')
+  const auds=(track.audios||[]).filter(a=>audioModeOf(a)===activeMode);   // 只显示当前模式的音频
+  sel.innerHTML=(auds.length?auds.map(a=>
+      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+'</option>').join('')
     :'<option value="">（还没有音频）</option>')+
     '<option value="__add__">＋ 添加音频…</option>';
   sel.onchange=async()=>{

@@ -17,7 +17,6 @@ async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":1500,"height":1000})
         pg.on("pageerror",lambda e:errs.append(str(e)))
-        pg.on("dialog",lambda d:asyncio.create_task(d.accept()))
         await pg.goto("http://127.0.0.1:8794/player.html")
         await pg.wait_for_function("()=>idb!==null&&$('lib').style.display==='flex'",timeout=15000)
         await pg.set_input_files("#fPdf",PDF)
@@ -29,41 +28,48 @@ async def main():
         print(ok(await pg.evaluate("Object.keys(MODES).join(',')")=="标准",), "默认一个「标准」模式")
         print(ok(await pg.evaluate("E.length")==1), "标准模式时间点=1")
 
-        # 新建「现场」模式
+        # 直接点新建（文本框空）→ 弹应用内输入框，填「现场」
         await pg.click("#bMenu")
-        await pg.fill("#newMode","现场"); await pg.dispatch_event("#newMode","change")
-        await pg.click("#bNewMode"); await pg.wait_for_timeout(300)
+        await pg.click("#bNewMode")
+        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
+        print(ok(await pg.evaluate("$('dlgMsg').textContent")=="新建模式的名字？"), "空名点新建弹出输入框")
+        await pg.fill("#dlgInp","现场"); await pg.click("#dlgOk"); await pg.wait_for_timeout(300)
         print(ok(await pg.evaluate("activeMode")=="现场"), "新建后切到现场")
         print(ok(await pg.evaluate("E.length")==0), "现场时间点空")
         print(ok(await pg.evaluate("M.length")==2), "小节位置共享")
 
-        # 加音频 1 → 默认挂当前模式（现场）
+        # 加音频 1 → 选文件后弹输入框（默认当前模式「现场」），直接确定
         await pg.set_input_files("#fAud",AUD)
+        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
+        await pg.click("#dlgOk")
         await pg.wait_for_function("()=>track.audios.length===1",timeout=10000)
         print(ok(await pg.evaluate("track.audios[0].mode")=="现场"), f"音频1挂到现场: {await pg.evaluate('track.audios[0].mode')}")
         h1=await pg.evaluate("track.lastAudio")
 
-        # 切回标准，加音频 2（prompt 默认返回空 → 落到当前模式「标准」）
+        # 切回标准，加音频 2（输入框默认「标准」→ 确定）
         await pg.evaluate("switchMode('标准')")
         await pg.set_input_files("#fAud",WAV)
+        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
+        await pg.click("#dlgOk")
         await pg.wait_for_function("()=>track.audios.length===2",timeout=10000)
         print(ok(await pg.evaluate("track.audios[1].mode")=="标准"), f"音频2挂到标准: {await pg.evaluate('track.audios[1].mode')}")
         h2=await pg.evaluate("track.lastAudio")
 
-        # 切到音频1（现场）→ 应自动切到现场模式，时间点变空
-        await pg.evaluate("switchMode('标准')")   # 先回标准（E=1）
+        # 音频下拉按模式过滤：标准模式只显示音频2
+        await pg.wait_for_function("()=>[...$('audSel').options].some(o=>o.text.includes('tone_b'))",timeout=10000)
+        txt=await pg.evaluate("[...$('audSel').options].map(o=>o.text)")
+        print(ok("tone_b" in "|".join(txt) and "晨曦酒庄" not in "|".join(txt)), f"标准模式只显示自己音频: {txt}")
+
+        # 切模式到现场：audSel 只显示现场音频，时间点切到现场（空）
+        await pg.evaluate("switchMode('现场')")
+        await pg.wait_for_timeout(200)
+        txt=await pg.evaluate("[...$('audSel').options].map(o=>o.text)")
+        print(ok("晨曦酒庄" in "|".join(txt) and "tone_b" not in "|".join(txt)), f"现场模式只显示自己音频: {txt}")
+        print(ok(await pg.evaluate("E.length")==0), f"切到现场时间点空: E={await pg.evaluate('E.length')}")
+        # 选现场音频 → 仍停留在现场，时间点不变
         await pg.select_option("#audSel",h1)
-        await pg.wait_for_function("()=>activeMode==='现场'",timeout=10000)
-        print(ok(await pg.evaluate("E.length")==0), f"切到音频1自动切现场: E={await pg.evaluate('E.length')}")
-
-        # 切回音频2（标准）→ 时间点恢复
-        await pg.select_option("#audSel",h2)
-        await pg.wait_for_function("()=>activeMode==='标准'",timeout=10000)
-        print(ok(await pg.evaluate("E.length")==1), f"切回音频2自动切标准: E={await pg.evaluate('E.length')}")
-
-        # 音频下拉显示模式
-        txt=await pg.evaluate("[...$('audSel').options].map(o=>o.text).join('|')")
-        print(ok("现场" in txt and "标准" in txt), f"音频下拉带模式名: {txt}")
+        await pg.wait_for_timeout(200)
+        print(ok(await pg.evaluate("activeMode")=='现场' and await pg.evaluate("E.length")==0), "选现场音频停留在现场模式")
 
         print("\npage errors:",errs or "(none)")
         await b.close()

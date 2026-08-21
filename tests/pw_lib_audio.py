@@ -26,8 +26,10 @@ async def main():
         for fx in (0.3,0.45,0.6):
             await pg.mouse.click(bb["x"]+bb["width"]*fx,bb["y"]+bb["height"]*0.4)
 
-        # 音频 1 → 完整分析
+        # 音频 1 → 完整分析（选完文件会弹「挂到哪个模式」的应用内输入框，直接确定挂当前模式）
         await pg.set_input_files("#fAud",AUD)
+        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
+        await pg.click("#dlgOk")
         await pg.wait_for_function("()=>SPEC!==null||$('specMsg').textContent.includes('失败')",timeout=90000)
         await pg.wait_for_function("()=>track.audios.length===1",timeout=10000)
         print(ok(await pg.evaluate("track.audios[0].name")==AUD.split('/')[-1]), "音频变体挂进曲目（记录文件名）")
@@ -35,6 +37,8 @@ async def main():
 
         # 音频 2 → 变体数 2，标注不动
         await pg.set_input_files("#fAud",WAV)
+        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
+        await pg.click("#dlgOk")
         await pg.wait_for_function("()=>SPEC!==null&&SPEC.dur<4",timeout=90000)
         await pg.wait_for_function("()=>track.audios.length===2",timeout=10000)
         print(ok(await pg.evaluate("M.length")==3), "切音频变体：小节标注全部保留")
