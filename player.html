@@ -452,7 +452,7 @@ function syncModeSel(){
     '<option value="'+esc(n)+'"'+(n===activeMode?' selected':'')+'>'+esc(n)+'</option>').join('')+
     '<option value="__new__">＋ 新建模式…</option>';
   sel.onchange=()=>{
-    if(sel.value==='__new__'){$('newMode').focus();sel.value=activeMode;return}
+    if(sel.value==='__new__'){sel.value=activeMode;promptNewMode();return}
     if(sel.value!==activeMode)switchMode(sel.value);
   };
 }
@@ -479,15 +479,15 @@ function askText(msg,def){
   });
 }
 const audioModeOf=a=>a&&a.mode?a.mode:'标准';      // 老音频没 mode 字段，视为「标准」
-$('bNewMode').onclick=async()=>{
-  let name=($('newMode').value||'').trim();
+async function promptNewMode(){                 // 两个入口（下拉「新建」/菜单「新建」）共用的弹框
+  const name=await askText('新建模式的名字？','');
+  if(name==null)return;
+  doNewMode(name.trim());
+}
+$('bNewMode').onclick=()=>{
+  const name=($('newMode').value||'').trim();
   $('newMode').value='';
-  if(!name){                                     // 直接点也弹输入框，不用非得先填文本框
-    name=await askText('新建模式的名字？','');
-    if(name==null)return;
-    name=name.trim();
-  }
-  doNewMode(name);
+  if(name)doNewMode(name);else promptNewMode();
 };
 $('bRenMode').onclick=()=>{
   const nn=($('renMode').value||'').trim();
