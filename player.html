@@ -1901,9 +1901,12 @@ async function analyzeAudio(file,cacheHash){
     if(my!==specSeq)return;
     await buildSpec(mono,ab.duration,my,cacheHash);
   }catch(err){
-    // 频谱只影响频谱条和起音吸附，播放/跟谱都不受影响，别报得像整首坏了
+    // decodeAudioData 失败通常意味着这个编码连 <audio> 也放不了（同一套解码器）。
+    // 桌面能放、手机原生播放器能放 ≠ 手机浏览器能放——浏览器只支持有限几种编码。
     specMsg('频谱不可用');
-    msg('这首的频谱分析没成功（'+err.message+'），播放和跟谱不受影响',1);
+    const fi=file&&file.name?('《'+file.name+'》'):'这个音频';
+    msg(fi+'打不开（'+err.message+'；类型 '+(file&&file.type||'未知')+'，'+
+      ((file&&file.size||0)/1048576).toFixed(1)+'MB）。多半是编码手机浏览器不支持，建议转成标准 MP3',1);
   }finally{
     // 必须关掉：decodeAudioData 失败时原来直接跳到 catch，AudioContext 泄漏。
     // 浏览器对同时存在的 AudioContext 有数量上限（Chrome 约 6 个），
