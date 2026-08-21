@@ -623,14 +623,24 @@ async function loadPdfBlob(blob,name,H,pre){
   pdf=await openPdf(blob);pdfName=name;
   const note=await tryRestore();
   await buildPages();
+  let audMissing=null;
   if(track&&track.lastAudio){                 // 打开曲目时带上上次在听的那个音频变体（并切到它的模式）
     const r=await idbGet(idb,'files',track.lastAudio);
     if(r)await selectAudio(track.lastAudio,r.blob);
+    else{
+      // 同步过来的标注只带曲目信息，音频文件是各设备本地的。
+      // 以前这里静默跳过，界面上还列着音频名，看着像"有音频但放不了"。
+      const a=(track.audios||[]).find(x=>x.hash===track.lastAudio);
+      audMissing=a?a.name:'音频';
+      const mode=a?audioModeOf(a):null;        // 模式仍要切过去，标注才对得上
+      if(mode&&MODES[mode]&&mode!==activeMode)switchMode(mode);
+    }
   }
   syncModeSel();
-  syncAudSel();
+  syncAudSel();refreshAudLocal();
   showLib(false);
-  msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
+  if(audMissing)msg('《'+audMissing+'》不在这台设备上——同步只搬标注，音频要在本机用「＋ 添加音频…」选一次（标注不受影响）',1);
+  else msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
 }
 
 // 切换曲目前必须整体清零。原来只重建 DOM，M/E/撤销栈/频谱/挂起的渲染任务全带过去，
@@ -1856,11 +1866,12 @@ function specMsg(s){$('specMsg').textContent=s||''}
 async function analyzeAudio(file,cacheHash){
   const my=++specSeq;                                   // 换音频时作废旧的分析
   SPEC=null;specDirty=true;
+  let ac=null;
   try{
     specMsg('解码中…');
     const AC=window.AudioContext||window.webkitAudioContext;
-    const ac=new AC(),ab=await ac.decodeAudioData(await file.arrayBuffer());
-    try{ac.close()}catch(e){}
+    ac=new AC();
+    const ab=await ac.decodeAudioData(await file.arrayBuffer());
     if(my!==specSeq)return;
     specMsg('重采样…');
     const oc=new OfflineAudioContext(1,Math.max(1,Math.ceil(ab.duration*SP_SR)),SP_SR);
@@ -1868,7 +1879,23 @@ async function analyzeAudio(file,cacheHash){
     const mono=(await oc.startRendering()).getChannelData(0);
     if(my!==specSeq)return;
     await buildSpec(mono,ab.duration,my,cacheHash);
-  }catch(err){specMsg('');msg('音频分析失败：'+err.message,1)}
+  }catch(err){
+    // 频谱只影响频谱条和起音吸附，播放/跟谱都不受影响，别报得像整首坏了
+    specMsg('频谱不可用');
+    msg('这首的频谱分析没成功（'+err.message+'），播放和跟谱不受影响',1);
+  }finally{
+    // 必须关掉：decodeAudioData 失败时原来直接跳到 catch，AudioContext 泄漏。
+    // 浏览器对同时存在的 AudioContext 有数量上限（Chrome 约 6 个），
+    // 泄漏几次之后 new AudioContext() 就一直抛错，表现为"每首都分析失败"。
+    if(ac)try{ac.close()}catch(e){}
+  }
+}
+// 串行排队：分析很吃内存（整首解码后可达上百 MB）且要占一个 AudioContext，
+// 并发跑容易在手机上撞内存/上限。后来的任务靠 specSeq 自动作废，不会堆积。
+let specJob=Promise.resolve();
+function queueAnalyze(file,cacheHash,my){
+  specJob=specJob.then(()=>{if(my!==specSeq)return;return analyzeAudio(file,cacheHash)}).catch(()=>{});
+  return specJob;
 }
 function buildSpec(mono,dur,my,cacheHash){
   return new Promise(resolve=>{
@@ -2383,7 +2410,7 @@ $('fAud').onchange=async e=>{
       await idbPut(idb,'tracks',track);
     }
     await selectAudio(H,blob);
-    syncAudSel();syncModeSel();
+    syncAudSel();syncModeSel();refreshAudLocal();   // 本机补上文件后，去掉"不在本机"标注
   }catch(err){msg('音频加载失败：'+err.message,1)}
 };
 function syncMode(){pagesEl.classList.toggle('editing',$('mode').value==='edit')}
@@ -2681,7 +2708,7 @@ async function switchAudio(blob,hash){
   // 否则加载一首曲子要干等完整的解码+STFT（长曲子好几秒），连播时白等。
   // 缓存的 hash 直接传进分析管线：analyzeAudio 内部还会自增 specSeq，
   // 在外面用闭包里的 my 比对必然不等，缓存就永远写不进去了。
-  analyzeAudio(blob,hash);
+  queueAnalyze(blob,hash,specSeq);
 }
 // 像素直接存 Uint8ClampedArray（IDB structured clone 原生支持）。不走 PNG：
 // toBlob 对 32000px 宽的 canvas 有 Safari 上限风险，createImageBitmap 需要 Safari 15+。
@@ -2716,6 +2743,14 @@ async function selectAudio(hash,blob){
   if(mode!==activeMode)switchMode(mode);
   await switchAudio(blob,hash);
 }
+// 哪些音频的文件真的在本机（同步过来的曲目只有名字、没有文件）
+let audLocal=new Set();
+async function refreshAudLocal(){
+  audLocal=new Set();
+  if(!idb||!track)return;
+  for(const a of (track.audios||[]))if(await idbGet(idb,'files',a.hash))audLocal.add(a.hash);
+  syncAudSel();
+}
 function syncAudSel(){
   const sel=$('audSel');
   if(!idb||!track){
@@ -2727,7 +2762,8 @@ function syncAudSel(){
   }
   const auds=(track.audios||[]).filter(a=>audioModeOf(a)===activeMode);   // 只显示当前模式的音频
   sel.innerHTML=(auds.length?auds.map(a=>
-      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+'</option>').join('')
+      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+
+      (audLocal.has(a.hash)?'':' ⚠不在本机')+'</option>').join('')
     :'<option value="">（还没有音频）</option>')+
     '<option value="__add__">＋ 添加音频…</option>';
   sel.onchange=async()=>{
@@ -2738,7 +2774,8 @@ function syncAudSel(){
     }
     const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;
     const rec=await idbGet(idb,'files',a.hash);
-    if(!rec)return msg('音频文件不在库里',1);
+    if(!rec){syncAudSel();
+      return msg('《'+a.name+'》不在这台设备上——用「＋ 添加音频…」在本机选一次这个文件即可',1)}
     track.lastAudio=a.hash;track.updatedAt=Date.now();
     await idbPut(idb,'tracks',track);
     await selectAudio(a.hash,rec.blob);
