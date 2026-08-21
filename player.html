@@ -394,7 +394,6 @@ let TEMPO=[{m:1,bpm:120}],METER=[{sig:[4,4],ranges:[]}],FORM=[];
 // MODES = { 模式名: {E,TEMPO,METER,FORM,offset} }；M（谱面位置）按 PDF 共享。
 // E/TEMPO/METER/FORM/offset 这几个全局变量始终是「当前模式」的那套。
 let MODES={},activeMode='标准';
-let pendingAudioMode=null;                        // 「＋ 添加音频」前先选模式，选完文件再挂上
 let loop={a:null,b:null,on:false},arm=null,lastIdx=-2,lastRun=-2;
 let mkEl=new Map(),byM=new Map(),mkByM=new Map();   // marker→DOM ／ 小节号→DOM数组 ／ 小节号→marker
 const DEF_H=0.05;                          // 小节竖线默认高度（页高的比例）
@@ -459,7 +458,16 @@ function doNewMode(name){
   msg('已新建模式「'+name+'」（时间点留空，拍号/速度沿用当前模式）');
 }
 const audioModeOf=a=>a&&a.mode?a.mode:'标准';      // 老音频没 mode 字段，视为「标准」
-$('bNewMode').onclick=()=>{doNewMode($('newMode').value);$('newMode').value=''};
+$('bNewMode').onclick=()=>{
+  let name=($('newMode').value||'').trim();
+  $('newMode').value='';
+  if(!name){                                     // 直接点也弹输入框，不用非得先填文本框
+    const v=prompt('新建模式的名字？','');
+    if(v===null)return;
+    name=v.trim();
+  }
+  doNewMode(name);
+};
 $('bRenMode').onclick=()=>{
   const nn=($('renMode').value||'').trim();
   if(!nn)return msg('先填一个新名字',1);
@@ -2299,9 +2307,12 @@ $('fAud').onchange=async e=>{
   e.target.value='';       // 清掉，这样重新导出同名 MP3 后再选一次仍然会触发
   try{
     let blob=f,H='';
-    const mode=pendingAudioMode||activeMode;   // 添加前选的模式（没选就用当前）
-    pendingAudioMode=null;
     if(idb&&track){        // 有曲目就挂进去（按哈希去重），没有曲目就只当普通音频放
+      // 文件已经选好，此时问模式不会消耗文件选择器所需的用户激活
+      //（之前是先 prompt 再开文件选择器，prompt 会把激活耗掉，偶发"File chooser dialog..."）
+      const names=Object.keys(MODES).join('、');
+      const v=prompt('音频挂到哪个模式？（已有：'+(names||'标准')+'；输入新名字则新建）',activeMode);
+      const mode=(v!=null&&v.trim())?v.trim():activeMode;
       H=await sha256Hex(f);
       if(!(await idbGet(idb,'files',H)))
         await idbPut(idb,'files',{hash:H,kind:'audio',name:f.name,size:f.size,blob:f});
@@ -2635,15 +2646,6 @@ function restoreSpec(rec){
   return SPEC;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-// 「＋ 添加音频…」先问挂到哪个模式（输入已有名复用 / 新名新建），再开文件选择器
-function askAudioMode(){
-  const names=Object.keys(MODES).join('、');
-  const v=prompt('音频挂到哪个模式？（已有：'+(names||'标准')+'；输入新名字则新建）',activeMode);
-  if(v===null)return false;
-  pendingAudioMode=(v.trim()||activeMode);
-  $('fAud').click();
-  return true;
-}
 // 选一个音频：切到它所属的模式（音频和那套时间点绑定），再换音频源
 async function selectAudio(hash,blob){
   const a=(track&&track.audios||[]).find(x=>x.hash===hash);
@@ -2668,8 +2670,8 @@ function syncAudSel(){
     '<option value="__add__">＋ 添加音频…</option>';
   sel.onchange=async()=>{
     if(sel.value==='__add__'){
-      if(!askAudioMode())setTimeout(syncAudSel,80);   // 取消就复位；选了文件 fAud 完成后会再 syncAudSel
-      else setTimeout(syncAudSel,80);
+      $('fAud').click();                       // 立即开文件选择器，保留用户激活；模式在选完文件后再问
+      setTimeout(syncAudSel,80);
       return;
     }
     const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;

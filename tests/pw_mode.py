@@ -43,9 +43,8 @@ async def main():
         print(ok(await pg.evaluate("track.audios[0].mode")=="现场"), f"音频1挂到现场: {await pg.evaluate('track.audios[0].mode')}")
         h1=await pg.evaluate("track.lastAudio")
 
-        # 切回标准，加音频 2（弹窗输入「标准」）→ 应挂标准
+        # 切回标准，加音频 2（prompt 默认返回空 → 落到当前模式「标准」）
         await pg.evaluate("switchMode('标准')")
-        pg.once("dialog",lambda d:asyncio.create_task(d.accept("标准")))
         await pg.set_input_files("#fAud",WAV)
         await pg.wait_for_function("()=>track.audios.length===2",timeout=10000)
         print(ok(await pg.evaluate("track.audios[1].mode")=="标准"), f"音频2挂到标准: {await pg.evaluate('track.audios[1].mode')}")
