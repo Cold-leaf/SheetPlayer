@@ -38,8 +38,13 @@ body{margin:0;font:14px system-ui;display:flex;flex-direction:column;height:100v
 }
 .sep{width:1px;height:20px;background:#555}
 #stat{color:#9cf}
-#msg{color:#8f8}
-#msg.err{color:#f88}
+/* 消息改成浮动 toast：定位在工具栏下方、悬浮在谱面上，不占布局，工具栏不会跳 */
+#msg{position:fixed;left:50%;top:calc(var(--barH,44px) + 10px);transform:translateX(-50%);
+  background:rgba(28,28,28,.94);color:#8f8;padding:8px 16px;border-radius:6px;z-index:50;
+  pointer-events:none;max-width:86vw;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  text-align:center;white-space:normal}
+#msg:empty{display:none}
+#msg.err{color:#f88;background:rgba(60,28,28,.95)}
 
 #nowBox{color:#fd8;font-weight:600;flex:none;min-width:112px}
 #chipWrap{display:none;flex:1;min-width:0;align-items:center;gap:8px}
@@ -259,7 +264,6 @@ body.hidebar #bar{display:none}
    <button id="plNext" title="下一首">⏭</button>
    <button id="plStop" title="退出播放列表">✕</button>
   </span>
-  <span id="msg"></span>
  </div>
  <div class="row">
   <span id="stat"></span>
@@ -279,6 +283,7 @@ body.hidebar #bar{display:none}
   </span>
  </div>
 </div>
+<div id="msg"></div>
 <button id="barShow" title="显示工具栏">▼</button>
 <div id="menu" style="display:none">
  <div class="msec">小节</div>
