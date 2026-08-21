@@ -244,6 +244,7 @@ body.hidebar #bar{display:none}
   <audio id="aud" controls controlsList="nodownload noplaybackrate noremoteplayback"
          style="width:270px;height:32px"></audio>
   <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
+  <button id="bDelAud" title="删除当前选中的音频变体（连同它在本机的文件）">删音频</button>
   <label title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
   <label>速度<select id="rate">
     <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
@@ -2828,6 +2829,24 @@ function syncAudSel(){
     syncModeSel();
   };
 }
+// 删除当前选中的音频变体：从曲目移除，文件若无别的曲目引用则一并删，标注不受影响
+$('bDelAud').onclick=async()=>{
+  if(!idb||!track)return;
+  const h=$('audSel').value;
+  if(!h||h==='__add__')return msg('先选一个音频再删',1);
+  const a=(track.audios||[]).find(x=>x.hash===h);if(!a)return;
+  if(!confirm('删除音频《'+a.name+'》？它在本机的文件会一并删除（标注不受影响）。'))return;
+  track.audios=track.audios.filter(x=>x.hash!==h);
+  if(track.lastAudio===h)track.lastAudio=null;
+  track.updatedAt=Date.now();
+  await idbPut(idb,'tracks',track);
+  const others=await idbAll(idb,'tracks');
+  const used=others.some(t=>t.hash!==track.hash&&(t.audios||[]).some(x=>x.hash===h));
+  if(!used)await idbDel(idb,'files',h);
+  refreshAudLocal();syncAudSel();syncModeSel();
+  loadModeAudio(activeMode);              // 换回当前模式剩下的音频（没有则清空播放器）
+  msg('已删除音频《'+a.name+'》');
+};
 
 /* ---------- 曲目库界面 ---------- */
 function showLib(v){
