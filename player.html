@@ -1349,9 +1349,13 @@ function occTimeNear(m,i,dir){
   else{for(let k=i;k<OCC.length;k++)if(OCC[k].m===m)return OCC[k].t}
   return null;
 }
+// 浏览器把 aud.currentTime 量化到微秒：跳到小节 3.9166666666666665 会读回 3.916666，
+// 比目标小不到 1 微秒。用严格 <= 判断就会认成"还没进这一小节"，于是暂停时点小节 2
+// 进度带先框 1–2、一播放又跳 2–3。给个 1ms 容差（音乐上完全无感）把这个边界吃掉。
+const OCC_EPS=0.001;
 function occIndex(t){                     // OCC 按 t 递增，二分找最后一个 <= t
   let lo=0,hi=OCC.length-1,r=-1;
-  while(lo<=hi){const mid=(lo+hi)>>1;if(OCC[mid].t<=t){r=mid;lo=mid+1}else hi=mid-1}
+  while(lo<=hi){const mid=(lo+hi)>>1;if(OCC[mid].t<=t+OCC_EPS){r=mid;lo=mid+1}else hi=mid-1}
   return r;
 }
 
