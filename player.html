@@ -196,6 +196,12 @@ body.hidebar #bar{display:none}
 #plHd button{background:#444;color:#eee;border:0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px}
 #plHd button.open{background:#0a6;color:#fff}
 .plRow{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:5px;font-size:13px}
+/* 窄屏：播放列表每行换行排（名字一行、音频+按钮一行），别横向撑出面板 */
+@media (max-width:700px){
+  .plRow{flex-wrap:wrap;gap:6px}
+  .plRow .nm{min-width:0}
+  .plRow select{max-width:52vw}
+}
 .plRow:nth-child(odd){background:#242424}
 .plRow.cur{background:#14432f;outline:1px solid #0a6}
 .plRow .n{color:#888;min-width:22px}
