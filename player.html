@@ -190,6 +190,21 @@ body.hidebar #bar{display:none}
 .libCard button.open{background:#0a6;color:#fff}
 .libCard button.del{background:#5a2828}
 .libEmpty{color:#777;text-align:center;padding:46px 0;line-height:2.2;font-size:14px}
+#plPanel{background:#1d1d1d;border:1px solid #3a3a3a;border-radius:8px;padding:10px 12px;margin-bottom:14px}
+#plHd{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+#plHd label{display:inline-flex;gap:4px;align-items:center;font-size:13px;color:#ccc}
+#plHd button{background:#444;color:#eee;border:0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px}
+#plHd button.open{background:#0a6;color:#fff}
+.plRow{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:5px;font-size:13px}
+.plRow:nth-child(odd){background:#242424}
+.plRow.cur{background:#14432f;outline:1px solid #0a6}
+.plRow .n{color:#888;min-width:22px}
+.plRow .nm{flex:1;min-width:120px;word-break:break-all}
+.plRow select{background:#333;color:#eee;border:1px solid #555;border-radius:3px;padding:1px 3px;max-width:180px}
+.plRow button{background:#3a3a3a;color:#ddd;border:0;padding:3px 8px;border-radius:4px;cursor:pointer}
+.plEmpty{color:#777;padding:10px 4px;font-size:13px}
+#plBox{display:inline-flex;gap:4px;align-items:center}
+#bar #plBox button{padding:3px 8px}
 </style>
 </head>
 <body>
@@ -230,6 +245,12 @@ body.hidebar #bar{display:none}
   </select></label>
   <label title="播放时谱面自动跟着当前小节滚动"><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
   <span class="sep"></span>
+  <span id="plBox" style="display:none">
+   <button id="plPrev" title="上一首">⏮</button>
+   <span id="plNow" style="color:#fd8"></span>
+   <button id="plNext" title="下一首">⏭</button>
+   <button id="plStop" title="退出播放列表">✕</button>
+  </span>
   <span id="msg"></span>
  </div>
  <div class="row">
@@ -324,6 +345,18 @@ body.hidebar #bar{display:none}
    <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来（按时间戳保留较新的）">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
    <button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来（按时间戳保留较新的）">从 GitHub 同步</button>
    <button id="libClose" title="回到谱面">✕</button>
+  </div>
+  <div id="plPanel">
+   <div id="plHd">
+    <b>播放列表</b>
+    <span id="plCount" class="mi"></span>
+    <span style="flex:1"></span>
+    <label title="放完一首自动进下一首；到末尾回到第一首"><input type="checkbox" id="plLoop" checked>循环</label>
+    <label title="每首放完停在下一首开头，等你按播放"><input type="checkbox" id="plPause">每首后暂停</label>
+    <button id="plStart" class="open">▶ 开始播放</button>
+    <button id="plClear">清空</button>
+   </div>
+   <div id="plList"></div>
   </div>
   <div id="libList"></div>
  </div>
@@ -1820,7 +1853,7 @@ const SP_LUT=(()=>{const L=new Uint8Array(768);
   return L})();
 
 function specMsg(s){$('specMsg').textContent=s||''}
-async function analyzeAudio(file){
+async function analyzeAudio(file,cacheHash){
   const my=++specSeq;                                   // 换音频时作废旧的分析
   SPEC=null;specDirty=true;
   try{
@@ -1834,10 +1867,10 @@ async function analyzeAudio(file){
     const s=oc.createBufferSource();s.buffer=ab;s.connect(oc.destination);s.start();
     const mono=(await oc.startRendering()).getChannelData(0);
     if(my!==specSeq)return;
-    await buildSpec(mono,ab.duration,my);
+    await buildSpec(mono,ab.duration,my,cacheHash);
   }catch(err){specMsg('');msg('音频分析失败：'+err.message,1)}
 }
-function buildSpec(mono,dur,my){
+function buildSpec(mono,dur,my,cacheHash){
   return new Promise(resolve=>{
     const half=SP_N/2;
     let hop=256;                                        // canvas 宽度上限 ~32767，长曲子自动降精度
@@ -1893,6 +1926,7 @@ function buildSpec(mono,dur,my){
       cv.getContext('2d').putImageData(new ImageData(data,frames,SP_H),0,0);
       const on=pickOnsets(flux,frames,hop,SP_SR);
       SPEC={cv,frames,hop,sr:SP_SR,dur,onsets:on.t,onsetStr:on.s};
+      if(cacheHash)cacheSpec(cacheHash);        // 这里 my===specSeq 已校验过，缓存的就是这个音频
       specMsg('检出 '+on.t.length+' 个起音');specDirty=true;resolve();
     };
     requestAnimationFrame(step);
@@ -2643,8 +2677,11 @@ async function switchAudio(blob,hash){
     specMsg('频谱已从缓存恢复');specDirty=true;
     return;
   }
-  await analyzeAudio(blob);
-  if(hash&&SPEC)cacheSpec(hash);
+  // 频谱只影响频谱条显示，播放/跟谱都不需要它 —— 不 await，让它在后台跑，
+  // 否则加载一首曲子要干等完整的解码+STFT（长曲子好几秒），连播时白等。
+  // 缓存的 hash 直接传进分析管线：analyzeAudio 内部还会自增 specSeq，
+  // 在外面用闭包里的 my 比对必然不等，缓存就永远写不进去了。
+  analyzeAudio(blob,hash);
 }
 // 像素直接存 Uint8ClampedArray（IDB structured clone 原生支持）。不走 PNG：
 // toBlob 对 32000px 宽的 canvas 有 Safari 上限风险，createImageBitmap 需要 Safari 15+。
@@ -2740,9 +2777,11 @@ async function drawLib(){
         '<span class="mi">音频 '+(t.audios?t.audios.length:0)+'</span>'+
         '<span class="st">更新 '+(t.updatedAt?new Date(t.updatedAt).toLocaleString():'—')+'</span>'+
         '<button class="open" data-h="'+esc(t.hash)+'">打开</button>'+
+        '<button class="pladd" data-h="'+esc(t.hash)+'">加入列表</button>'+
         '<button class="del" data-h="'+esc(t.hash)+'">删除</button></div>';
     }).join('');
     list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
+    list.querySelectorAll('.pladd').forEach(b=>b.onclick=()=>plAdd(b.dataset.h));
     list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
   }
   try{                                            // 存储占用（拿不到就不显示，纯装饰）
@@ -2758,6 +2797,137 @@ async function openTrack(h){
   try{await loadPdfBlob(f.blob,tr.name,h)}
   catch(err){msg('打开失败：'+err.message,1)}
 }
+
+/* ================= 播放列表 =================
+   一条 = 一首曲子 + 指定的音频版本（音频绑着模式，选音频等于选那套时间点）。
+   放完自动进下一首；「每首后暂停」勾上就停在下一首开头等你按播放。      */
+let PL={items:[],loop:true,pauseEach:false},plIdx=-1,plOn=false,plPre=null;
+async function loadPL(){
+  if(!idb)return;
+  const r=await idbGet(idb,'meta','playlist');
+  if(r&&r.v)PL={items:r.v.items||[],loop:r.v.loop!==false,pauseEach:!!r.v.pauseEach};
+}
+function savePL(){if(idb)idbPut(idb,'meta',{hash:'playlist',v:PL})}
+// 条目里指定的音频可能不在本机（播放列表同步过来时），回退到同曲目第一个可用音频
+async function plResolveAudio(it){
+  const tr=await idbGet(idb,'tracks',it.pdfHash);
+  if(!tr)return null;
+  const auds=tr.audios||[];
+  let a=auds.find(x=>x.hash===it.audioHash);
+  if(!a)a=auds.find(x=>x.hash===tr.lastAudio)||auds[0];
+  if(!a)return {tr,rec:null,a:null};
+  const rec=await idbGet(idb,'files',a.hash);
+  return {tr,rec,a,fallback:a.hash!==it.audioHash};
+}
+async function plPlay(i,autoplay){
+  if(!PL.items.length)return;
+  if(i<0||i>=PL.items.length){
+    if(!PL.loop){plStop();return msg('播放列表已放完')}
+    i=(i+PL.items.length)%PL.items.length;
+  }
+  plIdx=i;plOn=true;
+  const it=PL.items[i];
+  const key=it.pdfHash+'|'+it.audioHash;
+  const pre=(plPre&&plPre.key===key)?plPre:null;    // 命中预取：blob 已在内存，省一次 IDB 往返
+  plPre=null;
+  const f=pre?pre.pdf:await idbGet(idb,'files',it.pdfHash);
+  const info=pre?pre.info:await plResolveAudio(it);
+  if(!f||!info||!info.tr){msg('第 '+(i+1)+' 首的谱子不在库里，跳过',1);return plPlay(i+1,autoplay)}
+  showLib(false);
+  await loadPdfBlob(f.blob,info.tr.name,it.pdfHash);
+  if(info.rec)await selectAudio(info.a.hash,info.rec.blob);
+  if(info.fallback)msg('第 '+(i+1)+' 首指定的音频不在本机，已用「'+info.a.name+'」代替',1);
+  syncPL();
+  if(autoplay&&info.rec){try{await aud.play()}catch(err){msg('自动播放被浏览器拦下，点一下播放继续',1)}}
+  plPrefetch();
+}
+function plStop(){plOn=false;plIdx=-1;syncPL()}
+// 预加载下一首：提前把 PDF/音频 blob 从 IndexedDB 读出来放内存，切换时几乎瞬间
+async function plPrefetch(){
+  if(!plOn||!PL.items.length)return;
+  let n=plIdx+1;
+  if(n>=PL.items.length){if(!PL.loop)return;n=0}
+  const it=PL.items[n];if(!it||plPre&&plPre.key===it.pdfHash+'|'+it.audioHash)return;
+  try{
+    const f=await idbGet(idb,'files',it.pdfHash);
+    const info=await plResolveAudio(it);
+    plPre={key:it.pdfHash+'|'+it.audioHash,pdf:f,info};
+  }catch(err){}
+}
+aud.addEventListener('ended',()=>{
+  if(!plOn)return;
+  if(loop.on)return;                       // A-B 循环开着时不该走到这，兜底
+  plPlay(plIdx+1,!PL.pauseEach);
+});
+// 工具栏上的播放列表状态条
+function syncPL(){
+  const box=$('plBox');
+  box.style.display=(plOn&&PL.items.length)?'inline-flex':'none';
+  if(plOn&&PL.items.length)$('plNow').textContent='列表 '+(plIdx+1)+'/'+PL.items.length;
+  $('plCount').textContent=PL.items.length?PL.items.length+' 首':'';
+  $('plLoop').checked=PL.loop;$('plPause').checked=PL.pauseEach;
+  drawPL();
+}
+async function drawPL(){
+  const box=$('plList');if(!box||!idb)return;
+  if(!PL.items.length){box.innerHTML='<div class="plEmpty">还没有曲目。在下面的曲目卡片上点「加入列表」。</div>';return}
+  const rows=[];
+  for(const it of PL.items){
+    const tr=await idbGet(idb,'tracks',it.pdfHash);
+    rows.push({it,tr});
+  }
+  box.innerHTML=rows.map(({it,tr},i)=>{
+    const auds=(tr&&tr.audios)||[];
+    const opts=auds.length?auds.map(a=>'<option value="'+esc(a.hash)+'"'+(a.hash===it.audioHash?' selected':'')+'>'+
+        esc(a.name)+'（'+esc(audioModeOf(a))+'）</option>').join(''):'<option value="">（无音频）</option>';
+    return '<div class="plRow'+(plOn&&i===plIdx?' cur':'')+'">'+
+      '<span class="n">'+(i+1)+'</span>'+
+      '<span class="nm">'+esc(tr?tr.name:'（曲目不在库里）')+'</span>'+
+      '<select data-aud="'+i+'">'+opts+'</select>'+
+      '<button data-up="'+i+'" title="上移">↑</button>'+
+      '<button data-down="'+i+'" title="下移">↓</button>'+
+      '<button data-play="'+i+'" title="从这首开始播">▶</button>'+
+      '<button data-del="'+i+'" title="移出列表">✕</button></div>';
+  }).join('');
+  box.querySelectorAll('[data-aud]').forEach(s=>s.onchange=()=>{
+    PL.items[+s.dataset.aud].audioHash=s.value;savePL();plPre=null});
+  box.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>plMove(+b.dataset.up,-1));
+  box.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>plMove(+b.dataset.down,1));
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.del;PL.items.splice(i,1);
+    if(plIdx>=i)plIdx--;
+    if(!PL.items.length)plOn=false;
+    savePL();syncPL()});
+  box.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>plPlay(+b.dataset.play,true));
+}
+function plMove(i,d){
+  const j=i+d;if(j<0||j>=PL.items.length)return;
+  const t=PL.items[i];PL.items[i]=PL.items[j];PL.items[j]=t;
+  if(plIdx===i)plIdx=j;else if(plIdx===j)plIdx=i;
+  savePL();syncPL();plPre=null;
+}
+async function plAdd(h){
+  const tr=await idbGet(idb,'tracks',h);if(!tr)return;
+  const a=(tr.audios||[]).find(x=>x.hash===tr.lastAudio)||(tr.audios||[])[0];
+  PL.items.push({pdfHash:h,audioHash:a?a.hash:null});
+  savePL();syncPL();
+  msg('已加入播放列表：'+tr.name+'（共 '+PL.items.length+' 首）');
+}
+$('plLoop').onchange=()=>{PL.loop=$('plLoop').checked;savePL()};
+$('plPause').onchange=()=>{PL.pauseEach=$('plPause').checked;savePL()};
+$('plClear').onclick=()=>{
+  if(!PL.items.length)return;
+  if(!confirm('清空播放列表？（曲目本身不受影响）'))return;
+  PL.items=[];plOn=false;plIdx=-1;savePL();syncPL();
+};
+$('plStart').onclick=()=>{
+  if(!PL.items.length)return msg('播放列表是空的',1);
+  if(loop.on){loop.on=false;updLoop();msg('播放列表开始，已关掉 A-B 循环')}   // A-B 开着音频永不结束，进不了下一首
+  plPlay(0,true);
+};
+$('plPrev').onclick=()=>plPlay(plIdx-1,!aud.paused);
+$('plNext').onclick=()=>plPlay(plIdx+1,!aud.paused);
+$('plStop').onclick=()=>{plStop();msg('已退出播放列表')};
 // 按文件名找曲目（加笔记重新导出时哈希会变、名字不变，用这个接回原曲目）。
 // 只认有 PDF 的曲目，同名多条取最近更新的。
 async function findTrackByName(name){
@@ -2872,6 +3042,7 @@ async function boot(){
   }
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
   await sweepLegacy();          // 扫完再画列表，否则 legacy 曲目要等下次重开才出现
+  await loadPL();syncPL();
   showLib(true);
 }
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
