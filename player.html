@@ -218,6 +218,7 @@ body.hidebar #bar{display:none}
  <div class="row">
   <label>PDF<input type="file" id="fPdf" hidden accept=".pdf"></label>
   <input type="file" id="fAud" hidden accept="audio/*">
+  <label title="直接切到曲目库里的另一首">曲目<select id="trackSel"></select></label>
   <label>模式<select id="mode">
     <option value="play" selected>播放</option>
     <option value="mark">标小节</option>
@@ -504,6 +505,23 @@ function newMode(name,fromCurrent){             // 新建模式；fromCurrent �
   MODES[name]={E:[],...base,offset:0};
   return MODES[name];
 }
+/* 曲目下拉：列出曲目库所有曲目，直接切歌 */
+async function syncTrackSel(){
+  const sel=$('trackSel');if(!sel)return;
+  if(!idb){sel.style.display='none';return}
+  sel.style.display='';
+  const trs=await idbAll(idb,'tracks');
+  trs.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  if(!trs.length){sel.innerHTML='<option value="">（没有曲目）</option>';return}
+  sel.innerHTML=trs.map(t=>
+    '<option value="'+esc(t.hash)+'"'+(t.hash===pdfHash?' selected':'')+'>'+esc(t.name)+
+    (t.noFile?' ⚠待导入':'')+'</option>').join('');
+  sel.onchange=()=>{
+    const h=sel.value;
+    if(h&&h!==pdfHash)openTrack(h);
+    else sel.value=pdfHash||'';
+  };
+}
 /* 模式下拉：列出所有模式 + 新建入口 */
 function syncModeSel(){
   const sel=$('modeSel');if(!sel)return;
@@ -663,7 +681,7 @@ async function loadPdfBlob(blob,name,H,pre){
     }
   }
   syncModeSel();
-  syncAudSel();refreshAudLocal();
+  syncAudSel();refreshAudLocal();syncTrackSel();
   showLib(false);
   if(audMissing)msg('《'+audMissing+'》不在这台设备上——同步只搬标注，音频要在本机用「＋ 添加音频…」选一次（标注不受影响）',1);
   else msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
@@ -3057,7 +3075,7 @@ async function delTrack(h){
   for(const o of others)for(const a of (o.audios||[]))used.add(a.hash);
   for(const a of (t.audios||[]))if(!used.has(a.hash))await idbDel(idb,'files',a.hash);
   if(track&&track.hash===h){resetTrack();syncAudSel()}
-  drawLib();
+  drawLib();syncTrackSel();
 }
 
 /* ---------- 批量导出 / 导入（跨设备同步标注，不搬文件） ---------- */
