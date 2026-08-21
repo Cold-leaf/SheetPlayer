@@ -473,6 +473,25 @@ function switchMode(name){                      // 切模式：先存旧、再�
   tapM=null;lastSeek=null;loop={a:null,b:null,on:false};arm=null;
   syncNext();layout();refresh();syncModeSel();syncAudSel();
 }
+// 切到某模式时，把音频也切到该模式在本机的那个（否则音频还停在旧模式的文件上，
+// 尤其旧模式音频缺失/损坏时会一直 0:00 放不了）。优先上次用的，否则第一个本机有的。
+async function loadModeAudio(name){
+  if(!idb||!track)return;
+  const auds=(track.audios||[]).filter(a=>audioModeOf(a)===name);
+  let a=auds.find(x=>x.hash===track.lastAudio);
+  if(!a)a=auds[0];
+  for(const x of (a?[a,...auds]:auds)){
+    if(!x)continue;
+    const rec=await idbGet(idb,'files',x.hash);
+    if(rec){
+      track.lastAudio=x.hash;track.updatedAt=Date.now();
+      await idbPut(idb,'tracks',track);
+      await switchAudio(rec.blob,x.hash);
+      syncAudSel();return;
+    }
+  }
+  resetAudio();syncAudSel();                    // 该模式本机没有音频 → 清空播放器
+}
 function newMode(name,fromCurrent){             // 新建模式；fromCurrent 时拷贝当前模式的结构（拍号/速度/顺序），时间点留空
   const base=fromCurrent?deepClone({TEMPO,METER,FORM}):{TEMPO:[{m:1,bpm:120}],METER:[{sig:[4,4],ranges:[]}],FORM:[]};
   MODES[name]={E:[],...base,offset:0};
@@ -486,7 +505,7 @@ function syncModeSel(){
     '<option value="__new__">＋ 新建模式…</option>';
   sel.onchange=()=>{
     if(sel.value==='__new__'){sel.value=activeMode;promptNewMode();return}
-    if(sel.value!==activeMode)switchMode(sel.value);
+    if(sel.value!==activeMode){switchMode(sel.value);loadModeAudio(sel.value)}
   };
 }
 function doNewMode(name){
@@ -1828,6 +1847,8 @@ $('rate').onchange=()=>{aud.playbackRate=+$('rate').value};
 // 免得显示 1x 实际在 1.5x，也免得 bumpRate 因为对不上选项而跳回 1
 aud.onratechange=()=>{const v=String(aud.playbackRate);
   if([...$('rate').options].some(o=>o.value===v))$('rate').value=v};
+// 音频解码/加载失败（文件损坏、格式不支持）：给出明确提示，而不是只留个 0:00 灰三角
+aud.addEventListener('error',()=>{if(aud.src)msg('这个音频文件打不开（可能损坏或格式不支持），换一个试试',1)});
 aud.preservesPitch=aud.mozPreservesPitch=aud.webkitPreservesPitch=true;
 /* ================= 频谱条 =================
    解码 → 重采样成 11025 单声道 → STFT → 一次性画进离屏 canvas，
