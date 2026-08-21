@@ -40,8 +40,8 @@ async def main():
 
         # 加音频 1 → 选文件后弹输入框（默认当前模式「现场」），直接确定
         await pg.set_input_files("#fAud",AUD)
-        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
-        await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=5000)
+        await pg.click("#dlgModeOk")
         await pg.wait_for_function("()=>track.audios.length===1",timeout=10000)
         print(ok(await pg.evaluate("track.audios[0].mode")=="现场"), f"音频1挂到现场: {await pg.evaluate('track.audios[0].mode')}")
         h1=await pg.evaluate("track.lastAudio")
@@ -49,8 +49,8 @@ async def main():
         # 切回标准，加音频 2（输入框默认「标准」→ 确定）
         await pg.evaluate("switchMode('标准')")
         await pg.set_input_files("#fAud",WAV)
-        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=5000)
-        await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=5000)
+        await pg.click("#dlgModeOk")
         await pg.wait_for_function("()=>track.audios.length===2",timeout=10000)
         print(ok(await pg.evaluate("track.audios[1].mode")=="标准"), f"音频2挂到标准: {await pg.evaluate('track.audios[1].mode')}")
         h2=await pg.evaluate("track.lastAudio")

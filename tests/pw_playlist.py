@@ -20,8 +20,8 @@ async def add_track(pg,pdf,aud):
     await pg.set_input_files("#fPdf",pdf)
     await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=60000)
     await pg.set_input_files("#fAud",aud)
-    await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=8000)
-    await pg.click("#dlgOk")
+    await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=8000)
+    await pg.click("#dlgModeOk")
     await pg.wait_for_function("()=>track&&track.audios.length>0",timeout=20000)
 
 async def main():

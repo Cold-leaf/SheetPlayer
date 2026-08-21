@@ -25,15 +25,15 @@ async def main():
         # 建「现场」模式，挂损坏音频
         await pg.evaluate("newMode('现场',true);switchMode('现场')")
         await pg.set_input_files("#fAud",BAD)
-        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=8000)
-        await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=8000)
+        await pg.click("#dlgModeOk")
         await pg.wait_for_function("()=>track.audios.length===1",timeout=20000)
 
         # 切回标准，挂正常音频
         await pg.evaluate("switchMode('标准')")
         await pg.set_input_files("#fAud",AUD)
-        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=8000)
-        await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=8000)
+        await pg.click("#dlgModeOk")
         await pg.wait_for_function("()=>track.audios.length===2",timeout=20000)
         # 让 lastAudio 指向损坏的「现场」，模拟"进去默认现场"
         await pg.evaluate("""async()=>{const a=track.audios.find(x=>x.mode==='现场');

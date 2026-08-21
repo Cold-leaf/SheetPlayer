@@ -23,8 +23,8 @@ async def main():
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=60000)
         await pg.set_input_files("#fAud",WAV)
-        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=8000)
-        await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=8000)
+        await pg.click("#dlgModeOk")
         await pg.wait_for_function("()=>track&&track.audios.length===1",timeout=20000)
         await pg.evaluate("M=[{page:1,nx:.2,ny:.3,m:1,h:.08}];E=[{m:1,t:0.5,src:'tap'}];syncNext();layout();save()")
         await asyncio.sleep(0.8)
@@ -54,8 +54,8 @@ async def main():
 
         # 在本机重新选一次同一个文件 → 恢复可播放
         await pg.set_input_files("#fAud",WAV)
-        await pg.wait_for_function("()=>$('dlg').style.display==='flex'",timeout=8000)
-        await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>$('dlgMode').style.display==='flex'",timeout=8000)
+        await pg.click("#dlgModeOk")
         await pg.wait_for_function("()=>!!audUrl",timeout=20000)
         await pg.wait_for_timeout(500)
         opts2=await pg.evaluate("[...$('audSel').options].map(o=>o.text)")
