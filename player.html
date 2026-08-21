@@ -1884,15 +1884,31 @@ const SP_LUT=(()=>{const L=new Uint8Array(768);
   return L})();
 
 function specMsg(s){$('specMsg').textContent=s||''}
+// 认 MP4/M4A 的音频编码：在文件字节里找 codec fourcc。decode 失败时能说清是哪种编码。
+function m4aCodec(u8){
+  let txt='';
+  try{txt=new TextDecoder('latin1').decode(u8.subarray(0,Math.min(u8.length,1<<20)))}catch(e){}
+  const i=x=>txt.indexOf(x);
+  if(i('alac')>=0)return 'ALAC（Apple 无损）';
+  if(i('ec-3')>=0)return 'E-AC3（杜比数字+）';
+  if(i('ac-3')>=0)return 'AC-3（杜比数字）';
+  if(i('Opus')>=0)return 'Opus';
+  if(i('fLaC')>=0)return 'FLAC';
+  if(i('mp4a')>=0)return 'AAC';
+  if(i('ID3')>=0||i('\xff\xfb')>=0)return 'MP3';
+  return '';
+}
 async function analyzeAudio(file,cacheHash){
   const my=++specSeq;                                   // 换音频时作废旧的分析
   SPEC=null;specDirty=true;
-  let ac=null;
+  let ac=null,codec='';
   try{
     specMsg('解码中…');
     const AC=window.AudioContext||window.webkitAudioContext;
     ac=new AC();
-    const ab=await ac.decodeAudioData(await file.arrayBuffer());
+    const buf=await file.arrayBuffer();
+    codec=m4aCodec(new Uint8Array(buf));                 // 先认一下编码，失败时能说出来
+    const ab=await ac.decodeAudioData(buf);
     if(my!==specSeq)return;
     specMsg('重采样…');
     const oc=new OfflineAudioContext(1,Math.max(1,Math.ceil(ab.duration*SP_SR)),SP_SR);
@@ -1905,7 +1921,7 @@ async function analyzeAudio(file,cacheHash){
     // 桌面能放、手机原生播放器能放 ≠ 手机浏览器能放——浏览器只支持有限几种编码。
     specMsg('频谱不可用');
     const fi=file&&file.name?('《'+file.name+'》'):'这个音频';
-    msg(fi+'打不开（'+err.message+'；类型 '+(file&&file.type||'未知')+'，'+
+    msg(fi+'打不开（'+(codec?('编码 '+codec+'，'):'')+err.message+'；类型 '+(file&&file.type||'未知')+'，'+
       ((file&&file.size||0)/1048576).toFixed(1)+'MB）。多半是编码手机浏览器不支持，建议转成标准 MP3',1);
   }finally{
     // 必须关掉：decodeAudioData 失败时原来直接跳到 catch，AudioContext 泄漏。
