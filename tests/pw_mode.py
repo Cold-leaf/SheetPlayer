@@ -71,6 +71,14 @@ async def main():
         await pg.wait_for_timeout(200)
         print(ok(await pg.evaluate("activeMode")=='现场' and await pg.evaluate("E.length")==0), "选现场音频停留在现场模式")
 
+        # 曲目库卡片的时间点统计要读 modes（v6），多套时按模式分别显示，不能恒 0
+        await pg.evaluate("switchMode('标准')")          # 标准有 1 个时间点、现场 0 个
+        await pg.evaluate("save()"); await asyncio.sleep(0.8)
+        await pg.evaluate("$('bLib').onclick()"); await pg.wait_for_timeout(500)
+        card=await pg.inner_text(".libCard")
+        print(ok("已打 0 时间点" not in card), f"卡片时间点统计不再恒 0: {card.replace(chr(10),' | ')}")
+        print(ok("标准 1" in card and "现场 0" in card), "多套模式按模式分别显示时间点数")
+
         print("\npage errors:",errs or "(none)")
         await b.close()
 asyncio.run(main())

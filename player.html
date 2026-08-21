@@ -2770,10 +2770,15 @@ async function drawLib(){
     list.innerHTML='<div class="libEmpty">还没有曲目。<br>点「＋ 导入谱子」选一个 PDF，<br>或者直接点工具栏的「PDF」。</div>';
   }else{
     list.innerHTML=rows.map(({t,d})=>{
-      const nb=d&&d.M?d.M.length:0,ne=d&&d.E?d.E.length:0;
+      const nb=d&&d.M?d.M.length:0;
+      // v6 起时间点在 modes 里分套；老数据（v5）才在顶层 E。多套时按模式分别显示。
+      const ms=d&&d.modes?Object.entries(d.modes).map(([n,v])=>[n,(v&&v.E||[]).length])
+                         :(d&&d.E?[['',d.E.length]]:[]);
+      const total=ms.reduce((a,x)=>a+x[1],0);
+      const neTxt=ms.length>1?ms.map(([n,c])=>esc(n)+' '+c).join(' / '):String(total);
       return '<div class="libCard'+(t.noFile?' legacy':'')+'">'+
         '<span class="nm">'+esc(t.name)+(t.noFile?'<small>等待导入 PDF</small>':'')+'</span>'+
-        '<span class="mi">已标 '+nb+' 小节</span><span class="mi">已打 '+ne+' 时间点</span>'+
+        '<span class="mi">已标 '+nb+' 小节</span><span class="mi">已打 '+neTxt+' 时间点</span>'+
         '<span class="mi">音频 '+(t.audios?t.audios.length:0)+'</span>'+
         '<span class="st">更新 '+(t.updatedAt?new Date(t.updatedAt).toLocaleString():'—')+'</span>'+
         '<button class="open" data-h="'+esc(t.hash)+'">打开</button>'+
