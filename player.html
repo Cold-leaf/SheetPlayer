@@ -98,7 +98,8 @@ body.hidebar #bar{display:none}
 #specTip{color:#666}
 #specCv{width:100%;height:112px;display:block;cursor:grab;touch-action:none}
 #specCv.grab{cursor:grabbing}
-#pages{padding:calc(var(--barH,44px) + 10px) 0 10px}
+/* 固定留白，不跟 --barH 走：工具栏是盖在上面的浮层，收展不改变 PDF 布局 */
+#pages{padding:10px 0 10px}
 .page{position:relative;margin:10px auto;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.4)}
 .page canvas{position:absolute;inset:0;width:100%;height:100%}
 
