@@ -2917,7 +2917,7 @@ $('libClose').onclick=()=>showLib(false);
 $('libAdd').onclick=()=>{$('fPdf').click()};
 $('bLib').onclick=()=>{
   if(!idb)return msg('此浏览器不支持曲目库（IndexedDB 不可用），已用传统模式',1);
-  aud.pause();showLib(true);
+  showLib(true);       // 音频继续放，进曲库只是盖一层，不打断
 };
 async function drawLib(){
   const list=$('libList');if(!idb)return;
