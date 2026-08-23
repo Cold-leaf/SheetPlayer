@@ -115,6 +115,12 @@ body.hidebar #bar{display:none}
 #specHdr button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:2px 9px;border-radius:4px;cursor:pointer}
 #specMsg{color:var(--ok)}
 #specTip{color:var(--text-dim)}
+/* 窄屏：频谱头换行排（默认不换行会把「收起」挤到视口外，且 body 不能横向滚），
+   鼠标操作提示在触屏上没用，藏掉 */
+@media (max-width:700px){
+  #specHdr{flex-wrap:wrap;row-gap:4px}
+  #specTip{display:none}
+}
 #specCv{width:100%;height:112px;display:block;cursor:grab;touch-action:none}
 #specCv.grab{cursor:grabbing}
 /* 固定留白，不跟 --barH 走：工具栏是盖在上面的浮层，收展不改变 PDF 布局 */
