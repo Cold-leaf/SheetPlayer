@@ -599,7 +599,7 @@ async function syncTrackSel(){
   trs.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
   if(!trs.length){sel.innerHTML='<option value="">（没有曲目）</option>';return}
   sel.innerHTML=trs.map(t=>
-    '<option value="'+esc(t.hash)+'"'+(t.hash===pdfHash?' selected':'')+'>'+esc(t.name)+
+    '<option value="'+esc(t.hash)+'"'+(t.hash===pdfHash?' selected':'')+' title="'+esc(t.name)+'">'+esc(dispName(t.name))+
     (t.noFile?' ⚠待导入':'')+'</option>').join('');
   sel.onchange=()=>{
     const h=sel.value;
@@ -1008,7 +1008,8 @@ function syncReh(){
   $('rehPrev').disabled=!hasPL;
   $('rehNext').disabled=!hasPL;
   const modeTxt=track&&Object.keys(MODES).length>1?' · '+activeMode:'';
-  $('rehLbl').innerHTML=track?esc(track.name)+(modeTxt?'<small>'+esc(modeTxt)+'</small>':''):'';
+  $('rehLbl').innerHTML=track?esc(dispName(track.name))+(modeTxt?'<small>'+esc(modeTxt)+'</small>':''):'';
+  $('rehLbl').title=track?track.name:'';
   $('rehDur').textContent=fmt(isFinite(aud.duration)?aud.duration:0);
 }
 $('rehPlay').onclick=()=>{if(aud.src)aud.paused?aud.play():aud.pause()};
@@ -2956,6 +2957,12 @@ function restoreSpec(rec){
   return SPEC;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+// 显示名：去扩展名和下载器尾缀（_0_1787155482878 这类；只认末尾 ≥10 位数字的才是时间戳，
+// 不误伤 _2024_08 这种）。只用于界面显示，数据里的原名不动——名字是重链接的匹配依据
+function dispName(s){
+  s=String(s||'').replace(/\.(pdf|mp3|m4a|wav|flac|aac|ogg|opus)$/i,'');
+  return s.replace(/_\d+_\d{10,}$/,'');
+}
 // 选一个音频：切到它所属的模式（音频和那套时间点绑定），再换音频源
 async function selectAudio(hash,blob){
   const a=(track&&track.audios||[]).find(x=>x.hash===hash);
@@ -2983,7 +2990,7 @@ function syncAudSel(){
   }
   const auds=(track.audios||[]).filter(a=>audioModeOf(a)===activeMode);   // 只显示当前模式的音频
   sel.innerHTML=(auds.length?auds.map(a=>
-      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+'>'+esc(a.name)+
+      '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+' title="'+esc(a.name)+'">'+esc(dispName(a.name))+
       (audLocal.has(a.hash)?'':' ⚠不在本机')+'</option>').join('')
     :'<option value="">（还没有音频）</option>')+
     '<option value="__add__">＋ 添加音频…</option>';
@@ -3053,7 +3060,7 @@ async function drawLib(){
       const total=ms.reduce((a,x)=>a+x[1],0);
       const neTxt=ms.length>1?ms.map(([n,c])=>esc(n)+' '+c).join(' / '):String(total);
       return '<div class="libCard'+(t.noFile?' legacy':'')+'">'+
-        '<span class="nm">'+esc(t.name)+(t.noFile?'<small>等待导入 PDF</small>':'')+'</span>'+
+        '<span class="nm" title="'+esc(t.name)+'">'+esc(dispName(t.name))+(t.noFile?'<small>等待导入 PDF</small>':'')+'</span>'+
         '<span class="mi">已标 '+nb+' 小节</span><span class="mi">已打 '+neTxt+' 时间点</span>'+
         '<span class="mi">音频 '+(t.audios?t.audios.length:0)+'</span>'+
         '<span class="st">更新 '+(t.updatedAt?new Date(t.updatedAt).toLocaleString():'—')+'</span>'+
@@ -3165,11 +3172,11 @@ async function drawPL(){
   }
   box.innerHTML=rows.map(({it,tr},i)=>{
     const auds=(tr&&tr.audios)||[];
-    const opts=auds.length?auds.map(a=>'<option value="'+esc(a.hash)+'"'+(a.hash===it.audioHash?' selected':'')+'>'+
-        esc(a.name)+'（'+esc(audioModeOf(a))+'）</option>').join(''):'<option value="">（无音频）</option>';
+    const opts=auds.length?auds.map(a=>'<option value="'+esc(a.hash)+'"'+(a.hash===it.audioHash?' selected':'')+' title="'+esc(a.name)+'">'+
+        esc(dispName(a.name))+'（'+esc(audioModeOf(a))+'）</option>').join(''):'<option value="">（无音频）</option>';
     return '<div class="plRow'+(plOn&&i===plIdx?' cur':'')+'">'+
       '<span class="n">'+(i+1)+'</span>'+
-      '<span class="nm">'+esc(tr?tr.name:'（曲目不在库里）')+'</span>'+
+      '<span class="nm"'+(tr?' title="'+esc(tr.name)+'"':'')+'>'+esc(tr?dispName(tr.name):'（曲目不在库里）')+'</span>'+
       '<select data-aud="'+i+'">'+opts+'</select>'+
       '<button data-up="'+i+'" title="上移">↑</button>'+
       '<button data-down="'+i+'" title="下移">↓</button>'+
