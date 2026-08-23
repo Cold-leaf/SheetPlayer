@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SheetPlayer 视觉方案预览</title>
+<style>
+:root{
+  --bg:#0e1116;          /* 页面底色 */
+  --bg-soft:#151a21;     /* 面板/下拉/工具栏 */
+  --surface:#1d232c;     /* 卡片/浮层 */
+  --border:#36404c;      /* 描边（提亮后可见） */
+  --text:#e8ebf0;
+  --text-dim:#9aa5b1;    /* 次要文字（对比 6.9:1） */
+  --accent:#f2b04a;      /* 主色：播放/激活/当前 */
+  --accent-bg:rgba(242,176,74,.14);
+  --ok:#5ec98a;
+  --danger:#f16d6d;
+  --r:8px;
+}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;background:#0a0d11;color:var(--text)}
+.wrap{max-width:1040px;margin:0 auto;padding:40px 20px 80px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:14px;color:var(--accent);letter-spacing:.06em;margin:44px 0 4px;text-transform:uppercase}
+p.lead{color:var(--text-dim);margin:0 0 8px}
+.note{color:var(--text-dim);font-size:13px;margin-top:10px}
+
+/* 可点元素：统一按压/悬停/焦点反馈 */
+button,.btn,.ic,.pill .btn{transition:opacity .15s ease, transform .08s ease, background .15s ease}
+button:active,.btn:active,.ic:active,.pill .btn:active{opacity:.65;transform:scale(.97)}
+button:focus-visible,.btn:focus-visible,.ic:focus-visible,.pill .btn:focus-visible,
+.sel:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{cursor:pointer}
+
+/* 图标 */
+svg{width:22px;height:22px;flex:none}
+
+/* 令牌 */
+.tokens{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0}
+.tok{width:120px}
+.tok .sw{height:44px;border-radius:var(--r);border:1px solid var(--border)}
+.tok b{display:block;font-size:13px;font-weight:600;margin-top:6px}
+.tok code{font-size:12px;color:var(--text-dim)}
+
+/* 屏幕外框 */
+.screen{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-top:12px}
+.screen .chrome{height:26px;background:var(--bg-soft);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px}
+.screen .chrome i{width:9px;height:9px;border-radius:50%;background:#444}
+.screen .chrome span{margin-left:8px;font-size:12px;color:var(--text-dim)}
+
+/* ===== 排练模式 ===== */
+.stage{position:relative;height:460px;background:var(--bg)}
+.page{position:absolute;inset:18px 20px;background:#fbfbfa;border-radius:2px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.staff{margin:30px 26px;height:64px}
+.staff .ln{height:1px;background:#2a2a2a;margin-top:13px}
+.pill{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;
+  background:rgba(21,26,33,.94);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:999px;
+  padding:8px 16px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.pill .btn{width:44px;height:44px;border-radius:50%;border:0;display:flex;align-items:center;justify-content:center}
+.pill .btn.primary{background:var(--accent);color:#1a1408}
+.pill .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+.pill .prog{flex:1;min-width:180px}
+.pill .prog .t{display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);font-variant-numeric:tabular-nums;margin-bottom:4px}
+.pill .prog .track{height:8px;background:var(--surface);border-radius:4px;overflow:hidden}
+.pill .prog .fill{height:100%;width:56%;background:var(--accent)}
+.pill .lbl{font-size:13px;color:var(--text);white-space:nowrap}
+.pill .lbl small{color:var(--text-dim)}
+
+/* ===== 设置工具栏 ===== */
+.toolbar{background:var(--bg-soft);border-bottom:1px solid var(--border);padding:10px 12px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 13px;font-size:14px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;min-height:36px}
+.btn svg{width:18px;height:18px}
+.btn.primary{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--text-dim)}
+.btn.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.btn.danger{color:var(--danger)}
+.sel{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:14px;min-height:36px}
+.sep{width:1px;height:24px;background:var(--border)}
+.hint{font-size:13px;color:var(--text-dim)}
+.badge{background:var(--accent-bg);color:var(--accent);border-radius:999px;padding:3px 12px;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+
+/* ===== 曲目库 ===== */
+.lib{background:var(--bg);padding:18px 20px}
+.lib-head{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.lib-head b{font-size:16px}
+.lib-head .sp{flex:1}
+.card{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.card.cur{border-color:var(--accent);background:var(--accent-bg)}
+.card .nm{font-size:15px;font-weight:600;flex:1;min-width:0}
+.card .meta{font-size:13px;color:var(--text-dim);white-space:nowrap}
+.card .open{background:var(--accent);color:#1a1408;border:0;border-radius:7px;padding:9px 20px;font-size:14px;font-weight:600;min-height:40px}
+.card .ic{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 11px;font-size:13px;display:inline-flex;align-items:center;gap:6px;min-height:36px}
+.card .ic svg{width:16px;height:16px}
+.card .ic.del{color:var(--danger);border-color:transparent}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>SheetPlayer 视觉方案</h1>
+<p class="lead">核心：分「排练」和「设置」两种状态——排练时谱面几乎全屏、只留一条极简悬浮胶囊；设置时才展开完整工具栏。整体暗色，暖金为主色。</p>
+
+<h2>设计令牌</h2>
+<div class="tokens">
+ <div class="tok"><div class="sw" style="background:#0e1116"></div><b>页面底色</b><code>#0e1116</code></div>
+ <div class="tok"><div class="sw" style="background:#151a21"></div><b>面板/工具栏</b><code>#151a21</code></div>
+ <div class="tok"><div class="sw" style="background:#1d232c"></div><b>卡片/浮层</b><code>#1d232c</code></div>
+ <div class="tok"><div class="sw" style="background:#36404c"></div><b>描边</b><code>#36404c</code></div>
+ <div class="tok"><div class="sw" style="background:#f2b04a"></div><b>主色（播放/激活）</b><code>#f2b04a</code></div>
+ <div class="tok"><div class="sw" style="background:#5ec98a"></div><b>成功</b><code>#5ec98a</code></div>
+ <div class="tok"><div class="sw" style="background:#f16d6d"></div><b>危险/删除</b><code>#f16d6d</code></div>
+ <div class="tok"><div class="sw" style="background:#9aa5b1"></div><b>次要文字</b><code>#9aa5b1</code></div>
+</div>
+<p class="note">数字（时间、小节号）统一 tabular-nums；描边已提亮（对比约 1.9:1），分隔线可见。</p>
+
+<h2>① 排练模式（核心）</h2>
+<p class="lead">谱面全屏，底部一条半透明胶囊。按钮均为 44px 触控目标、SVG 图标 + aria-label；播放按钮带 aria-pressed 状态。点 ⌃ 呼出完整工具栏。</p>
+<div class="screen">
+ <div class="chrome"><i></i><i></i><i></i><span>排练中</span></div>
+ <div class="stage">
+  <div class="page">
+   <div class="staff"><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
+   <div class="staff"><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
+  </div>
+  <div class="pill">
+   <button class="btn ghost" aria-label="上一首" title="上一首">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+   </button>
+   <button class="btn primary" aria-label="暂停" aria-pressed="true" title="暂停">
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+   </button>
+   <button class="btn ghost" aria-label="下一首" title="下一首">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+   </button>
+   <div class="prog">
+    <div class="t"><span>1:24</span><span>2:57</span></div>
+    <div class="track"><div class="fill"></div></div>
+   </div>
+   <span class="lbl">斯卡布罗集市 <small>· 现场</small></span>
+   <button class="btn ghost" aria-label="展开工具栏" title="展开工具栏">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+   </button>
+  </div>
+ </div>
+</div>
+
+<h2>② 设置工具栏（悬浮）</h2>
+<p class="lead">控件按功能分组，激活态用金色描边 + 图标变化（不单靠颜色）；「播放」是当前激活态。</p>
+<div class="screen">
+ <div class="chrome"><i></i><i></i><i></i><span>设置</span></div>
+ <div class="toolbar">
+  <div class="row">
+   <span class="sel">曲目 ▾</span>
+   <span class="sel">模式 ▾</span>
+   <span class="sep"></span>
+   <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 21 6 18 18 6 18 3 6"/><line x1="6" y1="9" x2="6" y2="12"/></svg>撤销</button>
+   <button class="btn">标小节</button>
+   <button class="btn on" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>播放</button>
+   <button class="btn">频谱</button>
+   <span class="sep"></span>
+   <button class="btn ghost" aria-label="菜单" title="菜单"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
+  </div>
+  <div class="row" style="margin-top:8px">
+   <span class="sel">音频 ▾</span>
+   <span class="sel">速度 ▾</span>
+   <span class="badge" role="switch" aria-checked="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>跟随滚动</span>
+   <span class="sep"></span>
+   <span class="hint">已标 48 小节 · 已打 24 时间点 · 2 段</span>
+  </div>
+ </div>
+ <div class="stage" style="height:200px">
+  <div class="page" style="inset:16px 18px"><div class="staff" style="margin:20px 22px"><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div></div>
+ </div>
+</div>
+
+<h2>③ 曲目库</h2>
+<p class="lead">「打开」是唯一主操作，最大最醒目；删除等次要操作弱化，带图标 + aria-label。</p>
+<div class="screen">
+ <div class="chrome"><i></i><i></i><i></i><span>曲目库</span></div>
+ <div class="lib">
+  <div class="lib-head"><b>曲目库</b><span class="hint">12 首</span><span class="sp"></span>
+   <button class="btn">从 GitHub 同步</button><button class="btn primary">＋ 导入谱子</button></div>
+  <div class="card cur">
+   <span class="nm">斯卡布罗集市</span>
+   <span class="meta">已标 48 小节 · 已打 24 点 · 2 模式</span>
+   <button class="ic" aria-label="加入播放列表" title="加入播放列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="10" y1="3" x2="10" y2="9"/></svg></button>
+   <button class="open">打开</button>
+  </div>
+  <div class="card">
+   <span class="nm">传奇</span>
+   <span class="meta">已标 85 小节 · 已打 85 点 · 1 模式</span>
+   <button class="ic" aria-label="加入播放列表" title="加入播放列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="10" y1="3" x2="10" y2="9"/></svg></button>
+   <button class="ic del" aria-label="删除" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+   <button class="open">打开</button>
+  </div>
+  <div class="card">
+   <span class="nm">我和我的祖国</span>
+   <span class="meta">已标 42 小节 · 已打 74 点 · 1 模式</span>
+   <button class="ic" aria-label="加入播放列表" title="加入播放列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="10" y1="3" x2="10" y2="9"/></svg></button>
+   <button class="ic del" aria-label="删除" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+   <button class="open">打开</button>
+  </div>
+ </div>
+</div>
+
+<p class="note">本轮修订：触控目标 ≥44px、SVG 图标 + aria-label/aria-pressed、描边提亮、字号上提、按压/焦点反馈、排练胶囊加「展开工具栏」按钮。仍是静态预览，定稿后再落到 player.html。</p>
+</div>
+</body>
+</html>
