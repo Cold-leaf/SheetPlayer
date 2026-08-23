@@ -55,9 +55,13 @@ button:active{opacity:.65}
   #panel{left:8px;right:8px;top:auto;bottom:8px;min-width:0;
          max-height:calc(100dvh - var(--barH,96px) - 20px)}
   #aud{flex:none}
+  /* select 的宽度由最长的那个选项撑开——曲库里有长名字的曲目就会把整条顶宽。
+     窄屏封顶，超出的名字由 text-overflow 收掉（全名在 title 和曲目库里看） */
+  #trackSel,#audSel{max-width:38vw;text-overflow:ellipsis}
 }
 .sep{width:1px;height:20px;background:var(--border)}
-#stat{color:var(--info)}
+/* flex:none + nowrap：窄屏 .row 是 nowrap 横滑的，不锁死会被挤成 1 字宽逐字竖排 */
+#stat{color:var(--info);white-space:nowrap;flex:none}
 /* 消息改成浮动 toast：定位在工具栏下方、悬浮在谱面上，不占布局，工具栏不会跳 */
 #msg{position:fixed;left:50%;top:calc(var(--barH,44px) + 10px);transform:translateX(-50%);
   background:var(--bg-soft);color:var(--ok);padding:8px 16px;border-radius:8px;z-index:50;
