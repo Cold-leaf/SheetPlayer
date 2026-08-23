@@ -123,8 +123,10 @@ body.hidebar #bar{display:none}
 }
 #specCv{width:100%;height:112px;display:block;cursor:grab;touch-action:none}
 #specCv.grab{cursor:grabbing}
-/* 固定留白，不跟 --barH 走：工具栏是盖在上面的浮层，收展不改变 PDF 布局 */
-#pages{padding:10px 0 10px}
+/* 四周垫约一屏的空白（90dvh/90vw）：谱面像一张纸，可以拖到视口内任意位置，
+   拖到顶/底/边也不会有「卡死拉不动」的死角（滚动坐标里有了负空间）。
+   留白固定不跟 --barH 走：工具栏是盖在上面的浮层，收展不改变 PDF 布局 */
+#pages{padding:calc(90dvh - 20px) calc(90vw - 20px)}
 .page{position:relative;margin:10px auto;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.4)}
 .page canvas{position:absolute;inset:0;width:100%;height:100%}
 
@@ -835,6 +837,7 @@ async function buildPages(){
     boxes[n]=box;pagesEl.appendChild(box);
   }
   applyZoom();layout();observe();
+  scrollHome();                                 // 初始位置：谱面顶落在工具栏下方，而不是空白留白区
 }
 function setPageSizes(){
   for(let n=1;n<boxes.length;n++){
@@ -903,19 +906,28 @@ $('bFitW').onclick=()=>{                         // 纵向：适应宽度；横�
   const dim=$('chkHoriz').checked?h:w;
   zoom=Math.max(0.05,Math.min(10,avail/dim));
   $('zoom').value=zoom;$('zoomVal').textContent=Math.round(zoom*100)+'%';
-  applyZoom();wrap.scrollTop=0;wrap.scrollLeft=0;
+  applyZoom();scrollHome();
 };
 $('chkHoriz').onchange=()=>{                     // 页面左右铺开
   const v=$('chkHoriz').checked;
   pagesEl.classList.toggle('horiz',v);
   $('bHoriz').textContent=v?'横向':'纵向';        // 按钮显示当前方向
-  wrap.scrollTop=0;wrap.scrollLeft=0;
+  scrollHome();
 };
+// 滚到内容原点：谱面顶边落在工具栏正下方（工具栏收起时贴视口顶）。
+// 四周大留白由 #pages 的 padding 提供——scrollTop=0 时反而是空白区，不能用 0 当初始位置
+function scrollHome(){
+  const cs=getComputedStyle(pagesEl);
+  wrap.scrollTop=(parseFloat(cs.paddingTop)||0)-$('bar').offsetHeight;
+  wrap.scrollLeft=parseFloat(cs.paddingLeft)||0;
+}
 $('bHoriz').onclick=()=>$('chkHoriz').click();
 
 /* 缩放并锚定在视口某个点（触控板捏合 / 双指缩放），该点下的内容保持不动。
    页面有 10px 固定边距，不随缩放变——直接按内容坐标整体缩放会差 margin*(zr-1)
-   （1.6x 时 6px，3x 时 20px）。锚点落在页面盒子里时按页内比例换算，误差消掉。 */
+   （1.6x 时 6px，3x 时 20px）。锚点落在页面盒子里时按页内比例换算，误差消掉。
+   空白处分支还要先剥掉 #pages 的大留白（padding 是固定的，不随缩放变，
+   不剥掉的话 zr 会把留白也放大，锚点漂几百像素）。 */
 function zoomAt(z,ax,ay){
   z=Math.max(0.05,Math.min(10,z));
   const zr=z/zoom;if(Math.abs(zr-1)<1e-9)return;
@@ -936,8 +948,10 @@ function zoomAt(z,ax,ay){
     wrap.scrollLeft=box.offsetLeft+box.offsetWidth*fx-ax;
     wrap.scrollTop=box.offsetTop+box.offsetHeight*fy-ay;
   }else{                                               // 页面之间/空白处：退回整体缩放
+    const cs=getComputedStyle(pagesEl);
+    const pl=parseFloat(cs.paddingLeft)||0,pt=parseFloat(cs.paddingTop)||0;
     setPageSizes();
-    wrap.scrollLeft=cx*zr-ax;wrap.scrollTop=cy*zr-ay;
+    wrap.scrollLeft=(cx-pl)*zr+pl-ax;wrap.scrollTop=(cy-pt)*zr+pt-ay;
   }
   clearTimeout(zoomDeb);zoomDeb=setTimeout(applyZoom,120);
 }
