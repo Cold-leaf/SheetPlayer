@@ -3059,10 +3059,12 @@ async function drawLib(){
         '<span class="st">更新 '+(t.updatedAt?new Date(t.updatedAt).toLocaleString():'—')+'</span>'+
         '<button class="open" data-h="'+esc(t.hash)+'">打开</button>'+
         '<button class="pladd" data-h="'+esc(t.hash)+'">加入列表</button>'+
+        '<button class="ren" data-h="'+esc(t.hash)+'">改名</button>'+
         '<button class="del" data-h="'+esc(t.hash)+'">删除</button></div>';
     }).join('');
     list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
     list.querySelectorAll('.pladd').forEach(b=>b.onclick=()=>plAdd(b.dataset.h));
+    list.querySelectorAll('.ren').forEach(b=>b.onclick=()=>renTrack(b.dataset.h));
     list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
   }
   try{                                            // 存储占用（拿不到就不显示，纯装饰）
@@ -3197,6 +3199,22 @@ async function plAdd(h){
   PL.items.push({pdfHash:h,audioHash:a?a.hash:null});
   savePL();syncPL();
   msg('已加入播放列表：'+tr.name+'（共 '+PL.items.length+' 首）');
+}
+// 改显示名：名字是「重导出 PDF 后按文件名接回」的匹配依据，改成规范文件名才能让关联生效
+async function renTrack(h){
+  const tr=await idbGet(idb,'tracks',h);if(!tr)return;
+  const name=await askText('给《'+tr.name+'》改个名字？',tr.name);
+  if(name==null)return;
+  const nn=(name||'').trim();
+  if(!nn)return msg('名字不能为空',1);
+  if(nn===tr.name)return;
+  const dup=(await idbAll(idb,'tracks')).some(t=>t.hash!==h&&t.name===nn);   // 同名会干扰匹配（取最近更新的），拦住
+  if(dup)return msg('曲目库已经有叫「'+nn+'」的曲目了',1);
+  tr.name=nn;tr.updatedAt=Date.now();
+  await idbPut(idb,'tracks',tr);
+  if(track&&track.hash===h)track.name=nn;        // 当前打开的就是它：内存对象跟上，界面不用重开
+  drawLib();syncTrackSel();syncReh();
+  msg('已改名《'+nn+'》');
 }
 $('plLoop').onchange=()=>{PL.loop=$('plLoop').checked;savePL()};
 $('plPause').onchange=()=>{PL.pauseEach=$('plPause').checked;savePL()};
