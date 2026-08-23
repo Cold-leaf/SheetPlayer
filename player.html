@@ -324,10 +324,8 @@ body.hidebar #reh{display:flex}
   </span>
  </div>
  <div class="row">
-  <span id="stat"></span>
- </div>
- <div class="row">
   <span id="nowBox">现在 —</span>
+  <span id="stat"></span>
   <span class="sep"></span>
   <span id="chipWrap"><span style="color:#999;flex:none">段落</span><span id="chips"></span></span>
   <span class="sep"></span>
@@ -1083,8 +1081,8 @@ function refresh(){                      // 只改状态，不重建 DOM
   dirty=true;lastIdx=-2;drawChips();updLoop();stat();
 }
 function stat(){
-  $('stat').textContent=(track?'《'+track.name+'》　':'')+'已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
-    +(Object.keys(MODES).length>1?' / 模式 '+activeMode:'')
+  // 曲名/模式在各自下拉里已经能看到，这里只留动作统计和目标指示（挂在「现在」行，省一整行）
+  $('stat').textContent='已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
     +(RUNS.length>1?' / '+RUNS.length+' 段':'')
     +(tapM!=null?' / 目标 → 小节 '+tapM:'');
 }
