@@ -37,6 +37,16 @@ button:active{opacity:.65}
 #bar input[type=range]::-moz-range-thumb{width:22px;height:22px}
 #zoomVal{min-width:38px;color:var(--info);font-variant-numeric:tabular-nums}
 
+/* 触屏设备（iPad/手机）：工具栏点按目标加大到 44px、间距 8px；桌面鼠标保持现有密度。
+   border-box 让 min-height 就是总高，否则 44 内容+padding+边框会涨到 60+ 一行。
+   含 select 的 label 收掉上下 padding——select 自己已 44，label 再垫会叠到 58 */
+@media (pointer:coarse){
+  #bar button,#bar label,#bar select{min-height:44px;box-sizing:border-box}
+  #bar button,#bar label{padding:6px 12px}
+  #bar label:has(select){padding:2px 10px}
+  .row{gap:8px}
+}
+
 /* 窄屏（手机/小窗）：工具条每行横滑不折行，面板改底部抽屉 */
 @media (max-width:700px){
   .row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -264,7 +274,7 @@ body.hidebar #reh{display:flex}
   <label>PDF<input type="file" id="fPdf" hidden accept=".pdf"></label>
   <input type="file" id="fAud" hidden accept="audio/*">
   <label title="直接切到曲目库里的另一首">曲目<select id="trackSel"></select></label>
-  <label>模式<select id="mode">
+  <label>工具<select id="mode">
     <option value="play" selected>播放</option>
     <option value="mark">标小节</option>
     <option value="autobar">标小节（半自动）</option>
@@ -2600,7 +2610,13 @@ $('fAud').onchange=async e=>{
     syncAudSel();syncModeSel();refreshAudLocal();   // 本机补上文件后，去掉"不在本机"标注
   }catch(err){msg('音频加载失败：'+err.message,1)}
 };
-function syncMode(){pagesEl.classList.toggle('editing',$('mode').value==='edit')}
+function syncMode(){
+  pagesEl.classList.toggle('editing',$('mode').value==='edit');
+  const m=$('mode').value;
+  $('bUndo').style.display=(m!=='play')?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
+  $('bGen').style.display=(m==='time')?'':'none';
+  $('bSpec').style.display=(m==='time')?'':'none';
+}
 $('mode').onchange=()=>{
   syncMode();
   if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
