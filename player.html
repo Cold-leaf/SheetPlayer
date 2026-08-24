@@ -29,6 +29,8 @@ button:active{opacity:.65}
 #bar #aud{flex:none}
 #bar label{display:inline-flex;gap:4px;align-items:center}
 #bar select,#bar input[type=number]{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px}
+/* 曲目/音频下拉别被库里最长名字撑满整条：封顶 200px，超出的省略号，全名在 title/曲目库看 */
+#trackSel,#audSel{max-width:200px;text-overflow:ellipsis;white-space:nowrap}
 #bar input[type=number]{width:62px}
 #bar #barWin{width:46px}
 #bar input[type=range]{width:120px;accent-color:var(--accent)}
@@ -79,7 +81,8 @@ button:active{opacity:.65}
 
 #nowBox{color:var(--accent);font-weight:600;flex:none;min-width:112px}
 #chipWrap{display:none;flex:1;min-width:0;align-items:center;gap:8px}
-#chips{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;padding:2px 0}
+/* 段落 chips 换行铺开，不挤进横向滚动条——段落是「一键跳段」的快捷钮，看得全比省地方重要 */
+#chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0}
 .chip{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:15px;padding:5px 13px;
       cursor:pointer;white-space:nowrap;font-size:13px;flex:none;user-select:none}
 .chip:hover{background:var(--surface-2)}
@@ -388,6 +391,8 @@ body.hidebar #reh{display:flex}
  </button>
 </div>
 <div id="menu" style="display:none">
+ <div class="msec">统计</div>
+ <span id="statMenu" style="color:var(--info)"></span>
  <div class="msec">小节</div>
  <div class="mrow">
   <label>下一编号<input type="number" id="nextN" min="1" step="1" value="1"></label>
@@ -1147,10 +1152,10 @@ function refresh(){                      // 只改状态，不重建 DOM
   dirty=true;lastIdx=-2;drawChips();updLoop();stat();
 }
 function stat(){
-  // 曲名/模式在各自下拉里已经能看到，这里只留动作统计和目标指示（挂在「现在」行，省一整行）
-  $('stat').textContent='已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
-    +(RUNS.length>1?' / '+RUNS.length+' 段':'')
-    +(tapM!=null?' / 目标 → 小节 '+tapM:'');
+  // 累计统计收进菜单（不再占工具栏一行）；工具栏只留「目标 → 小节」这个打时间时的实时状态
+  $('stat').textContent=tapM!=null?'目标 → 小节 '+tapM:'';
+  $('statMenu').textContent='已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
+    +(RUNS.length>1?' / '+RUNS.length+' 段':'');
 }
 
 /* ---------- 命中测试（全部用 CSS 像素，缩放无关） ---------- */
