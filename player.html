@@ -37,7 +37,6 @@ button:active{opacity:.65}
 #bar #bPlay{width:40px;height:40px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;
   background:var(--accent);border-color:var(--accent);color:#1a1408}
 #bPlay svg{width:20px;height:20px}
-#bar #seek{width:90px;padding:0}
 #tTxt{color:var(--info);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px}
 #bar input[type=range]::-webkit-slider-thumb{width:22px;height:22px;margin-top:-8px}
 #bar input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px}
@@ -259,6 +258,18 @@ body.hidebar #bar{display:none}
 .plEmpty{color:var(--text-dim);padding:10px 4px;font-size:13px}
 #plBox{display:inline-flex;gap:4px;align-items:center}
 #bar #plBox button{padding:3px 8px}
+/* 播放列表弹层：钉在工具栏下方、居中，跟曲目库的列表面板共用 .plRow */
+#plPop{position:fixed;top:calc(var(--barH,44px) + 6px);left:50%;transform:translateX(-50%);z-index:36;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:10px 12px;
+  min-width:340px;max-width:min(92vw,540px);max-height:calc(100dvh - var(--barH,44px) - 22px);overflow:auto;
+  box-shadow:0 8px 24px rgba(0,0,0,.6)}
+#plPopHd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+#plPopHd b{font-size:14px}
+#plPopHd button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+#plPopHd button.open{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600}
+#plPopHd label{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
+#plPopList .plRow{cursor:pointer}
+#plPopList .plRow:hover{background:var(--surface-2)}
 
 /* ---------- 排练模式（收起工具栏后的悬浮胶囊） ---------- */
 #reh,#reh *{box-sizing:border-box}
@@ -322,7 +333,6 @@ body.hidebar #reh{display:flex}
     <svg id="icPlay" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
     <svg id="icPause" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
    </button>
-   <input type="range" id="seek" min="0" max="0" step="0.01" value="0" title="拖动定位">
    <span id="tTxt">0:00 / 0:00</span>
   </span>
   <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
@@ -336,7 +346,7 @@ body.hidebar #reh{display:flex}
   <span class="sep"></span>
   <span id="plBox" style="display:none">
    <button id="plPrev" title="上一首">⏮</button>
-   <span id="plNow" style="color:#fd8"></span>
+   <button id="plNow" title="显示/管理播放列表"></button>
    <button id="plNext" title="下一首">⏭</button>
    <button id="plStop" title="退出播放列表">✕</button>
   </span>
@@ -412,6 +422,20 @@ body.hidebar #reh{display:flex}
  <button id="bExp">导出JSON</button>
  <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
  <button id="bHelp">? 快捷键</button>
+</div>
+<!-- 播放列表弹层：点工具栏「列表 1/3」打开，点歌曲切换、加当前曲目、删、循环/暂停，跟曲目库的面板同一套列表 -->
+<div id="plPop" style="display:none">
+ <div id="plPopHd">
+  <b>播放列表</b><span id="plPopCount" style="color:var(--info);font-size:12px"></span>
+  <span style="flex:1"></span>
+  <label title="放完一首自动进下一首"><input type="checkbox" id="plPopLoop" checked>循环</label>
+  <label title="每首放完停在下一首开头，等你按播放"><input type="checkbox" id="plPopPause">每首后暂停</label>
+  <button id="plPopAdd" title="把当前曲目加进列表">＋ 当前曲目</button>
+  <button id="plPopStart" class="open" title="从第一首开始播">▶ 开始播放</button>
+  <button id="plPopClear" title="清空播放列表">清空</button>
+  <button id="plPopClose" title="关闭">✕</button>
+ </div>
+ <div id="plPopList"></div>
 </div>
 <div id="wrap"><div id="pages"></div></div>
 <div id="specBox">
@@ -1046,12 +1070,8 @@ function syncReh(){
   $('icPause').style.display=playing?'':'none';
   syncSeek();
 }
-let seekDrag=false;                              // 拖进度条期间 tick 不要回写 value，否则跟手指打架
-function syncSeek(){
-  const d=isFinite(aud.duration)?aud.duration:0;
-  if(+$('seek').max!==d)$('seek').max=d;
-  if(!seekDrag)$('seek').value=aud.currentTime;
-  $('tTxt').textContent=fmt(aud.currentTime)+' / '+fmt(d);
+function syncSeek(){                             // 只更新时间显示（进度条已删）
+  $('tTxt').textContent=fmt(aud.currentTime)+' / '+fmt(isFinite(aud.duration)?aud.duration:0);
 }
 $('rehPlay').onclick=()=>{if(aud.src)aud.paused?aud.play():aud.pause()};
 $('rehPrev').onclick=()=>{if(plOn)plPlay(plIdx-1,!aud.paused)};
@@ -1075,6 +1095,10 @@ document.addEventListener('click',e=>{
   if($('menu').style.display!=='none'&&!e.target.closest('#menu')){
     $('menu').style.display='none';
     if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode'))e.stopPropagation();
+  }
+  if($('plPop').style.display!=='none'&&!e.target.closest('#plPop')&&!e.target.closest('#plNow')){
+    $('plPop').style.display='none';
+    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
@@ -2109,8 +2133,6 @@ aud.addEventListener('error',()=>{if(aud.src)msg('这个音频文件打不开（
 // 胶囊的播放图标和时长跟着音频事件走（进度本身由 tick 每帧刷）
 for(const ev of ['play','pause','loadedmetadata','durationchange','emptied'])aud.addEventListener(ev,syncReh);
 $('bPlay').onclick=()=>{if(aud.src)aud.paused?aud.play():aud.pause()};
-$('seek').addEventListener('input',()=>{seekDrag=true;aud.currentTime=+$('seek').value;syncSeek()});
-$('seek').addEventListener('change',()=>{seekDrag=false});
 aud.preservesPitch=aud.mozPreservesPitch=aud.webkitPreservesPitch=true;
 /* ================= 频谱条 =================
    解码 → 重采样成 11025 单声道 → STFT → 一次性画进离屏 canvas，
@@ -3251,12 +3273,14 @@ function syncPL(){
   box.style.display=(plOn&&PL.items.length)?'inline-flex':'none';
   if(plOn&&PL.items.length)$('plNow').textContent='列表 '+(plIdx+1)+'/'+PL.items.length;
   $('plCount').textContent=PL.items.length?PL.items.length+' 首':'';
+  $('plPopCount').textContent=PL.items.length?PL.items.length+' 首':'';
   $('plLoop').checked=PL.loop;$('plPause').checked=PL.pauseEach;
+  $('plPopLoop').checked=PL.loop;$('plPopPause').checked=PL.pauseEach;
   drawPL();syncReh();
 }
-async function drawPL(){
-  const box=$('plList');if(!box||!idb)return;
-  if(!PL.items.length){box.innerHTML='<div class="plEmpty">还没有曲目。在下面的曲目卡片上点「加入列表」。</div>';return}
+async function renderPL(box){                       // 渲染一份列表到指定容器（曲目库面板 + 弹层共用）
+  if(!box||!idb)return;
+  if(!PL.items.length){box.innerHTML='<div class="plEmpty">列表是空的</div>';return}
   const rows=[];
   for(const it of PL.items){
     const tr=await idbGet(idb,'tracks',it.pdfHash);
@@ -3266,7 +3290,7 @@ async function drawPL(){
     const auds=(tr&&tr.audios)||[];
     const opts=auds.length?auds.map(a=>'<option value="'+esc(a.hash)+'"'+(a.hash===it.audioHash?' selected':'')+' title="'+esc(a.name)+'">'+
         esc(dispName(a.name))+'（'+esc(audioModeOf(a))+'）</option>').join(''):'<option value="">（无音频）</option>';
-    return '<div class="plRow'+(plOn&&i===plIdx?' cur':'')+'">'+
+    return '<div class="plRow'+(plOn&&i===plIdx?' cur':'')+'" data-row="'+i+'">'+
       '<span class="n">'+(i+1)+'</span>'+
       '<span class="nm"'+(tr?' title="'+esc(tr.name)+'"':'')+'>'+esc(tr?dispName(tr.name):'（曲目不在库里）')+'</span>'+
       '<select data-aud="'+i+'">'+opts+'</select>'+
@@ -3275,8 +3299,13 @@ async function drawPL(){
       '<button data-play="'+i+'" title="从这首开始播">▶</button>'+
       '<button data-del="'+i+'" title="移出列表">✕</button></div>';
   }).join('');
+  box.querySelectorAll('.plRow').forEach(r=>r.onclick=e=>{
+    if(e.target.closest('select,button'))return;    // 点的是按钮/下拉，不抢它们
+    $('plPop').style.display='none';
+    plPlay(+r.dataset.row,true);                    // 点整行 = 切到这首
+  });
   box.querySelectorAll('[data-aud]').forEach(s=>s.onchange=()=>{
-    PL.items[+s.dataset.aud].audioHash=s.value;savePL();plPre=null});
+    PL.items[+s.dataset.aud].audioHash=s.value;savePL();plPre=null;syncPL()});
   box.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>plMove(+b.dataset.up,-1));
   box.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>plMove(+b.dataset.down,1));
   box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
@@ -3286,6 +3315,7 @@ async function drawPL(){
     savePL();syncPL()});
   box.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>plPlay(+b.dataset.play,true));
 }
+function drawPL(){renderPL($('plList'));renderPL($('plPopList'))}
 function plMove(i,d){
   const j=i+d;if(j<0||j>=PL.items.length)return;
   const t=PL.items[i];PL.items[i]=PL.items[j];PL.items[j]=t;
@@ -3315,8 +3345,8 @@ async function renTrack(h){
   drawLib();syncTrackSel();syncReh();
   msg('已改名《'+nn+'》');
 }
-$('plLoop').onchange=()=>{PL.loop=$('plLoop').checked;savePL()};
-$('plPause').onchange=()=>{PL.pauseEach=$('plPause').checked;savePL()};
+$('plLoop').onchange=()=>{PL.loop=$('plLoop').checked;savePL();syncPL()};
+$('plPause').onchange=()=>{PL.pauseEach=$('plPause').checked;savePL();syncPL()};
 $('plClear').onclick=()=>{
   if(!PL.items.length)return;
   if(!confirm('清空播放列表？（曲目本身不受影响）'))return;
@@ -3330,6 +3360,23 @@ $('plStart').onclick=()=>{
 $('plPrev').onclick=()=>plPlay(plIdx-1,!aud.paused);
 $('plNext').onclick=()=>plPlay(plIdx+1,!aud.paused);
 $('plStop').onclick=()=>{plStop();msg('已退出播放列表')};
+// 播放列表弹层：点「列表 1/3」开合，点歌曲切换、加当前曲目、删、循环/暂停
+$('plNow').onclick=e=>{e.stopPropagation();const p=$('plPop');
+  p.style.display=p.style.display==='none'?'block':'none';if(p.style.display==='block')drawPL()};
+$('plPopClose').onclick=()=>{$('plPop').style.display='none'};
+$('plPopAdd').onclick=async()=>{if(!pdfHash)return msg('先打开一个曲目',1);await plAdd(pdfHash)};
+$('plPopStart').onclick=()=>{
+  if(!PL.items.length)return msg('播放列表是空的',1);
+  if(loop.on){loop.on=false;updLoop();msg('播放列表开始，已关掉 A-B 循环')}
+  $('plPop').style.display='none';plPlay(0,true);
+};
+$('plPopClear').onclick=()=>{
+  if(!PL.items.length)return;
+  if(!confirm('清空播放列表？（曲目本身不受影响）'))return;
+  PL.items=[];plOn=false;plIdx=-1;savePL();syncPL();
+};
+$('plPopLoop').onchange=()=>{PL.loop=$('plPopLoop').checked;savePL();syncPL()};
+$('plPopPause').onchange=()=>{PL.pauseEach=$('plPopPause').checked;savePL();syncPL()};
 // 按文件名找曲目（加笔记重新导出时哈希会变、名字不变，用这个接回原曲目）。
 // 只认有 PDF 的曲目，同名多条取最近更新的。
 async function findTrackByName(name){
