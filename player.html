@@ -3025,7 +3025,12 @@ async function selectAudio(hash,blob){
   const mode=a?audioModeOf(a):activeMode;
   if(!MODES[mode])newMode(mode,true);
   if(mode!==activeMode)switchMode(mode);
+  // 实际在播哪个，就把它记为 lastAudio 并同步下拉选中项——播放列表可能指定
+  // 同一模式里的另一个音频，不能只靠 lastAudio 显示（会跟真正播放的对不上）
+  if(track&&track.lastAudio!==hash){track.lastAudio=hash;track.updatedAt=Date.now();
+    if(idb)idbPut(idb,'tracks',track)}
   await switchAudio(blob,hash);
+  syncAudSel();
 }
 // 哪些音频的文件真的在本机（同步过来的曲目只有名字、没有文件）
 let audLocal=new Set();
