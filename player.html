@@ -310,7 +310,7 @@ body.hidebar #reh{display:flex}
   <!-- 关掉浏览器自带控件的「⋮」菜单：它的播放速度和我们的「速度」重复（改了还不同步），
        下载也用不上；而且工具栏靠页面顶部，那个菜单往上弹会被截掉看不全 -->
   <audio id="aud" controls controlsList="nodownload noplaybackrate noremoteplayback"
-         style="width:270px;height:32px"></audio>
+         style="width:220px;height:32px"></audio>
   <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
   <button id="bDelAud" title="删除当前选中的音频变体（连同它在本机的文件）">删音频</button>
   <label title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
@@ -883,6 +883,16 @@ async function renderPage(n){
   try{await task.promise;box.dataset.done=want}
   catch(err){}
   finally{tasks.delete(n)}
+  // 首张真正有谱表的页渲染完，探一下是不是扫描/影印件，是的话提示一次（staves 有缓存，不白算）
+  if(!scanChecked){
+    try{
+      const st=staves(n);
+      if(st&&st.length){scanChecked=true;
+        if(scanPages.size){scanPages.clear();
+          msg('这份谱子像是扫描/影印版（谱线不连续），「标小节（半自动）」可能标不准，建议用「标小节」手动标',1)}
+      }
+    }catch(e){}
+  }
 }
 function freePage(n){
   const t=tasks.get(n);if(t){try{t.cancel()}catch(e){}tasks.delete(n)}
@@ -1115,9 +1125,16 @@ function near(g,rad){
 }
 /* ---------- 竖线吸附 ---------- */
 // 同一行（同页、纵向接近）的其他竖线
+// 用「纵向跨度重叠过半」判同行，不用 ny 距离：合唱总谱一个系统能占页高 2/3，
+// 原来的容差 = 自身高度×0.6 就有 0.4 页那么大，稍微往上拖一点就把上一行也算成同行了
 function lineMates(mk){
-  const tol=Math.max(.03,hOf(mk)*.6);
-  return M.filter(o=>o!==mk&&o.page===mk.page&&Math.abs(o.ny-mk.ny)<tol);
+  const y0=mk.ny,y1=mk.ny+hOf(mk);
+  return M.filter(o=>{
+    if(o===mk||o.page!==mk.page)return false;
+    const p0=o.ny,p1=o.ny+hOf(o);
+    const ov=Math.min(y1,p1)-Math.max(y0,p0);          // 两段的重叠长度
+    return ov>0&&ov>=0.5*Math.min(y1-y0,p1-p0);        // 短的那条至少一半被覆盖才算同行
+  });
 }
 function lineSpan(mk){                   // 同一行相邻竖线的中位间距
   const xs=lineMates(mk).map(o=>o.nx).concat(mk.nx).sort((a,b)=>a-b);
@@ -1136,6 +1153,8 @@ function alignNy(mk){
 }
 // 检测五线谱表：横向占比高的行 = 谱线，5 条等距一组 = 一个谱表。按画布尺寸缓存。
 const staffCache=new Map();
+const scanPages=new Set();                       // 走了「扫描兜底」才认出的页：严格法一条谱线都找不到
+let scanChecked=false;
 function staves(page){
   const c=cvs[page];
   if(!c||!c.width)return null;
@@ -1144,21 +1163,54 @@ function staves(page){
   const W=c.width,H=c.height;
   let d;
   try{d=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,W,H).data}catch(err){return null}
+  // 每行的暗像素占比（lum 为亮度阈值，扫描件的谱线是灰的，要放宽才看得见）
+  const profile=lum=>{
+    const pr=new Array(H);
+    for(let y=0;y<H;y++){
+      let n=0,tot=0;
+      for(let x=0;x<W;x+=2){tot++;const p=(y*W+x)*4;
+        if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<lum)n++}
+      pr[y]=n/tot;
+    }
+    return pr;
+  };
+  // 5 条等距的线 = 一个谱表；容差按间距自适应
+  const group=ct=>{
+    const out=[];
+    for(let i=0;i+4<ct.length;){
+      const g=ct.slice(i,i+5),sp=(g[4]-g[0])/4;
+      const tol=Math.max(2.5,sp*0.3);
+      if(sp>2&&g.every((v,k)=>k===0||Math.abs(v-g[k-1]-sp)<=tol)){
+        out.push({top:g[0]/H,bot:g[4]/H});i+=5;
+      }else i++;
+    }
+    return out;
+  };
+  // ① 严格：整行 35% 以上纯黑 —— 数字排版的谱子（多数）走这条，久经验证
+  const pr1=profile(140);
   const ct=[];let grp=[];
   for(let y=0;y<H;y++){
-    let n=0,tot=0;
-    for(let x=0;x<W;x+=2){tot++;const p=(y*W+x)*4;
-      if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<140)n++}
-    if(n/tot>0.35){if(grp.length&&y-grp[grp.length-1]<=2)grp.push(y);else{
+    if(pr1[y]>0.35){if(grp.length&&y-grp[grp.length-1]<=2)grp.push(y);else{
       if(grp.length)ct.push(grp.reduce((a,b)=>a+b)/grp.length);grp=[y]}}
   }
   if(grp.length)ct.push(grp.reduce((a,b)=>a+b)/grp.length);
-  const out=[];
-  for(let i=0;i+4<ct.length;){
-    const g=ct.slice(i,i+5),sp=(g[4]-g[0])/4;
-    if(sp>2&&g.every((v,k)=>k===0||Math.abs(v-g[k-1]-sp)<=2.5)){
-      out.push({top:g[0]/H,bot:g[4]/H});i+=5;
-    }else i++;
+  let out=group(ct);
+  // ② 兜底：影印/扫描件的谱线发灰又断续，同一谱表 5 条线的占比能差 3 倍（实测 0.19~0.69），
+  //    固定阈值永远凑不齐 5 条 → 严格法一个都没认出来时，改用「局部峰值 + 相对阈值」重来
+  if(!out.length){
+    const pr=profile(175);
+    let mx=0;for(let y=0;y<H;y++)if(pr[y]>mx)mx=pr[y];
+    const th=Math.max(0.12,mx*0.18);
+    const ct2=[];
+    for(let y=1;y<H-1;y++){
+      if(pr[y]<th)continue;
+      let isMax=true;
+      for(let k=Math.max(0,y-2);k<=Math.min(H-1,y+2);k++)if(pr[k]>pr[y]){isMax=false;break}
+      if(!isMax||(ct2.length&&y-ct2[ct2.length-1]<=2))continue;
+      ct2.push(y);
+    }
+    out=group(ct2);
+    if(out.length)scanPages.add(page);            // 严格法颗粒无收、兜底才认出来 → 大概率是扫描/影印件
   }
   staffCache.set(key,out);
   return out;
