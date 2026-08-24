@@ -32,6 +32,13 @@ button:active{opacity:.65}
 #bar input[type=number]{width:62px}
 #bar #barWin{width:46px}
 #bar input[type=range]{width:120px;accent-color:var(--accent)}
+/* 自制音频精简条：播放键（主操作，琥珀圆形）+ 进度条 + 时间 */
+#transport{display:inline-flex;align-items:center;gap:6px;flex:none}
+#bar #bPlay{width:40px;height:40px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;
+  background:var(--accent);border-color:var(--accent);color:#1a1408}
+#bPlay svg{width:20px;height:20px}
+#bar #seek{width:90px;padding:0}
+#tTxt{color:var(--info);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px}
 #bar input[type=range]::-webkit-slider-thumb{width:22px;height:22px;margin-top:-8px}
 #bar input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px}
 #bar input[type=range]::-moz-range-thumb{width:22px;height:22px}
@@ -307,10 +314,17 @@ body.hidebar #reh{display:flex}
   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
  <div class="row">
-  <!-- 关掉浏览器自带控件的「⋮」菜单：它的播放速度和我们的「速度」重复（改了还不同步），
-       下载也用不上；而且工具栏靠页面顶部，那个菜单往上弹会被截掉看不全 -->
-  <audio id="aud" controls controlsList="nodownload noplaybackrate noremoteplayback"
-         style="width:220px;height:32px"></audio>
+  <!-- 原生控件整个收掉，只留自制精简条：播放键 + 进度条 + 时间。点小节/频谱走带是粗定位，
+       进度条是唯一精细定位（触屏没有 ←/→）；音量 iPad 有实体键、桌面用系统音量，不再重复 -->
+  <audio id="aud" style="display:none"></audio>
+  <span id="transport">
+   <button id="bPlay" class="primary" aria-label="播放" aria-pressed="false" title="播放/暂停">
+    <svg id="icPlay" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    <svg id="icPause" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+   </button>
+   <input type="range" id="seek" min="0" max="0" step="0.01" value="0" title="拖动定位">
+   <span id="tTxt">0:00 / 0:00</span>
+  </span>
   <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
   <button id="bDelAud" title="删除当前选中的音频变体（连同它在本机的文件）">删音频</button>
   <label title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
@@ -1025,6 +1039,19 @@ function syncReh(){
   $('rehLbl').innerHTML=track?esc(dispName(track.name))+(modeTxt?'<small>'+esc(modeTxt)+'</small>':''):'';
   $('rehLbl').title=track?track.name:'';
   $('rehDur').textContent=fmt(isFinite(aud.duration)?aud.duration:0);
+  // 工具栏里的自制播放键 + 进度条 + 时间
+  $('bPlay').setAttribute('aria-pressed',String(playing));
+  $('bPlay').setAttribute('aria-label',playing?'暂停':'播放');
+  $('icPlay').style.display=playing?'none':'';
+  $('icPause').style.display=playing?'':'none';
+  syncSeek();
+}
+let seekDrag=false;                              // 拖进度条期间 tick 不要回写 value，否则跟手指打架
+function syncSeek(){
+  const d=isFinite(aud.duration)?aud.duration:0;
+  if(+$('seek').max!==d)$('seek').max=d;
+  if(!seekDrag)$('seek').value=aud.currentTime;
+  $('tTxt').textContent=fmt(aud.currentTime)+' / '+fmt(d);
 }
 $('rehPlay').onclick=()=>{if(aud.src)aud.paused?aud.play():aud.pause()};
 $('rehPrev').onclick=()=>{if(plOn)plPlay(plIdx-1,!aud.paused)};
@@ -2030,6 +2057,7 @@ function tick(){
   $('rehCur').textContent=fmt(t);             // 胶囊进度跟着播放走
   const d=isFinite(aud.duration)?aud.duration:0;
   $('rehFill').style.width=(d>0?Math.min(100,t/d*100):0)+'%';
+  syncSeek();                                 // 工具栏进度条 + 时间
   const i=occIndex(t),o=i<0?null:OCC[i],m=o?o.m:null;
   updateProg(t,i,o);                      // 每帧都要动，不能等小节切换
   if(i!==lastIdx){lastIdx=i;updateNow(o)}
@@ -2080,6 +2108,9 @@ aud.onratechange=()=>{const v=String(aud.playbackRate);
 aud.addEventListener('error',()=>{if(aud.src)msg('这个音频文件打不开（可能损坏或格式不支持），换一个试试',1)});
 // 胶囊的播放图标和时长跟着音频事件走（进度本身由 tick 每帧刷）
 for(const ev of ['play','pause','loadedmetadata','durationchange','emptied'])aud.addEventListener(ev,syncReh);
+$('bPlay').onclick=()=>{if(aud.src)aud.paused?aud.play():aud.pause()};
+$('seek').addEventListener('input',()=>{seekDrag=true;aud.currentTime=+$('seek').value;syncSeek()});
+$('seek').addEventListener('change',()=>{seekDrag=false});
 aud.preservesPitch=aud.mozPreservesPitch=aud.webkitPreservesPitch=true;
 /* ================= 频谱条 =================
    解码 → 重采样成 11025 单声道 → STFT → 一次性画进离屏 canvas，
