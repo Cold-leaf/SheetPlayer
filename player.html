@@ -423,6 +423,11 @@ body.hidebar #reh{display:flex}
  <label title="放下或拖完后，抄同一行最近那条竖线的高度和纵向位置"><input type="checkbox" id="chkAlignY" checked>对齐同行</label>
  <label title="在窗口内找印刷的小节线并横向吸过去"><input type="checkbox" id="chkSnapX" checked>吸小节线</label>
  <label>窗口<input type="number" id="barWin" value="12" step="2" min="2">px</label>
+ <div class="msec">整页平移</div>
+ <div class="mrow">
+  <label title="加封面/扉页导致页码整体错位时，把所有小节线前后挪几页（时间点按小节号，不用动）">平移<input type="number" id="shiftP" step="1" value="0">页</label>
+  <button id="bShiftP">应用</button>
+ </div>
  <div class="msec">生成 / 数据</div>
  <button id="bExp">导出JSON</button>
  <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
@@ -2777,6 +2782,18 @@ $('bShift').onclick=()=>{
   if(!d||!E.length)return;
   snap();E.forEach(e=>e.t=Math.max(0,e.t+d));refresh();save();
   msg('已平移 '+E.length+' 个时间点 '+(d>0?'+':'')+(d*1000)+'ms');
+};
+// 整页平移：加/删封面或扉页导致页码整体错位时，把 M 里的小节线页码前后挪 n 页。
+// 时间点/段落按小节号关联，不随页走，所以不用动；layout 后 OCC/RUNS 会自动重建。
+$('bShiftP').onclick=()=>{
+  const n=Math.round(+$('shiftP').value||0);
+  if(!n)return msg('填一个非 0 的页数（封面加了一页就填 +1）',1);
+  if(!M.length)return msg('还没有小节线',1);
+  snap();
+  M.forEach(mk=>mk.page=Math.max(1,mk.page+n));
+  $('shiftP').value=0;
+  layout();save();
+  msg('所有小节线平移了 '+(n>0?'+':'')+n+' 页（可撤销）');
 };
 
 /* ---------- 存档 ---------- */
