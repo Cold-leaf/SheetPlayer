@@ -3402,13 +3402,15 @@ $('plPopPause').onchange=()=>{PL.pauseEach=$('plPopPause').checked;savePL();sync
 // 按文件名找曲目（加笔记重新导出时哈希会变、名字不变，用这个接回原曲目）。
 // 只认有 PDF 的曲目，同名多条取最近更新的。
 async function findTrackByName(name){
+  // 同名曲目：优先「本机有文件」的（重导出重新关联的常规场景）；没有的话退到
+  // 「等待导入 PDF」的同步曲目——先同步标注、再导入 PDF 正是这个场景，原来跳过
+  // noFile 会让这条流程接不上（导入后 0 时间点）
   const trs=await idbAll(idb,'tracks');
-  let best=null;
-  for(const t of trs){
-    if(t.name!==name||t.noFile)continue;
+  const pick=list=>{let best=null;for(const t of list){
+    if(t.name!==name)continue;
     if(!best||(t.updatedAt||0)>(best.updatedAt||0))best=t;
-  }
-  return best;
+  }return best};
+  return pick(trs.filter(t=>!t.noFile))||pick(trs.filter(t=>t.noFile));
 }
 async function delTrack(h){
   const t=await idbGet(idb,'tracks',h);if(!t)return;
@@ -3466,7 +3468,14 @@ async function importAnns(items){
     const tr=await idbGet(idb,'tracks',it.pdfHash);
     if(!tr)await idbPut(idb,'tracks',{hash:it.pdfHash,name:it.name||it.pdfHash.slice(0,8),
       createdAt:Date.now(),updatedAt:+it.data.ts||Date.now(),audios:[],lastAudio:null,noFile:true});
-    else if((+it.data.ts||0)>(tr.updatedAt||0)){tr.updatedAt=+it.data.ts;await idbPut(idb,'tracks',tr)}
+    else{
+      let ch=false;
+      // 同步占位曲目的名字以仓库为准（电脑端改名后重新导出，这里得跟上）；
+      // 本机已有文件的曲目不动名字，防止覆盖用户在本机的手动改名
+      if(tr.noFile&&it.name&&tr.name!==it.name){tr.name=it.name;ch=true}
+      if((+it.data.ts||0)>(tr.updatedAt||0)){tr.updatedAt=+it.data.ts;ch=true}
+      if(ch)await idbPut(idb,'tracks',tr);
+    }
     if(track&&track.hash===it.pdfHash)applyAnn(it.data);
     imported++;
   }
