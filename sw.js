@@ -1,9 +1,10 @@
 /* SheetPlayer Service Worker：把应用外壳（player.html + pdf.js + 图标）缓存下来，离线可用。
    每次发布改动记得 bump VER，旧缓存会在 activate 时清掉。 */
-const VER='v1';
+const VER='v2';
 const CACHE='sheetplayer-'+VER;
 const ASSETS=['./','./index.html','./player.html','./manifest.json',
-  './lib/pdf.min.js','./lib/pdf.worker.min.js','./icon-192.png','./icon-512.png'];
+  './lib/pdf.min.js','./lib/pdf.worker.min.js',
+  './icon-192.png','./icon-512.png','./icon-512-maskable.png'];
 
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));
