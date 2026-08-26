@@ -285,20 +285,23 @@ body.hidebar #reh{display:flex}
 #reh button.primary{background:var(--accent);border-color:var(--accent);color:#1a1408}
 #reh button:disabled{opacity:.35}
 #reh svg{width:22px;height:22px}
+/* 两块：控制组（上一首/播放/下一首/进度）+ 信息组（曲名/展开）。宽屏并排一行 */
+#reh .rehMain,#reh .rehFoot{display:flex;align-items:center;gap:12px;min-width:0}
 #reh .prog{flex:1;min-width:140px;max-width:300px}
 #reh .prog .t{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);font-variant-numeric:tabular-nums;margin-bottom:3px}
 #reh .prog .track{height:8px;background:var(--surface);border-radius:4px;overflow:hidden}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
-/* 窄屏：进度条和名字各占一行（横排太挤——进度条短、名字截断）。
-   flex-wrap 让标签折到第二行、占满整行，进度条就能吃到剩余宽度 */
+/* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+展开键。
+   靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行） */
 @media (max-width:700px){
-  #reh{flex-wrap:wrap;gap:6px;padding:7px 10px;max-width:calc(100vw - 12px);border-radius:18px}
+  #reh{flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px;
+       width:calc(100vw - 16px);border-radius:20px}
   #reh button{width:40px;height:40px}
-  #reh .prog{flex:1 1 60px;min-width:60px;max-width:none}
-  #reh .lbl{flex:0 0 100%;order:6;min-width:0;max-width:none;font-size:12px;text-align:center}
-  #reh .lbl:empty{display:none}
+  #reh .rehMain,#reh .rehFoot{gap:8px}
+  #reh .prog{min-width:0;max-width:none}
+  #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
 }
 
 </style>
@@ -374,8 +377,10 @@ body.hidebar #reh{display:flex}
 </div>
 <div id="msg"></div>
 <button id="barShow" title="显示工具栏">▼</button>
-<!-- 排练模式：收起工具栏后底部悬浮胶囊 -->
+<!-- 排练模式：收起工具栏后底部悬浮胶囊。分「控制组 / 信息组」两块：
+     宽屏两块并排成一行，窄屏叠成两行——靠结构定布局，不靠 flex-wrap 赌内容宽度 -->
 <div id="reh">
+ <div class="rehMain">
  <button id="rehPrev" aria-label="上一首" title="上一首">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
  </button>
@@ -387,10 +392,13 @@ body.hidebar #reh{display:flex}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
  </button>
  <div class="prog"><div class="t"><span id="rehCur">0:00</span><span id="rehDur">0:00</span></div><div class="track"><div id="rehFill" class="fill"></div></div></div>
+ </div>
+ <div class="rehFoot">
  <span id="rehLbl" class="lbl"></span>
  <button id="rehUp" aria-label="展开工具栏" title="展开工具栏">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
  </button>
+ </div>
 </div>
 <div id="menu" style="display:none">
  <div class="msec">统计</div>
