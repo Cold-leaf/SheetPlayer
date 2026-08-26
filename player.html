@@ -291,12 +291,14 @@ body.hidebar #reh{display:flex}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
-/* 窄屏：按钮和进度条都收紧，胶囊整体封顶视口宽，标签缩到剩余空间（不够就省略号） */
+/* 窄屏：进度条和名字各占一行（横排太挤——进度条短、名字截断）。
+   flex-wrap 让标签折到第二行、占满整行，进度条就能吃到剩余宽度 */
 @media (max-width:700px){
-  #reh{gap:6px;padding:7px 10px;max-width:calc(100vw - 12px)}
+  #reh{flex-wrap:wrap;gap:6px;padding:7px 10px;max-width:calc(100vw - 12px);border-radius:18px}
   #reh button{width:40px;height:40px}
-  #reh .prog{min-width:48px}
-  #reh .lbl{flex:0 1 auto;min-width:0;font-size:12px}
+  #reh .prog{flex:1 1 60px;min-width:60px;max-width:none}
+  #reh .lbl{flex:0 0 100%;order:6;min-width:0;max-width:none;font-size:12px;text-align:center}
+  #reh .lbl:empty{display:none}
 }
 
 </style>
