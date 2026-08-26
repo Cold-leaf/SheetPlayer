@@ -289,7 +289,12 @@ body.hidebar #reh{display:flex}
 #reh .rehMain,#reh .rehFoot{display:flex;align-items:center;gap:12px;min-width:0}
 #reh .prog{flex:1;min-width:140px;max-width:300px}
 #reh .prog .t{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);font-variant-numeric:tabular-nums;margin-bottom:3px}
-#reh .prog .track{height:8px;background:var(--surface);border-radius:4px;overflow:hidden}
+/* 轨道视觉仍是 8px；触控区靠绝对定位的伪元素上下各扩 14px，不占布局（否则胶囊会被撑高）。
+   touch-action:none 让拖动走带不被页面滚动抢走 */
+#reh .prog .track{position:relative;height:8px;background:var(--surface);border-radius:4px;
+  cursor:pointer;touch-action:none}
+#reh .prog .track::before{content:'';position:absolute;left:0;right:0;top:-14px;bottom:-14px}
+#reh .prog .track:active{background-color:var(--surface-2)}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
@@ -1096,6 +1101,42 @@ function syncSeek(){                             // 只更新时间显示（进�
 $('rehPlay').onclick=()=>{if(aud.src)aud.paused?aud.play():aud.pause()};
 $('rehPrev').onclick=()=>{if(plOn)plPlay(plIdx-1,!aud.paused)};
 $('rehNext').onclick=()=>{if(plOn)plPlay(plIdx+1,!aud.paused)};
+/* 胶囊进度条：点一下跳转、按住拖动走带。排练时手指正好在胶囊上，这是触屏上唯一的精细定位手段。
+   拖动期间 rehSeeking 置位，tick 不回写 fill，否则跟手指打架 */
+let rehSeeking=false;
+(()=>{
+  const tr=$('reh').querySelector('.prog .track');
+  const at=e=>{
+    const d=isFinite(aud.duration)?aud.duration:0;
+    if(!d)return null;
+    const r=tr.getBoundingClientRect();
+    const p=Math.min(1,Math.max(0,(e.clientX-r.left)/(r.width||1)));
+    return p*d;
+  };
+  const paint=t=>{
+    const d=isFinite(aud.duration)?aud.duration:0;
+    $('rehFill').style.width=(d>0?Math.min(100,t/d*100):0)+'%';
+    $('rehCur').textContent=fmt(t);
+  };
+  tr.addEventListener('pointerdown',e=>{
+    const t=at(e);if(t==null)return;
+    rehSeeking=true;tr.setPointerCapture(e.pointerId);
+    paint(t);e.preventDefault();
+  });
+  tr.addEventListener('pointermove',e=>{
+    if(!rehSeeking)return;
+    const t=at(e);if(t!=null)paint(t);
+  });
+  const end=e=>{
+    if(!rehSeeking)return;
+    rehSeeking=false;
+    const t=at(e);
+    if(t!=null){aud.currentTime=t;lastSeek=null}   // 跳转后清掉「当前段落」记忆，跟点小节一致
+    dirty=true;
+  };
+  tr.addEventListener('pointerup',end);
+  tr.addEventListener('pointercancel',()=>{rehSeeking=false;dirty=true});
+})();
 $('rehUp').onclick=()=>setBarHidden(false);
 // 把工具栏实际高度写进 --barH：菜单/面板据此钉在它下方，行数变化（段落条出现等）也跟得上
 function syncBarH(){
@@ -2098,9 +2139,11 @@ function tick(){
   if(specOn()&&(moved||dirty||specDirty)){drawSpec();specDirty=false}
   if(!moved&&!dirty)return;
   lastT=t;dirty=false;
-  $('rehCur').textContent=fmt(t);             // 胶囊进度跟着播放走
-  const d=isFinite(aud.duration)?aud.duration:0;
-  $('rehFill').style.width=(d>0?Math.min(100,t/d*100):0)+'%';
+  if(!rehSeeking){                            // 胶囊进度跟着播放走（拖动期间让位给手指）
+    $('rehCur').textContent=fmt(t);
+    const d=isFinite(aud.duration)?aud.duration:0;
+    $('rehFill').style.width=(d>0?Math.min(100,t/d*100):0)+'%';
+  }
   syncSeek();                                 // 工具栏进度条 + 时间
   const i=occIndex(t),o=i<0?null:OCC[i],m=o?o.m:null;
   updateProg(t,i,o);                      // 每帧都要动，不能等小节切换
