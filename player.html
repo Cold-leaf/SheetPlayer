@@ -83,6 +83,13 @@ button:active{opacity:.65}
 #chipWrap{display:none;flex:1;min-width:0;align-items:center;gap:8px}
 /* 段落 chips 换行铺开，不挤进横向滚动条——段落是「一键跳段」的快捷钮，看得全比省地方重要 */
 #chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0}
+/* 窄屏跟着 .row 一起横滑，不能 wrap：.row 是 nowrap 滚动容器，flex:1 的 chipWrap
+   会被压成 0 宽，里面再 wrap 就变成每个 chip 一行、还溢出到「练习循环」上叠成一坨。
+   放在基础规则之后，否则同特异性下会被上面那条 #chipWrap 覆盖掉 */
+@media (max-width:700px){
+  #chipWrap{flex:none;min-width:auto}
+  #chips{flex-wrap:nowrap}
+}
 .chip{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:15px;padding:5px 13px;
       cursor:pointer;white-space:nowrap;font-size:13px;flex:none;user-select:none}
 .chip:hover{background:var(--surface-2)}
