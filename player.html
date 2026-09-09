@@ -1724,11 +1724,14 @@ function buildOcc(){
   for(let i=0;i<ev.length;i++){
     OCC.push({m:ev[i].m,t:ev[i].t,exact:true,gen:ev[i].src==='gen',seg:ev[i].seg});
     if(i+1>=ev.length)continue;
-    if(ev[i+1].m>ev[i].m){
-      const A=ev[i],B=ev[i+1];
+    if(ev[i+1].m<ev[i].m){repeats++;continue}
+    const A=ev[i],B=ev[i+1];
+    // 只在【同一段内】插值补中间小节。段与段之间小节号会跳空（上一段到 36、下一段从 46 开始），
+    // 那中间的 37–45 不是真实存在的小节，补进去会让段落条显示成 22–45 而不是 22–36
+    if(B.m>A.m&&((A.seg==null&&B.seg==null)||A.seg===B.seg)){
       for(let m=A.m+1;m<B.m;m++)
         OCC.push({m,t:A.t+(B.t-A.t)*(m-A.m)/(B.m-A.m),exact:false,gen:true,seg:A.seg});
-    }else if(ev[i+1].m<ev[i].m)repeats++;
+    }
   }
   buildRuns();
   buildCover();
