@@ -604,7 +604,8 @@ body.hidebar #reh{display:flex}
    <label>方式
     <select id="davKind">
      <option value="public">公开分享链接（推荐·不用自己的账号）</option>
-     <option value="account">账号</option>
+     <option value="webdav">账号（remote.php/webdav）</option>
+     <option value="account">账号（remote.php/dav/files/用户名）</option>
     </select></label>
    <span class="ginfo" id="davKindTip"></span>
   </div>
@@ -3411,9 +3412,13 @@ function davNormBase(s){
   const m=s.match(/\/remote\.php\/dav\/files\/([^/]+)/i);
   if(m){user=decodeURIComponent(m[1]);s=s.slice(0,m.index)}
   else{
-    const q=s.search(/\/remote\.php\/dav/i);
-    if(q>=0)s=s.slice(0,q);
-    else{const p=s.search(/\/public\.php\/webdav/i);if(p>=0){kind='public';s=s.slice(0,p)}}
+    const w=s.search(/\/remote\.php\/webdav/i);      // ownCloud 设置页推荐的就是这个旧式端点
+    if(w>=0){kind='webdav';s=s.slice(0,w)}
+    else{
+      const q=s.search(/\/remote\.php\/dav/i);
+      if(q>=0)s=s.slice(0,q);
+      else{const p=s.search(/\/public\.php\/webdav/i);if(p>=0){kind='public';s=s.slice(0,p)}}
+    }
   }
   return {base:s.replace(/\/+$/,''),kind,user};
 }
@@ -3431,8 +3436,10 @@ function davReadForm(){
 }
 // 公开分享用 public.php/webdav（令牌当用户名、密码留空或填分享密码），账号用 remote.php/dav/files/<用户>
 function davRoot(){
-  return DAV.kind==='public'?'/public.php/webdav'
-    :'/remote.php/dav/files/'+encodeURIComponent(DAV.user);
+  if(DAV.kind==='public')return '/public.php/webdav';
+  // 旧式端点：用户名由认证带过去，路径里不用写（ownCloud 设置页给的就是这个）
+  if(DAV.kind==='webdav')return '/remote.php/webdav';
+  return '/remote.php/dav/files/'+encodeURIComponent(DAV.user);
 }
 function davUrl(p){
   // 兜底再剥一次：老配置（或手抖粘进来的完整地址）里若已含 DAV 路径，
