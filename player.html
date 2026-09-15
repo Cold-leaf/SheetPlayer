@@ -190,11 +190,33 @@ body.hidebar #bar{display:none}
 #help kbd{background:var(--surface);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font:12px monospace}
 #help h3{margin:.2em 0 .6em}
 
-#dlg,#dlgMode{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:41;align-items:center;justify-content:center}
+/* 对话框永远盖在最上层（高于曲目库 40、ownCloud 面板 45、toast 50）——否则从面板里
+   发起下载时，弹出的选模式对话框会被面板挡住点不到 */
+#dlg,#dlgMode{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:60;align-items:center;justify-content:center}
 #dlg>div,#dlgMode>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;width:320px;max-width:90vw}
 #dlg button,#dlgMode button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer}
 #dlgMode select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:15px;width:100%}
 #dlgMode input{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:15px;width:100%;box-sizing:border-box;margin-top:8px}
+/* ownCloud（WebDAV）只读浏览器：盖在曲目库之上，z-index 要高于 #lib(40) */
+#davPop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:45;
+     align-items:center;justify-content:center}
+#davPop>div{background:var(--bg-soft);color:var(--text);padding:14px 16px;border-radius:10px;
+     width:680px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column}
+#davHd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+#davHd b{font-size:15px}
+#davHd button{background:var(--surface);color:var(--text);border:1px solid var(--border);
+     padding:5px 12px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+#davList{flex:1;min-height:120px;max-height:62vh;overflow:auto;border:1px solid var(--border);
+     border-radius:8px;background:var(--bg)}
+#davList .dRow{display:flex;gap:10px;align-items:center;padding:9px 12px;cursor:pointer;font-size:14px}
+#davList .dRow:nth-child(odd){background:var(--surface)}
+#davList .dRow:hover{background:var(--surface-2)}
+#davList .dRow .ic{width:20px;text-align:center;flex:none}
+#davList .dRow .nm{flex:1;min-width:0;word-break:break-all}
+#davList .dRow .sz{color:var(--text-dim);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+#davList .dRow.dim{opacity:.5;cursor:default}
+#davList .dEmpty{color:var(--text-dim);padding:20px 12px;text-align:center;font-size:13px}
+#davTip{margin-top:8px;white-space:normal;line-height:1.6}
 #gen{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:21;
      align-items:center;justify-content:center}
 #gen>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;width:660px;
@@ -445,6 +467,22 @@ body.hidebar #reh{display:flex}
   <button id="bRenMode">改名当前模式</button>
   <button id="bDelMode">删除当前模式</button>
  </div>
+ <div class="msec">ownCloud 曲库（只读）</div>
+ <label style="white-space:normal">地址<input type="text" id="davBase" placeholder="https://…/owncloud" style="width:100%;box-sizing:border-box;margin-top:2px"></label>
+ <div class="mrow">
+  <label>方式<select id="davKind">
+   <option value="account">账号</option>
+   <option value="public">公开分享</option>
+  </select></label>
+  <label>用户<input type="text" id="davUser" placeholder="账号或分享令牌" style="width:120px"></label>
+ </div>
+ <div class="mrow">
+  <label>密码<input type="password" id="davPass" placeholder="应用密码" style="width:120px"></label>
+  <button id="davSave">保存</button>
+  <button id="davTest">测试</button>
+  <button id="davClear">清除</button>
+ </div>
+ <div class="ginfo" style="white-space:normal">只读：只列目录和下载，不会往服务器写任何东西。密码只存在本机浏览器里。</div>
  <div class="msec">竖线吸附</div>
  <label title="放下或拖完后，抄同一行最近那条竖线的高度和纵向位置"><input type="checkbox" id="chkAlignY" checked>对齐同行</label>
  <label title="在窗口内找印刷的小节线并横向吸过去"><input type="checkbox" id="chkSnapX" checked>吸小节线</label>
@@ -512,6 +550,7 @@ body.hidebar #reh{display:flex}
    <span id="libInfo"></span>
    <span style="flex:1"></span>
    <button id="libAdd">＋ 导入谱子</button>
+   <button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读">☁ ownCloud</button>
    <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button>
    <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来（按时间戳保留较新的）">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
    <button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来（按时间戳保留较新的）">从 GitHub 同步</button>
@@ -551,6 +590,18 @@ body.hidebar #reh{display:flex}
  <b>练习循环</b>：按「起点」再在谱面点一个小节 = 循环起点，「终点」同理（那一小节会唱完），再按「循环」开关。
 </div></div>
 
+<div id="davPop"><div>
+ <div id="davHd">
+  <b>ownCloud 曲库</b><span id="davPath" class="ginfo"></span>
+  <span style="flex:1"></span>
+  <button id="davUp" title="回到上一级">↑ 上级</button>
+  <button id="davHome" title="回到根目录">⌂ 根目录</button>
+  <button id="davRefresh" title="重新列出当前目录">刷新</button>
+  <button id="davClose">✕</button>
+ </div>
+ <div id="davList"></div>
+ <div id="davTip" class="ginfo">点文件名下载并导入；PDF 会新建/接回曲目，音频挂到当前打开的曲目上（先打开一首再下音频）。</div>
+</div></div>
 <div id="gen"><div>
  <h3>自动生成时间轴</h3>
  <div class="ginfo">只生成<b>时间</b>；小节在纸上的<b>位置</b>仍然要自己标。
@@ -800,6 +851,11 @@ async function openPdf(file){
 }
 $('fPdf').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
+  e.target.value='';                 // 清掉，重新导出同名 PDF 后再选一次也能触发
+  await importPdfFile(f);
+};
+// PDF 导入总入口：本机「PDF」按钮和 ownCloud 下载共用（下载来的文件包成 File 后走这里）
+async function importPdfFile(f){
   resetTrack();        // 在任何 await 之前先清零：不然选 PDF 后立刻选音频，
                        // 哈希/解析期间音频已设好，会被 loadPdfBlob 里的 resetTrack 误清掉
   try{
@@ -845,8 +901,7 @@ $('fPdf').onchange=async e=>{
       await loadPdfBlob(f,f.name,'');
     }
   }catch(err){msg('PDF加载失败：'+err.message,1)}
-  finally{e.target.value=''}                 // 清掉，重新导出同名 PDF 后再选一次也能触发
-};
+}
 
 // 曲目加载总入口：先整体重置（否则上一个曲目的标注/渲染/频谱会串过来），再从 Blob 走原有管线
 async function loadPdfBlob(blob,name,H,pre){
@@ -2792,6 +2847,10 @@ $('help').onclick=e=>{if(e.target===$('help'))toggleHelp(false)};
 $('fAud').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   e.target.value='';       // 清掉，这样重新导出同名 MP3 后再选一次仍然会触发
+  await importAudioFile(f);
+};
+// 音频导入总入口：本机「添加音频」和 ownCloud 下载共用
+async function importAudioFile(f){
   try{
     let blob=f,H='';
     if(idb&&track){        // 有曲目就挂进去（按哈希去重），没有曲目就只当普通音频放
@@ -2814,7 +2873,7 @@ $('fAud').onchange=async e=>{
     await selectAudio(H,blob);
     syncAudSel();syncModeSel();refreshAudLocal();   // 本机补上文件后，去掉"不在本机"标注
   }catch(err){msg('音频加载失败：'+err.message,1)}
-};
+}
 function syncMode(){
   pagesEl.classList.toggle('editing',$('mode').value==='edit');
   const m=$('mode').value;
@@ -3301,6 +3360,170 @@ async function loadPL(){
   if(r&&r.v)PL={items:r.v.items||[],loop:r.v.loop!==false,pauseEach:!!r.v.pauseEach};
 }
 function savePL(){if(idb)idbPut(idb,'meta',{hash:'playlist',v:PL})}
+
+/* ================= ownCloud（WebDAV）只读曲库 =================
+   只用 PROPFIND 列目录 + GET 下载，绝不 PUT/DELETE——服务器是公用的，只读免得出事。
+   凭证只存本机 IndexedDB，不进代码/仓库。 */
+let DAV={base:'',kind:'account',user:'',pass:''},davCwd='',davBusy=false;
+async function loadDAV(){
+  if(!idb)return;
+  const r=await idbGet(idb,'meta','dav');
+  if(r&&r.v)DAV={base:r.v.base||'',kind:r.v.kind||'account',user:r.v.user||'',pass:r.v.pass||''};
+  $('davBase').value=DAV.base;$('davKind').value=DAV.kind;
+  $('davUser').value=DAV.user;$('davPass').value=DAV.pass;
+}
+function davReady(){return !!(DAV.base&&(DAV.kind==='public'||DAV.user))}
+// 公开分享用 public.php/webdav（令牌当用户名、密码留空或填分享密码），账号用 remote.php/dav/files/<用户>
+function davRoot(){
+  return DAV.kind==='public'?'/public.php/webdav'
+    :'/remote.php/dav/files/'+encodeURIComponent(DAV.user);
+}
+function davUrl(p){
+  const segs=String(p||'').split('/').filter(Boolean).map(encodeURIComponent);
+  return DAV.base.replace(/\/+$/,'')+davRoot()+(segs.length?'/'+segs.join('/'):'');
+}
+function davAuth(){
+  const u=DAV.kind==='public'?DAV.user:DAV.user;
+  return 'Basic '+btoa(u+':'+DAV.pass);            // WebDAV 用 Basic，配 ACAO:* 没问题（不带 cookie）
+}
+function davHrefPath(href){                        // href → 相对根目录的路径（已解码）
+  let s=href;
+  try{s=new URL(href,location.href).pathname}catch(e){}
+  s=decodeURIComponent(s);
+  const root=decodeURIComponent(davRoot());
+  const i=s.indexOf(root);
+  s=i>=0?s.slice(i+root.length):s;
+  return s.replace(/\/+$/,'').replace(/^\/*/,'');
+}
+async function davList(path){
+  const r=await fetch(davUrl(path),{method:'PROPFIND',headers:{
+    Authorization:davAuth(),Depth:'1','Content-Type':'application/xml; charset=utf-8'}});
+  if(r.status===401)throw new Error('认证失败：检查用户名/密码（公开分享要把分享令牌填进「用户」）');
+  if(r.status===404)throw new Error('路径不存在');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const doc=new DOMParser().parseFromString(await r.text(),'application/xml');
+  // self 就是规范化后的请求路径本身。不能拿 davHrefPath(path) 去算：
+  // 空的请求路径会被 new URL('', location.href) 解析成当前页面（player.html），全部条目都被过滤掉
+  const self=String(path||'').replace(/^\/+|\/+$/g,'');
+  const out=[];
+  for(const resp of doc.getElementsByTagNameNS('*','response')){
+    const h=resp.getElementsByTagNameNS('*','href')[0];
+    if(!h)continue;
+    const p=davHrefPath(h.textContent);
+    if(p===self)continue;                          // 跳过目录自身
+    if(p.indexOf(self?self+'/':'')!==0)continue;    // 跳过不在本层的
+    const nm=p.split('/').pop();
+    if(!nm)continue;
+    const isDir=resp.getElementsByTagNameNS('*','collection').length>0;
+    const cl=resp.getElementsByTagNameNS('*','getcontentlength')[0];
+    out.push({name:nm,path:p,dir:isDir,size:cl?+cl.textContent:0});
+  }
+  out.sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name,'zh'));
+  return out;
+}
+// 带进度下载：音频几十 MB，慢服务器上没反馈会以为卡死
+async function davGet(path,onProgress){
+  const r=await fetch(davUrl(path),{headers:{Authorization:davAuth()}});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const total=+(r.headers.get('content-length')||0);
+  let blob;
+  if(r.body&&r.body.getReader){                    // 流式读，边下边报进度
+    const reader=r.body.getReader(),chunks=[];let got=0;
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done)break;
+      chunks.push(value);got+=value.length;
+      if(onProgress)onProgress(got,total);
+    }
+    blob=new Blob(chunks,{type:r.headers.get('content-type')||''});
+  }else blob=await r.blob();
+  const name=path.split('/').pop();
+  try{return new File([blob],name,{type:blob.type||''})}
+  catch(e){Object.defineProperty(blob,'name',{value:name});return blob}   // 老 Safari 没有 File 构造器
+}
+const DAV_AUD=/\.(mp3|m4a|wav|flac|aac|ogg|opus|wma|aiff?)$/i;
+const DAV_PDF=/\.pdf$/i;
+function fmtSize(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':(n>=1024?(n/1024).toFixed(0)+' KB':'')}
+async function davRender(){
+  const box=$('davList');
+  $('davPath').textContent=davCwd?(' / '+davCwd.replace(/\//g,' / ')):' /';
+  if(!davReady()){box.innerHTML='<div class="dEmpty">还没配置 ownCloud。到「☰ 菜单 → ownCloud 曲库」填地址和账号。</div>';return}
+  box.innerHTML='<div class="dEmpty">读取中…</div>';
+  try{
+    const items=await davList(davCwd);
+    if(!items.length){box.innerHTML='<div class="dEmpty">这个目录是空的</div>';return}
+    box.innerHTML=items.map((it,i)=>{
+      const ic=it.dir?'📁':(DAV_PDF.test(it.name)?'📄':(DAV_AUD.test(it.name)?'🎵':'📎'));
+      return '<div class="dRow" data-i="'+i+'"><span class="ic">'+ic+'</span>'+
+        '<span class="nm">'+esc(it.name)+'</span>'+
+        '<span class="sz">'+(it.dir?'':fmtSize(it.size))+'</span></div>';
+    }).join('');
+    box.querySelectorAll('.dRow').forEach((el,k)=>{
+      const it=items[k];
+      el.onclick=()=>{
+        if(davBusy)return;
+        if(it.dir){davCwd=it.path;davRender();return}
+        davDownload(it);
+      };
+    });
+  }catch(err){
+    box.innerHTML='<div class="dEmpty">读取出错：'+esc(err.message)+'</div>';
+  }
+}
+async function davDownload(it){
+  if(DAV_AUD.test(it.name)&&!track)
+    return msg('音频要挂到曲目上：先打开一首曲目再下载音频',1);
+  if(!DAV_PDF.test(it.name)&&!DAV_AUD.test(it.name))
+    return msg('只支持 PDF 和音频文件（这个：'+it.name+'）',1);
+  davBusy=true;$('davTip').textContent='下载中… '+it.name;
+  try{
+    const f=await davGet(it.path,(got,total)=>{
+      $('davTip').textContent='下载中 '+fmtSize(got)+(total?(' / '+fmtSize(total)+'（'+Math.round(got/total*100)+'%）'):'')+'　'+it.name;
+    });
+    $('davTip').textContent='下载完成，导入中…';
+    if(DAV_PDF.test(it.name)){
+      $('davPop').style.display='none';
+      await importPdfFile(f);                      // 复用本机导入：哈希去重、同名接回标注
+    }else{
+      await importAudioFile(f);                    // 复用本机导入：它自己会问挂到哪个模式
+    }
+  }catch(err){msg('下载失败：'+err.message,1)}
+  finally{davBusy=false;$('davTip').textContent='点文件名下载并导入；PDF 会新建/接回曲目，音频挂到当前打开的曲目上（先打开一首再下音频）。'}
+}
+$('libDav').onclick=()=>{
+  if(!idb)return;
+  $('davPop').style.display='flex';
+  if(!davReady())$('davTip').textContent='还没配置：到「☰ 菜单 → ownCloud 曲库」填地址和账号。';
+  else if(!davCwd)davRender();
+  else davRender();
+};
+$('davClose').onclick=()=>{$('davPop').style.display='none'};
+$('davUp').onclick=()=>{if(davBusy)return;davCwd=davCwd.split('/').slice(0,-1).join('/');davRender()};
+$('davHome').onclick=()=>{if(davBusy)return;davCwd='';davRender()};
+$('davRefresh').onclick=()=>{if(davBusy)return;davRender()};
+$('davPop').onclick=e=>{if(e.target===$('davPop'))$('davPop').style.display='none'};
+$('davSave').onclick=async()=>{
+  DAV={base:($('davBase').value||'').trim().replace(/\/+$/,''),kind:$('davKind').value,
+       user:($('davUser').value||'').trim(),pass:$('davPass').value||''};
+  if(idb)await idbPut(idb,'meta',{hash:'dav',v:DAV});
+  msg(davReady()?'ownCloud 设置已保存':'已保存，但地址/用户还是空的');
+};
+$('davClear').onclick=()=>{
+  DAV={base:'',kind:'account',user:'',pass:''};
+  $('davBase').value='';$('davUser').value='';$('davPass').value='';
+  if(idb)idbPut(idb,'meta',{hash:'dav',v:DAV});
+  msg('已清除 ownCloud 凭据');
+};
+$('davTest').onclick=async()=>{
+  DAV={base:($('davBase').value||'').trim().replace(/\/+$/,''),kind:$('davKind').value,
+       user:($('davUser').value||'').trim(),pass:$('davPass').value||''};
+  if(!davReady())return msg('先填地址和用户',1);
+  msg('测试连接中…');
+  try{
+    const t0=performance.now(),items=await davList('');
+    msg('连接成功：根目录 '+items.length+' 项，用时 '+Math.round(performance.now()-t0)+'ms');
+  }catch(err){msg('连接失败：'+err.message,1)}
+};
 // 条目里指定的音频可能不在本机（播放列表同步过来时），回退到同曲目第一个可用音频
 async function plResolveAudio(it){
   const tr=await idbGet(idb,'tracks',it.pdfHash);
@@ -3590,6 +3813,7 @@ async function boot(){
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
   await sweepLegacy();          // 扫完再画列表，否则 legacy 曲目要等下次重开才出现
   await loadPL();syncPL();
+  await loadDAV();
   showLib(true);
 }
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
