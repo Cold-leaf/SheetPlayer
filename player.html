@@ -693,7 +693,7 @@ const pagesEl=$('pages'),wrap=$('wrap'),aud=$('aud'),panel=$('panel');
 /* ---------- 小工具 ---------- */
 let msgT=null;
 function msg(s,err){const e=$('msg');e.textContent=s;e.className=err?'err':'';
-  clearTimeout(msgT);msgT=setTimeout(()=>{e.textContent=''},err?5000:2600)}
+  clearTimeout(msgT);msgT=setTimeout(()=>{e.textContent=''},err?8000:2600)}   // 报错要留够阅读时间
 function pureM(){return M.map(x=>{const o={page:x.page,nx:x.nx,ny:x.ny,m:x.m,h:hOf(x)};
   if(x.span>1)o.span=x.span;return o})}          // 剥掉可能挂上的引用再序列化
 function maxM(){return M.reduce((a,x)=>x.m>a?x.m:a,0)}
@@ -3396,6 +3396,32 @@ async function loadDAV(){
   $('davUser').value=DAV.user;$('davPass').value=DAV.pass;
 }
 function davReady(){return !!(DAV.base&&(DAV.kind==='public'||DAV.user))}
+// 容错：很多人直接把完整 DAV 地址粘进来（…/remote.php/dav/files/用户名/），
+// 这里自动剥到服务器根，顺带从里面认出用户名 / 公开分享方式
+function davNormBase(s){
+  s=String(s||'').trim().replace(/\/+$/,'');
+  let kind=null,user='';
+  const m=s.match(/\/remote\.php\/dav\/files\/([^/]+)/i);
+  if(m){user=decodeURIComponent(m[1]);s=s.slice(0,m.index)}
+  else{
+    const q=s.search(/\/remote\.php\/dav/i);
+    if(q>=0)s=s.slice(0,q);
+    else{const p=s.search(/\/public\.php\/webdav/i);if(p>=0){kind='public';s=s.slice(0,p)}}
+  }
+  return {base:s.replace(/\/+$/,''),kind,user};
+}
+// 把表单读成 DAV（含上面的容错），并把纠正后的值写回输入框让用户看得见
+function davReadForm(){
+  const n=davNormBase($('davBase').value);
+  // 地址里带了 /remote.php/dav/files/<用户名>，那就是账号方式——以下拉框为准会把用户名白认出来
+  const kind=n.kind||(n.user?'account':$('davKind').value);
+  const user=(($('davUser').value||'').trim()||n.user);
+  DAV={base:n.base,kind,user,pass:$('davPass').value||''};
+  $('davBase').value=DAV.base;
+  if(n.kind&&n.kind!==$('davKind').value)$('davKind').value=n.kind;
+  if(!$('davUser').value&&n.user)$('davUser').value=n.user;
+  return DAV;
+}
 // 公开分享用 public.php/webdav（令牌当用户名、密码留空或填分享密码），账号用 remote.php/dav/files/<用户>
 function davRoot(){
   return DAV.kind==='public'?'/public.php/webdav'
@@ -3418,10 +3444,28 @@ function davHrefPath(href){                        // href → 相对根目录�
   s=i>=0?s.slice(i+root.length):s;
   return s.replace(/\/+$/,'').replace(/^\/*/,'');
 }
+// 「Failed to fetch」= 服务器回了一个没有跨域头的响应，浏览器不告诉 JS 真实状态码。
+// 用 no-cors 再探一次：能拿到 opaque 响应说明服务器可达（那就是认证/路径问题），
+// 直接 reject 才是网络/DNS/证书层的问题。这样错误信息才有指向性。
+async function davDiagnose(url){
+  try{
+    await fetch(url,{mode:'no-cors',headers:{Authorization:davAuth()}});
+    return '服务器能连上，但拒绝了这个请求（多半是认证失败：用户名/密码不对，或 ownCloud 开了两步验证而没用「应用密码」）';
+  }catch(e){
+    return '连不到服务器（地址写错、网络不可达，或 HTTPS 证书不被信任）';
+  }
+}
 async function davList(path){
-  const r=await fetch(davUrl(path),{method:'PROPFIND',headers:{
-    Authorization:davAuth(),Depth:'1','Content-Type':'application/xml; charset=utf-8'}});
+  let r;
+  try{
+    r=await fetch(davUrl(path),{method:'PROPFIND',headers:{
+      Authorization:davAuth(),Depth:'1','Content-Type':'application/xml; charset=utf-8'}});
+  }catch(err){
+    throw new Error(await davDiagnose(davUrl(path))+'；试的地址：'+davUrl(path));
+  }
   if(r.status===401)throw new Error('认证失败：检查用户名/密码（公开分享要把分享令牌填进「用户」）');
+  if(r.status===403)throw new Error('没有权限（403）——检查这个账号对该目录有没有读权限');
+  if(r.status===405)throw new Error('服务器不接受 PROPFIND（405）——地址可能填错了，应该是 …/owncloud 这一级');
   if(r.status===404)throw new Error('路径不存在');
   if(!r.ok)throw new Error('HTTP '+r.status);
   const doc=new DOMParser().parseFromString(await r.text(),'application/xml');
@@ -3543,8 +3587,7 @@ $('davHome').onclick=()=>{if(davBusy)return;davCwd='';davRender()};
 $('davRefresh').onclick=()=>{if(davBusy)return;davRender()};
 $('davPop').onclick=e=>{if(e.target===$('davPop'))$('davPop').style.display='none'};
 $('davSave').onclick=async()=>{
-  DAV={base:($('davBase').value||'').trim().replace(/\/+$/,''),kind:$('davKind').value,
-       user:($('davUser').value||'').trim(),pass:$('davPass').value||''};
+  davReadForm();
   if(idb)await idbPut(idb,'meta',{hash:'dav',v:DAV});
   if(!davReady())return msg('还差服务器地址或用户',1);
   msg('已保存，正在连接…');
@@ -3557,8 +3600,7 @@ $('davClear').onclick=()=>{
   msg('已清除 ownCloud 凭据');
 };
 $('davTest').onclick=async()=>{
-  DAV={base:($('davBase').value||'').trim().replace(/\/+$/,''),kind:$('davKind').value,
-       user:($('davUser').value||'').trim(),pass:$('davPass').value||''};
+  davReadForm();
   if(!davReady())return msg('先填地址和用户',1);
   msg('测试连接中…');
   try{
