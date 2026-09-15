@@ -121,12 +121,33 @@
 
 | 方式 | 服务器填 | 「用户」填 | 「密码」填 |
 |---|---|---|---|
-| **公开分享**（默认，推荐·不用自己的账号） | `https://服务器/owncloud` | 分享令牌 | 分享密码（没有就留空） |
+| **代理（Worker）**（推荐·最安全） | Worker 地址 `https://xxx.workers.dev` | 不用填 | 访问令牌（可选，见下） |
+| **公开分享** | `https://服务器/owncloud` | 分享令牌 | 分享密码（没有就留空） |
 | **账号** | `https://服务器/owncloud` | 你的用户名 | **应用密码**（不要用主密码，可随时吊销） |
+
+> ⚠️ **有些服务器用不了「账号」和「公开分享」两种方式**：ownCloud 的 WebDAV 响应不带 CORS 头
+> （只有 OPTIONS 预检带），浏览器会拦成 "Failed to fetch"。这不是密码问题——把地址粘到浏览器
+> 地址栏能直接列出文件就说明凭据没问题。这种情况用下面的 **Worker 代理**。
 
 公开分享令牌的拿法：在 ownCloud 里对该文件夹「创建公开链接」得到的令牌串。点「保存并登录」会直接列目录，成功与否一眼可见。
 
-> **凭据存在哪**：只存在**你这台设备的 IndexedDB**里，不进代码仓库，别人访问同一个网址也拿不到。
+### 用 Worker 代理（服务器不支持跨域时的正解）
+
+仓库里的 `dav-proxy-worker.js` 是一个 Cloudflare Worker（免费版够用），它站在中间转发请求、
+补齐 CORS 头，**并且把账号密码存在 Worker 的加密密钥里——密码根本不下发到设备**。
+
+部署（网页操作，不用装工具）：
+
+1. dash.cloudflare.com → Workers & Pages → Create → Worker，把 `dav-proxy-worker.js` 内容整个粘进去，Deploy。
+2. 该 Worker → Settings → Variables and Secrets，添加 **Secret**：
+   `DAV_URL`（ownCloud 设置页给的那串 WebDAV 地址）、`DAV_USER`、`DAV_PASS`（应用密码）、
+   `ALLOW_ORIGIN`（`https://cold-leaf.github.io`）、`TOKEN`（可选，设了要在 App 的「密码」框填同样的值）。
+3. App 的 ownCloud 面板里，方式选「**代理（Worker）**」，服务器填 `https://<名字>.<账号>.workers.dev`。
+
+好处：① 绕开 CORS；② 密码不在设备上，换设备/丢设备都不怕；③ 服务器地址和账号对客户端完全不可见。
+Worker 只实现了 `PROPFIND` + `GET`（只读），写方法一律拒绝。
+
+> **凭据存在哪**：直接连 WebDAV 时存在**你这台设备的 IndexedDB**里；用 Worker 时密码只存在 Worker 端，设备上只有 Worker 地址。
 > 说明：GitHub Pages 是纯静态托管，没有服务端运行时，所以做不到 Actions secret 那种「存在服务器上、运行时注入」——但「不进仓库 + 别人看不到」这两个效果是等价的。注意 IndexedDB 按源隔离，源是 `cold-leaf.github.io`：如果你在这个域名下还有别的项目页面，理论上它也能读到；介意就用公开分享令牌（可随时吊销）。
 
 **用法**：点文件夹进目录，点文件名即下载并导入——

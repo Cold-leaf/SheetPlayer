@@ -606,6 +606,7 @@ body.hidebar #reh{display:flex}
      <option value="public">公开分享链接（推荐·不用自己的账号）</option>
      <option value="webdav">账号（remote.php/webdav）</option>
      <option value="account">账号（remote.php/dav/files/用户名）</option>
+     <option value="worker">代理（Cloudflare Worker·推荐）</option>
     </select></label>
    <span class="ginfo" id="davKindTip"></span>
   </div>
@@ -613,7 +614,7 @@ body.hidebar #reh{display:flex}
    <label>服务器<input type="text" id="davBase" placeholder="https://服务器地址/owncloud"></label>
   </div>
   <div class="dRow2">
-   <label>用户<input type="text" id="davUser" placeholder="账号或分享令牌"></label>
+   <label id="davUserLab">用户<input type="text" id="davUser" placeholder="账号或分享令牌"></label>
    <label>密码<input type="password" id="davPass" placeholder="应用密码 / 分享密码"></label>
   </div>
   <div class="dRow2">
@@ -3403,7 +3404,13 @@ async function loadDAV(){
   $('davBase').value=DAV.base;$('davKind').value=DAV.kind;
   $('davUser').value=DAV.user;$('davPass').value=DAV.pass;
 }
-function davReady(){return !!(DAV.base&&(DAV.kind==='public'||DAV.user))}
+const davIsWorker=()=>DAV.kind==='worker';
+function davReady(){return !!(DAV.base&&(DAV.kind==='public'||davIsWorker()||DAV.user))}
+// Worker 模式：凭据在 Worker 里，这里只填 Worker 地址（+ 可选令牌）
+function davWorkerUrl(kind,path){
+  const u=DAV.base.replace(/\/+$/,'')+'/'+kind+'?path='+encodeURIComponent(path||'');
+  return DAV.pass?u+'&k='+encodeURIComponent(DAV.pass):u;
+}
 // 容错：很多人直接把完整 DAV 地址粘进来（…/remote.php/dav/files/用户名/），
 // 这里自动剥到服务器根，顺带从里面认出用户名 / 公开分享方式
 function davNormBase(s){
@@ -3476,6 +3483,14 @@ async function davDiagnose(url){
   }
 }
 async function davList(path){
+  if(davIsWorker()){                              // 代理模式：Worker 已经把 XML 解析成 JSON 了
+    let r;
+    try{ r=await fetch(davWorkerUrl('list',path)) }
+    catch(e){ throw new Error('连不到 Worker（地址写错或网络不通）') }
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||('Worker 返回 '+r.status));
+    return j.items||[];
+  }
   let r;
   try{
     r=await fetch(davUrl(path),{method:'PROPFIND',headers:{
@@ -3510,8 +3525,13 @@ async function davList(path){
 }
 // 带进度下载：音频几十 MB，慢服务器上没反馈会以为卡死
 async function davGet(path,onProgress){
-  const r=await fetch(davUrl(path),{headers:{Authorization:davAuth()}});
-  if(!r.ok)throw new Error('HTTP '+r.status);
+  const w=davIsWorker();
+  const r=w?await fetch(davWorkerUrl('file',path))
+           :await fetch(davUrl(path),{headers:{Authorization:davAuth()}});
+  if(!r.ok){
+    if(w){const j=await r.json().catch(()=>({}));throw new Error(j.error||('HTTP '+r.status))}
+    throw new Error('HTTP '+r.status);
+  }
   const total=+(r.headers.get('content-length')||0);
   let blob;
   if(r.body&&r.body.getReader){                    // 流式读，边下边报进度
@@ -3536,12 +3556,15 @@ function davCfgShow(v){                            // 登录区：没配好时�
   $('davCfgBox').style.display=on?'block':'none';
   $('davCfg').textContent=on?'⚙ 收起':'⚙ 登录';
   if(on){
-    const pub=$('davKind').value==='public';
+    const k=$('davKind').value;
+    const pub=k==='public';
     $('davUser').placeholder=pub?'分享令牌':'用户名';
-    $('davPass').placeholder=pub?'分享密码（没有就留空）':'应用密码';
-    $('davKindTip').textContent=pub
-      ?'在 ownCloud 里对该文件夹「创建公开链接」得到的令牌'
-      :'建议用「应用密码」而不是主密码，可随时吊销';
+    $('davPass').placeholder=pub?'分享密码（没有就留空）':(k==='worker'?'访问令牌（可选）':'应用密码');
+    $('davKindTip').textContent=
+      k==='worker'?'服务器地址填 Worker 的地址（https://xxx.workers.dev）；账号密码存在 Worker 里，不下发到本机。部署方法见仓库 dav-proxy-worker.js'
+      :(pub?'在 ownCloud 里对该文件夹「创建公开链接」得到的令牌'
+           :'建议用「应用密码」而不是主密码，可随时吊销');
+    $('davUserLab').style.display=k==='worker'?'none':'';    // 代理模式不需要用户名
     setTimeout(()=>$(DAV.base?'davUser':'davBase').focus(),50);
   }
 }
