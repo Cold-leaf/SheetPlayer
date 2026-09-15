@@ -206,6 +206,16 @@ body.hidebar #bar{display:none}
 #davHd b{font-size:15px}
 #davHd button{background:var(--surface);color:var(--text);border:1px solid var(--border);
      padding:5px 12px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+#davCfgBox{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+     padding:10px 12px;margin-bottom:10px}
+#davCfgBox .dRow2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:7px}
+#davCfgBox label{display:inline-flex;gap:5px;align-items:center;font-size:13px;color:var(--text);white-space:nowrap}
+#davCfgBox input,#davCfgBox select{background:var(--bg-soft);color:var(--text);border:1px solid var(--border);
+     border-radius:5px;padding:5px 7px;font-size:13px}
+#davCfgBox input[type=text],#davCfgBox input[type=password]{width:230px}
+#davCfgBox button{background:var(--surface-2);color:var(--text);border:1px solid var(--border);
+     padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+#davCfgBox button.open{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600}
 #davList{flex:1;min-height:120px;max-height:62vh;overflow:auto;border:1px solid var(--border);
      border-radius:8px;background:var(--bg)}
 #davList .dRow{display:flex;gap:10px;align-items:center;padding:9px 12px;cursor:pointer;font-size:14px}
@@ -468,21 +478,10 @@ body.hidebar #reh{display:flex}
   <button id="bDelMode">删除当前模式</button>
  </div>
  <div class="msec">ownCloud 曲库（只读）</div>
- <label style="white-space:normal">地址<input type="text" id="davBase" placeholder="https://…/owncloud" style="width:100%;box-sizing:border-box;margin-top:2px"></label>
  <div class="mrow">
-  <label>方式<select id="davKind">
-   <option value="account">账号</option>
-   <option value="public">公开分享</option>
-  </select></label>
-  <label>用户<input type="text" id="davUser" placeholder="账号或分享令牌" style="width:120px"></label>
+  <button id="bDavOpen">☁ 打开 ownCloud 曲库…</button>
  </div>
- <div class="mrow">
-  <label>密码<input type="password" id="davPass" placeholder="应用密码" style="width:120px"></label>
-  <button id="davSave">保存</button>
-  <button id="davTest">测试</button>
-  <button id="davClear">清除</button>
- </div>
- <div class="ginfo" style="white-space:normal">只读：只列目录和下载，不会往服务器写任何东西。密码只存在本机浏览器里。</div>
+ <div class="ginfo" style="white-space:normal">在曲目库里点「☁ ownCloud」打开；登录/配置也在那个面板里，密码只存本机浏览器。</div>
  <div class="msec">竖线吸附</div>
  <label title="放下或拖完后，抄同一行最近那条竖线的高度和纵向位置"><input type="checkbox" id="chkAlignY" checked>对齐同行</label>
  <label title="在窗口内找印刷的小节线并横向吸过去"><input type="checkbox" id="chkSnapX" checked>吸小节线</label>
@@ -594,10 +593,34 @@ body.hidebar #reh{display:flex}
  <div id="davHd">
   <b>ownCloud 曲库</b><span id="davPath" class="ginfo"></span>
   <span style="flex:1"></span>
+  <button id="davCfg" title="登录 / 修改账号">⚙ 登录</button>
   <button id="davUp" title="回到上一级">↑ 上级</button>
   <button id="davHome" title="回到根目录">⌂ 根目录</button>
   <button id="davRefresh" title="重新列出当前目录">刷新</button>
   <button id="davClose">✕</button>
+ </div>
+ <div id="davCfgBox">
+  <div class="dRow2">
+   <label>方式
+    <select id="davKind">
+     <option value="public">公开分享链接（推荐·不用自己的账号）</option>
+     <option value="account">账号</option>
+    </select></label>
+   <span class="ginfo" id="davKindTip"></span>
+  </div>
+  <div class="dRow2">
+   <label>服务器<input type="text" id="davBase" placeholder="https://服务器地址/owncloud"></label>
+  </div>
+  <div class="dRow2">
+   <label>用户<input type="text" id="davUser" placeholder="账号或分享令牌"></label>
+   <label>密码<input type="password" id="davPass" placeholder="应用密码 / 分享密码"></label>
+  </div>
+  <div class="dRow2">
+   <button id="davSave" class="open">保存并登录</button>
+   <button id="davTest">测试连接</button>
+   <button id="davClear">清除凭据</button>
+  </div>
+  <div class="ginfo" style="white-space:normal">只读：只列目录和下载，不往服务器写任何东西。凭据只存在本机浏览器，不进代码仓库。</div>
  </div>
  <div id="davList"></div>
  <div id="davTip" class="ginfo">点文件名下载并导入；PDF 会新建/接回曲目，音频挂到当前打开的曲目上（先打开一首再下音频）。</div>
@@ -3364,11 +3387,11 @@ function savePL(){if(idb)idbPut(idb,'meta',{hash:'playlist',v:PL})}
 /* ================= ownCloud（WebDAV）只读曲库 =================
    只用 PROPFIND 列目录 + GET 下载，绝不 PUT/DELETE——服务器是公用的，只读免得出事。
    凭证只存本机 IndexedDB，不进代码/仓库。 */
-let DAV={base:'',kind:'account',user:'',pass:''},davCwd='',davBusy=false;
+let DAV={base:'',kind:'public',user:'',pass:''},davCwd='',davBusy=false;   // 默认「公开分享」：不用自己的账号
 async function loadDAV(){
   if(!idb)return;
   const r=await idbGet(idb,'meta','dav');
-  if(r&&r.v)DAV={base:r.v.base||'',kind:r.v.kind||'account',user:r.v.user||'',pass:r.v.pass||''};
+  if(r&&r.v)DAV={base:r.v.base||'',kind:r.v.kind||'public',user:r.v.user||'',pass:r.v.pass||''};
   $('davBase').value=DAV.base;$('davKind').value=DAV.kind;
   $('davUser').value=DAV.user;$('davPass').value=DAV.pass;
 }
@@ -3444,10 +3467,25 @@ async function davGet(path,onProgress){
 const DAV_AUD=/\.(mp3|m4a|wav|flac|aac|ogg|opus|wma|aiff?)$/i;
 const DAV_PDF=/\.pdf$/i;
 function fmtSize(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':(n>=1024?(n/1024).toFixed(0)+' KB':'')}
+function davCfgShow(v){                            // 登录区：没配好时自动展开
+  const on=v===undefined?$('davCfgBox').style.display==='none':v;
+  $('davCfgBox').style.display=on?'block':'none';
+  $('davCfg').textContent=on?'⚙ 收起':'⚙ 登录';
+  if(on){
+    const pub=$('davKind').value==='public';
+    $('davUser').placeholder=pub?'分享令牌':'用户名';
+    $('davPass').placeholder=pub?'分享密码（没有就留空）':'应用密码';
+    $('davKindTip').textContent=pub
+      ?'在 ownCloud 里对该文件夹「创建公开链接」得到的令牌'
+      :'建议用「应用密码」而不是主密码，可随时吊销';
+    setTimeout(()=>$(DAV.base?'davUser':'davBase').focus(),50);
+  }
+}
 async function davRender(){
   const box=$('davList');
   $('davPath').textContent=davCwd?(' / '+davCwd.replace(/\//g,' / ')):' /';
-  if(!davReady()){box.innerHTML='<div class="dEmpty">还没配置 ownCloud。到「☰ 菜单 → ownCloud 曲库」填地址和账号。</div>';return}
+  if(!davReady()){davCfgShow(true);box.innerHTML='<div class="dEmpty">先登录：在上面填服务器地址和账号。</div>';return}
+  davCfgShow(false);
   box.innerHTML='<div class="dEmpty">读取中…</div>';
   try{
     const items=await davList(davCwd);
@@ -3490,13 +3528,15 @@ async function davDownload(it){
   }catch(err){msg('下载失败：'+err.message,1)}
   finally{davBusy=false;$('davTip').textContent='点文件名下载并导入；PDF 会新建/接回曲目，音频挂到当前打开的曲目上（先打开一首再下音频）。'}
 }
-$('libDav').onclick=()=>{
+function davOpen(){
   if(!idb)return;
   $('davPop').style.display='flex';
-  if(!davReady())$('davTip').textContent='还没配置：到「☰ 菜单 → ownCloud 曲库」填地址和账号。';
-  else if(!davCwd)davRender();
-  else davRender();
-};
+  davRender();                                     // 没配好会自动展开登录区
+}
+$('libDav').onclick=davOpen;
+$('bDavOpen').onclick=()=>{$('menu').style.display='none';davOpen()};
+$('davCfg').onclick=()=>davCfgShow();
+$('davKind').onchange=()=>davCfgShow(true);
 $('davClose').onclick=()=>{$('davPop').style.display='none'};
 $('davUp').onclick=()=>{if(davBusy)return;davCwd=davCwd.split('/').slice(0,-1).join('/');davRender()};
 $('davHome').onclick=()=>{if(davBusy)return;davCwd='';davRender()};
@@ -3506,7 +3546,9 @@ $('davSave').onclick=async()=>{
   DAV={base:($('davBase').value||'').trim().replace(/\/+$/,''),kind:$('davKind').value,
        user:($('davUser').value||'').trim(),pass:$('davPass').value||''};
   if(idb)await idbPut(idb,'meta',{hash:'dav',v:DAV});
-  msg(davReady()?'ownCloud 设置已保存':'已保存，但地址/用户还是空的');
+  if(!davReady())return msg('还差服务器地址或用户',1);
+  msg('已保存，正在连接…');
+  davCwd='';davRender();                           // 存完直接列目录，成功与否一眼看到
 };
 $('davClear').onclick=()=>{
   DAV={base:'',kind:'account',user:'',pass:''};
