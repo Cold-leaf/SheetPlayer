@@ -3391,7 +3391,14 @@ let DAV={base:'',kind:'public',user:'',pass:''},davCwd='',davBusy=false;   // �
 async function loadDAV(){
   if(!idb)return;
   const r=await idbGet(idb,'meta','dav');
-  if(r&&r.v)DAV={base:r.v.base||'',kind:r.v.kind||'public',user:r.v.user||'',pass:r.v.pass||''};
+  if(r&&r.v){
+    // 老版本没有地址清洗，存进来的可能是完整 DAV 地址——加载时先洗一遍，
+    // 否则输入框里显示的是脏值、请求时又拼一次，变成双份路径
+    const n=davNormBase(r.v.base||'');
+    DAV={base:n.base,kind:n.kind||r.v.kind||'public',
+         user:(r.v.user||'')||n.user,pass:r.v.pass||''};
+    if(DAV.base!==(r.v.base||''))idbPut(idb,'meta',{hash:'dav',v:DAV});   // 顺手把洗好的写回去
+  }
   $('davBase').value=DAV.base;$('davKind').value=DAV.kind;
   $('davUser').value=DAV.user;$('davPass').value=DAV.pass;
 }
@@ -3428,8 +3435,11 @@ function davRoot(){
     :'/remote.php/dav/files/'+encodeURIComponent(DAV.user);
 }
 function davUrl(p){
+  // 兜底再剥一次：老配置（或手抖粘进来的完整地址）里若已含 DAV 路径，
+  // 直接拼会变成 …/dav/files/boher/remote.php/dav/files/boher 这种双份
+  const base=davNormBase(DAV.base).base.replace(/\/+$/,'');
   const segs=String(p||'').split('/').filter(Boolean).map(encodeURIComponent);
-  return DAV.base.replace(/\/+$/,'')+davRoot()+(segs.length?'/'+segs.join('/'):'');
+  return base+davRoot()+(segs.length?'/'+segs.join('/'):'');
 }
 function davAuth(){
   const u=DAV.kind==='public'?DAV.user:DAV.user;
