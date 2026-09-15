@@ -3461,13 +3461,16 @@ function davHrefPath(href){                        // href → 相对根目录�
   s=i>=0?s.slice(i+root.length):s;
   return s.replace(/\/+$/,'').replace(/^\/*/,'');
 }
-// 「Failed to fetch」= 服务器回了一个没有跨域头的响应，浏览器不告诉 JS 真实状态码。
-// 用 no-cors 再探一次：能拿到 opaque 响应说明服务器可达（那就是认证/路径问题），
-// 直接 reject 才是网络/DNS/证书层的问题。这样错误信息才有指向性。
+// 「Failed to fetch」= 浏览器拿到了响应但不让 JS 读（缺 Access-Control-Allow-Origin）。
+// 注意：401 和 207 的响应都一样读不到，JS 里【无法】区分认证失败和 CORS 缺失。
+// no-cors 探测只能判断「服务器可不可达」——该模式会丢掉 Authorization 头，
+// 所以探出来的 401 是假象，不能当成认证失败的证据（曾经据此给过误导提示）。
 async function davDiagnose(url){
   try{
-    await fetch(url,{mode:'no-cors',headers:{Authorization:davAuth()}});
-    return '服务器能连上，但拒绝了这个请求（多半是认证失败：用户名/密码不对，或 ownCloud 开了两步验证而没用「应用密码」）';
+    await fetch(url,{mode:'no-cors'});
+    return '服务器可达，但浏览器读不到响应——服务器没给 WebDAV 响应加跨域(CORS)头。'
+      +'自己验证一下：把上面那个地址粘到浏览器地址栏直接打开（地址栏访问不受跨域限制），'
+      +'能列出文件就说明账号密码没问题、纯粹是服务器端 CORS 没开；弹登录框或报 401 才是密码问题';
   }catch(e){
     return '连不到服务器（地址写错、网络不可达，或 HTTPS 证书不被信任）';
   }
