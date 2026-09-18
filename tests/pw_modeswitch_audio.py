@@ -37,7 +37,7 @@ async def main():
         await pg.wait_for_function("()=>track.audios.length===2",timeout=20000)
         # 让 lastAudio 指向损坏的「现场」，模拟"进去默认现场"
         await pg.evaluate("""async()=>{const a=track.audios.find(x=>x.mode==='现场');
-          track.lastAudio=a.hash;track.updatedAt=Date.now();await idbPut(idb,'tracks',track)}""")
+          track.lastAudio=a.hash;track.updatedAt=Date.now();await idbPut(idb,'projects',track)}""")
         await asyncio.sleep(0.8)
 
         # 重新打开曲目（模拟"进去默认现场"）

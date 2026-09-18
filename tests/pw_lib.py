@@ -19,7 +19,7 @@ async def main():
         # 启动即显示曲目库；空库有引导文案
         print(ok(await pg.evaluate("idb!==null")), "IndexedDB 曲目库已启用")
         print(ok(await pg.evaluate("$('lib').style.display==='flex'")), "启动即显示曲目库界面")
-        print(ok("还没有曲目" in await pg.inner_text("#libList")), "空库引导文案")
+        print(ok("还没有项目" in await pg.inner_text("#libList")), "空库引导文案")
 
         # 走真实用户路径：点「＋ 导入谱子」→ 文件选择器 → 选 PDF
         async with pg.expect_file_chooser() as fc:
@@ -27,7 +27,9 @@ async def main():
         await (await fc.value).set_files(PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
         print(ok(await pg.evaluate("$('lib').style.display==='none'")), "选完 PDF 自动进入谱面（库界面收起）")
-        print(ok(await pg.evaluate("!!track&&!!pdfHash&&pdfHash.length===64")), "曲目按内容哈希建立 (64 位 hex)")
+        # 身份是项目 id（p 开头），PDF 只是挂在它下面的一份附件
+        print(ok(await pg.evaluate("!!track&&track.id===pid&&pid[0]==='p'&&track.pdf.hash===pdfHash&&pdfHash.length===64")),
+              "项目按 id 建立，PDF 是附件（内容哈希只当 blob 键）: "+str(await pg.evaluate("pid")))
         print(ok("《" in await pg.inner_text("#stat")), "状态栏显示曲名: "+await pg.inner_text("#stat"))
 
         # 标 2 个小节 → 防抖落盘 → 回库看卡片统计
