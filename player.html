@@ -341,7 +341,21 @@ body.hidebar #reh{display:flex}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
-/* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+展开键。
+/* 速度键：圆键里塞不下「1.25×」，改成同高的胶囊。只是宽度放开，高度/配色仍归 #reh button 管 */
+#reh button.rate{width:auto;min-width:54px;padding:0 12px;border-radius:22px;
+  font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+/* 速度浮层：点「1×」在胶囊正上方铺开全部档位，一档一个按钮，手指点哪个是哪个。
+   不做成"点一下跳下一档"——从 1.5 回到 0.5 要按八下 */
+/* 宽度必须写死：绝对定位的盒子按内容收缩，档位又会换行，不给宽就会缩成窄窄一坨 */
+#ratePop{position:fixed;left:50%;transform:translateX(-50%);z-index:37;display:none;
+  width:min(94vw,620px);background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;padding:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.6)}
+/* 网格而不是 flex-wrap：换行时每档还是一样宽，最后一行不会被拉成几条宽的 */
+#ratePop .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(56px,1fr));gap:6px}
+#ratePop button{height:42px;padding:0 8px;border-radius:9px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-size:15px;font-variant-numeric:tabular-nums;cursor:pointer}
+#ratePop button.on{background:var(--accent);border-color:var(--accent);color:#1a1408;font-weight:600}
+/* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+速度+展开键。
    靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行） */
 @media (max-width:700px){
   #reh{flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px;
@@ -350,6 +364,9 @@ body.hidebar #reh{display:flex}
   #reh .rehMain,#reh .rehFoot{gap:8px}
   #reh .prog{min-width:0;max-width:none}
   #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
+  #reh button.rate{width:auto;min-width:46px;padding:0 10px;font-size:13px}
+  #ratePop{padding:6px}
+  #ratePop button{height:44px;font-size:14px}   /* 手指目标比桌面再大一点 */
 }
 
 </style>
@@ -443,11 +460,14 @@ body.hidebar #reh{display:flex}
  </div>
  <div class="rehFoot">
  <span id="rehLbl" class="lbl"></span>
+ <button id="rehRate" class="rate" aria-haspopup="true" aria-expanded="false" aria-label="播放速度" title="播放速度">1×</button>
  <button id="rehUp" aria-label="展开工具栏" title="展开工具栏">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
  </button>
  </div>
 </div>
+<!-- 速度档位的按钮由 buildRateChips() 按工具栏那个 #rate 下拉现生成：只维护一处 -->
+<div id="ratePop" style="display:none"><div class="row" id="rateRow"></div></div>
 <div id="menu" style="display:none">
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
@@ -1272,7 +1292,8 @@ wrap.addEventListener('touchend',pinchEnd);
 wrap.addEventListener('touchcancel',pinchEnd);
 
 /* 工具栏收起 / 展开 */
-function setBarHidden(v){document.body.classList.toggle('hidebar',v);
+function setBarHidden(v){if(!v)closeRatePop();     // 展开工具栏（进排练态是 v=true）就收起速度浮层，别让它悬在谱面上
+  document.body.classList.toggle('hidebar',v);
   $('barShow').style.display=v?'block':'none';syncBarH()}
 $('bBar').onclick=()=>setBarHidden(true);
 $('barShow').onclick=()=>setBarHidden(false);
@@ -1341,6 +1362,38 @@ let rehSeeking=false;
   tr.addEventListener('pointercancel',()=>{rehSeeking=false;dirty=true});
 })();
 $('rehUp').onclick=()=>setBarHidden(false);
+/* 排练胶囊里的倍速。档位只有工具栏那个 #rate 下拉一份，这里按它现生成按钮，
+   免得两处各抄一遍、加档时漏掉一边。选中态靠 .on，和工具栏下拉双向同步（setRate / onratechange）。 */
+const rateLabel=r=>String(+r)+'×';
+function buildRateChips(){
+  const row=$('rateRow');if(!row||row.dataset.built)return;
+  row.dataset.built='1';
+  row.innerHTML=[...$('rate').options].map(o=>
+    '<button type="button" data-r="'+esc(o.value)+'">'+esc(rateLabel(o.value))+'</button>').join('');
+  row.querySelectorAll('button').forEach(b=>b.onclick=()=>{setRate(+b.dataset.r);closeRatePop()});
+}
+function syncRate(){
+  buildRateChips();
+  const r=aud.playbackRate||1;
+  $('rehRate').textContent=rateLabel(r);
+  $('rehRate').title='播放速度 '+rateLabel(r)+'（也可以按 - / = 微调、0 归位）';
+  $('rateRow').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.r===r));
+}
+function closeRatePop(){
+  $('ratePop').style.display='none';
+  $('rehRate').setAttribute('aria-expanded','false');
+}
+function toggleRatePop(){
+  const p=$('ratePop');
+  if(p.style.display!=='none')return closeRatePop();
+  syncRate();
+  // 钉在胶囊正上方：胶囊高度随宽窄屏变（一行 / 两行），量出来再摆，别写死偏移
+  p.style.display='block';
+  const r=$('reh').getBoundingClientRect();
+  p.style.bottom=Math.max(8,innerHeight-r.top+8)+'px';
+  $('rehRate').setAttribute('aria-expanded','true');
+}
+$('rehRate').onclick=()=>toggleRatePop();
 // 把工具栏实际高度写进 --barH：菜单/面板据此钉在它下方，行数变化（段落条出现等）也跟得上
 function syncBarH(){
   const h=document.body.classList.contains('hidebar')?0:$('bar').offsetHeight;
@@ -1363,6 +1416,11 @@ document.addEventListener('click',e=>{
   if($('plPop').style.display!=='none'&&!e.target.closest('#plPop')&&!e.target.closest('#plNow')){
     $('plPop').style.display='none';
     if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar'))e.stopPropagation();
+  }
+  // 速度浮层同理。除了浮层自己，点胶囊上的速度键也不算"点外面"——那一下要留给它自己开合
+  if($('ratePop').style.display!=='none'&&!e.target.closest('#ratePop')&&!e.target.closest('#rehRate')){
+    closeRatePop();
+    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#reh'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
@@ -2369,6 +2427,7 @@ requestAnimationFrame(tick);
 window.addEventListener('keydown',e=>{
   if($('lib').style.display==='flex')return;       // 曲目库开着时别让快捷键穿到谱面
   if($('help').style.display==='flex'&&(e.key==='Escape'||e.key.toLowerCase()==='h')){toggleHelp(false);return}
+  if(e.key==='Escape'&&$('ratePop').style.display!=='none'){closeRatePop();return}
   const a=document.activeElement;
   if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return;
   const k=e.key,timeMode=$('mode').value==='time';
@@ -2391,12 +2450,13 @@ function bumpRate(d){
   const i=opts.indexOf(aud.playbackRate);
   setRate(opts[Math.min(opts.length-1,Math.max(0,(i<0?opts.indexOf(1):i)+d))]);
 }
-function setRate(r){aud.playbackRate=r;$('rate').value=String(r);msg('速度 '+r+'x')}
-$('rate').onchange=()=>{aud.playbackRate=+$('rate').value};
+function setRate(r){aud.playbackRate=r;$('rate').value=String(r);syncRate();msg('速度 '+r+'x')}
+$('rate').onchange=()=>{aud.playbackRate=+$('rate').value;syncRate()};
 // 速度万一被别的途径改了（某些浏览器的原生控件仍有速度菜单），把下拉同步过来，
 // 免得显示 1x 实际在 1.5x，也免得 bumpRate 因为对不上选项而跳回 1
 aud.onratechange=()=>{const v=String(aud.playbackRate);
-  if([...$('rate').options].some(o=>o.value===v))$('rate').value=v};
+  if([...$('rate').options].some(o=>o.value===v))$('rate').value=v;
+  syncRate()};
 // 音频解码/加载失败（文件损坏、格式不支持）：给出明确提示，而不是只留个 0:00 灰三角
 aud.addEventListener('error',()=>{if(aud.src)msg('这个音频文件打不开（可能损坏或格式不支持），换一个试试',1)});
 // 胶囊的播放图标和时长跟着音频事件走（进度本身由 tick 每帧刷）
@@ -4319,6 +4379,7 @@ async function boot(){
   showLib(true);
 }
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
+syncRate();                                  // 胶囊上的速度键跟工具栏下拉对齐（按 #rate 生成档位）
 $('chkHoriz').onchange();                    // 初始横向：同步 horiz 类与按钮文字
 boot();
 
