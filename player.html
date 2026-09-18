@@ -341,20 +341,18 @@ body.hidebar #reh{display:flex}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
-/* 速度键：圆键里塞不下「1.25×」，改成同高的胶囊。只是宽度放开，高度/配色仍归 #reh button 管 */
-#reh button.rate{width:auto;min-width:54px;padding:0 12px;border-radius:22px;
-  font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
-/* 速度浮层：点「1×」在胶囊正上方铺开全部档位，一档一个按钮，手指点哪个是哪个。
-   不做成"点一下跳下一档"——从 1.5 回到 0.5 要按八下 */
-/* 宽度必须写死：绝对定位的盒子按内容收缩，档位又会换行，不给宽就会缩成窄窄一坨 */
-#ratePop{position:fixed;left:50%;transform:translateX(-50%);z-index:37;display:none;
-  width:min(94vw,620px);background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;padding:8px;
-  box-shadow:0 8px 24px rgba(0,0,0,.6)}
-/* 网格而不是 flex-wrap：换行时每档还是一样宽，最后一行不会被拉成几条宽的 */
-#ratePop .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(56px,1fr));gap:6px}
-#ratePop button{height:42px;padding:0 8px;border-radius:9px;border:1px solid var(--border);
-  background:var(--surface);color:var(--text);font-size:15px;font-variant-numeric:tabular-nums;cursor:pointer}
-#ratePop button.on{background:var(--accent);border-color:var(--accent);color:#1a1408;font-weight:600}
+/* 速度：原生 select 涂成胶囊的样子。appearance:none 只去掉系统外观，选择器本身还是系统弹的
+   —— 平板上目标大、跟系统深色模式走，比自己搭浮层稳当，也省掉定位/收起/宽度那一摊。
+   width:auto 让浏览器按最宽的选项（1.25×）撑开，切档时宽度不变，胶囊不会抖 */
+#reh select.rate{width:auto;height:44px;padding:0 26px 0 14px;border-radius:22px;
+  border:1px solid var(--border);background-color:transparent;color:var(--text);
+  font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer;
+  appearance:none;-webkit-appearance:none;text-align:left}
+/* appearance:none 把原生下拉箭头一起去掉了，自己补一个（currentColor 跟着主题走） */
+#reh .rateWrap{position:relative;display:inline-flex;align-items:center}
+#reh .rateWrap::after{content:'';position:absolute;right:12px;width:5px;height:5px;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:translateY(-1px) rotate(45deg);opacity:.55;pointer-events:none}
 /* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+速度+展开键。
    靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行） */
 @media (max-width:700px){
@@ -364,9 +362,7 @@ body.hidebar #reh{display:flex}
   #reh .rehMain,#reh .rehFoot{gap:8px}
   #reh .prog{min-width:0;max-width:none}
   #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
-  #reh button.rate{width:auto;min-width:46px;padding:0 10px;font-size:13px}
-  #ratePop{padding:6px}
-  #ratePop button{height:44px;font-size:14px}   /* 手指目标比桌面再大一点 */
+  #reh select.rate{height:40px;padding:0 24px 0 12px;font-size:13px}
 }
 
 </style>
@@ -460,14 +456,12 @@ body.hidebar #reh{display:flex}
  </div>
  <div class="rehFoot">
  <span id="rehLbl" class="lbl"></span>
- <button id="rehRate" class="rate" aria-haspopup="true" aria-expanded="false" aria-label="播放速度" title="播放速度">1×</button>
+ <span class="rateWrap"><select id="rehRate" class="rate" aria-label="播放速度" title="播放速度"></select></span>
  <button id="rehUp" aria-label="展开工具栏" title="展开工具栏">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
  </button>
  </div>
 </div>
-<!-- 速度档位的按钮由 buildRateChips() 按工具栏那个 #rate 下拉现生成：只维护一处 -->
-<div id="ratePop" style="display:none"><div class="row" id="rateRow"></div></div>
 <div id="menu" style="display:none">
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
@@ -1292,8 +1286,7 @@ wrap.addEventListener('touchend',pinchEnd);
 wrap.addEventListener('touchcancel',pinchEnd);
 
 /* 工具栏收起 / 展开 */
-function setBarHidden(v){if(!v)closeRatePop();     // 展开工具栏（进排练态是 v=true）就收起速度浮层，别让它悬在谱面上
-  document.body.classList.toggle('hidebar',v);
+function setBarHidden(v){document.body.classList.toggle('hidebar',v);
   $('barShow').style.display=v?'block':'none';syncBarH()}
 $('bBar').onclick=()=>setBarHidden(true);
 $('barShow').onclick=()=>setBarHidden(false);
@@ -1362,38 +1355,21 @@ let rehSeeking=false;
   tr.addEventListener('pointercancel',()=>{rehSeeking=false;dirty=true});
 })();
 $('rehUp').onclick=()=>setBarHidden(false);
-/* 排练胶囊里的倍速。档位只有工具栏那个 #rate 下拉一份，这里按它现生成按钮，
-   免得两处各抄一遍、加档时漏掉一边。选中态靠 .on，和工具栏下拉双向同步（setRate / onratechange）。 */
-const rateLabel=r=>String(+r)+'×';
-function buildRateChips(){
-  const row=$('rateRow');if(!row||row.dataset.built)return;
-  row.dataset.built='1';
-  row.innerHTML=[...$('rate').options].map(o=>
-    '<button type="button" data-r="'+esc(o.value)+'">'+esc(rateLabel(o.value))+'</button>').join('');
-  row.querySelectorAll('button').forEach(b=>b.onclick=()=>{setRate(+b.dataset.r);closeRatePop()});
-}
+/* 排练胶囊里的倍速。用的是原生 select：平板上点开就是系统选择器，目标大、跟系统深色模式走。
+   档位只有工具栏那个 #rate 一份，这里按它现生成选项，免得两处各抄一遍、加档时漏掉一边。
+   双向同步靠 setRate / onratechange 两处调 syncRate()。 */
 function syncRate(){
-  buildRateChips();
-  const r=aud.playbackRate||1;
-  $('rehRate').textContent=rateLabel(r);
-  $('rehRate').title='播放速度 '+rateLabel(r)+'（也可以按 - / = 微调、0 归位）';
-  $('rateRow').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.r===r));
+  const s=$('rehRate');
+  if(!s.options.length)              // 选项只抄一次
+    s.innerHTML=[...$('rate').options].map(o=>
+      '<option value="'+esc(o.value)+'">'+esc(o.value)+'×</option>').join('');
+  // 对不上任何档位就别动（浏览器原生速度菜单能设出 1.05 这种），否则 select.value 会被清空、
+  // 显示成空白——工具栏那个 #rate 也是同样的处理
+  const v=String(aud.playbackRate);
+  if([...s.options].some(o=>o.value===v))s.value=v;
+  s.title='播放速度 '+(aud.playbackRate||1)+'×（也可以按 - / = 微调、0 归位）';
 }
-function closeRatePop(){
-  $('ratePop').style.display='none';
-  $('rehRate').setAttribute('aria-expanded','false');
-}
-function toggleRatePop(){
-  const p=$('ratePop');
-  if(p.style.display!=='none')return closeRatePop();
-  syncRate();
-  // 钉在胶囊正上方：胶囊高度随宽窄屏变（一行 / 两行），量出来再摆，别写死偏移
-  p.style.display='block';
-  const r=$('reh').getBoundingClientRect();
-  p.style.bottom=Math.max(8,innerHeight-r.top+8)+'px';
-  $('rehRate').setAttribute('aria-expanded','true');
-}
-$('rehRate').onclick=()=>toggleRatePop();
+$('rehRate').onchange=()=>setRate(+$('rehRate').value);
 // 把工具栏实际高度写进 --barH：菜单/面板据此钉在它下方，行数变化（段落条出现等）也跟得上
 function syncBarH(){
   const h=document.body.classList.contains('hidebar')?0:$('bar').offsetHeight;
@@ -1416,11 +1392,6 @@ document.addEventListener('click',e=>{
   if($('plPop').style.display!=='none'&&!e.target.closest('#plPop')&&!e.target.closest('#plNow')){
     $('plPop').style.display='none';
     if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar'))e.stopPropagation();
-  }
-  // 速度浮层同理。除了浮层自己，点胶囊上的速度键也不算"点外面"——那一下要留给它自己开合
-  if($('ratePop').style.display!=='none'&&!e.target.closest('#ratePop')&&!e.target.closest('#rehRate')){
-    closeRatePop();
-    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#reh'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
@@ -2427,7 +2398,6 @@ requestAnimationFrame(tick);
 window.addEventListener('keydown',e=>{
   if($('lib').style.display==='flex')return;       // 曲目库开着时别让快捷键穿到谱面
   if($('help').style.display==='flex'&&(e.key==='Escape'||e.key.toLowerCase()==='h')){toggleHelp(false);return}
-  if(e.key==='Escape'&&$('ratePop').style.display!=='none'){closeRatePop();return}
   const a=document.activeElement;
   if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return;
   const k=e.key,timeMode=$('mode').value==='time';
