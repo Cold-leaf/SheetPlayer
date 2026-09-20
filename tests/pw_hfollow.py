@@ -12,7 +12,10 @@ async def main():
         await pg.evaluate("localStorage.clear()"); await pg.reload()
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
-        await pg.click("#bHoriz"); await asyncio.sleep(0.2)
+        # 横向铺开现在在菜单「视图」里（原来是工具栏按钮）
+        await pg.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
+        await pg.click("#chkHoriz"); await asyncio.sleep(0.2)
+        await pg.evaluate("$('menu').style.display='none'")
         await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         # 每页 4 小节，铺满 6 页，让播放确实要跨页横滚
         await pg.evaluate("""()=>{

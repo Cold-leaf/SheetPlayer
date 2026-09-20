@@ -512,7 +512,6 @@ body.hidebar #reh{display:flex}
 <body>
 <div id="bar">
  <div class="row">
-  <label id="lblPdf" title="随便导一份谱子：文件名/内容哈希对得上已有项目就挂上去，否则新建项目">PDF<input type="file" id="fPdf" hidden accept=".pdf"></label>
   <input type="file" id="fAud" hidden accept="audio/*">
   <label title="直接切到曲目库里的另一首">曲目<select id="trackSel"></select></label>
   <label>工具<select id="mode">
@@ -521,11 +520,12 @@ body.hidebar #reh{display:flex}
     <option value="time">打时间</option>
     <option value="edit">编辑点</option>
   </select></label>
+  <!-- 半自动只属于「标小节」：它是标小节的疏密档，不是一个独立的工具。
+       只在标小节模式下露面（syncMode 控制），别的模式藏起来 -->
+  <label id="lblAutoRow" style="display:none" title="点一下行首，自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个"><input type="checkbox" id="chkAutoRow">整行补齐</label>
   <input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3" hidden>
   <button id="bFitW" title="纵向：适应宽度；横向：适应高度" hidden>适应</button>
   <span id="zoomVal" hidden>130%</span>
-  <input type="checkbox" id="chkHoriz" hidden checked>
-  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">横向</button>
   <span class="sep"></span>
   <button id="bUndo">撤销</button>
   <button id="bGen">自动生成</button>
@@ -615,6 +615,11 @@ body.hidebar #reh{display:flex}
  <div id="buildTag" role="button" tabindex="0"
       title="点一下：清掉离线缓存并强制重新加载。手机上更新不到新版本时用它"
       style="color:var(--info);font-size:12px;margin-top:2px;cursor:pointer;text-decoration:underline"></div>
+ <!-- 原来在工具栏第一行，跟「曲目 / 工具」挤在一起。收进菜单——项目模型下
+      日常是「打开已有项目」，随手导一份新谱子是少数时候才做的事。
+      按文件名认领/新建的逻辑不变（见 importPdf 的认领链） -->
+ <div class="msec">谱子</div>
+ <label class="mbtn" id="lblPdf" title="随便导一份谱子：文件名/内容哈希对得上已有项目就挂上去，否则新建项目。想给项目起名就先「＋ 新建项目」，再在那一条上导入谱子">导一份新谱子<input type="file" id="fPdf" hidden accept=".pdf"></label>
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
  <div class="msec">小节</div>
@@ -623,7 +628,6 @@ body.hidebar #reh{display:flex}
   <label title="谱上印着多小节休止(如 6)：填 6 再点，下一编号 = 最后一小节 + 6">跨小节<input type="number" id="skipN" min="1" step="1" value="1"></label>
   <button id="bSkip" title="下一编号 = 最后一个小节号 + 上面填的数，用完复位成 1">跳</button>
  </div>
- <label title="标小节模式下：点一下行首，自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个"><input type="checkbox" id="chkAutoRow">整行补齐（点半自动）</label>
  <button id="bClr">清空时间点</button>
  <div class="msec">打点 / 时间</div>
  <div class="mrow">
@@ -632,6 +636,9 @@ body.hidebar #reh{display:flex}
   <button id="bShift">应用平移</button>
  </div>
  <div class="msec">视图</div>
+ <!-- 原来是工具栏第一行的一个按钮（文字显示当前方向）。菜单里这一栏都是勾选项，
+      换成同一种形式更顺；chkHoriz 本来就是真正的状态，按钮只是它的 .click() 壳 -->
+ <label title="谱面左右铺开；不勾就是纵向堆叠"><input type="checkbox" id="chkHoriz" checked>横向铺开</label>
  <label><input type="checkbox" id="chkNum" checked>显示编号</label>
  <label><input type="checkbox" id="chkProg" checked>小节进度</label>
  <div class="msec">音频模式</div>
@@ -714,8 +721,7 @@ body.hidebar #reh{display:flex}
    <b>曲目库</b>
    <span id="libInfo"></span>
    <span style="flex:1"></span>
-   <button id="libAdd" title="选一个 PDF 建项目；文件名对得上已有项目就挂上去，不会重复建">＋ 导入谱子</button>
-   <button id="libNew" title="先给项目起个名字（之后点「打开」再选谱子）。想自己定名字、不想用文件名当项目名时用它">＋ 新建项目</button>
+   <button id="libNew" title="先给项目起个名字，然后在它那一行点「导入谱子」选文件。项目才是身份，谱子只是挂在它下面的附件">＋ 新建项目</button>
    <button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读">☁ ownCloud</button>
    <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button>
    <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来（按时间戳保留较新的）">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
@@ -1408,9 +1414,7 @@ $('bFitW').onclick=()=>{                         // 纵向：适应宽度；横�
   applyZoom();scrollHome();
 };
 $('chkHoriz').onchange=()=>{                     // 页面左右铺开
-  const v=$('chkHoriz').checked;
-  pagesEl.classList.toggle('horiz',v);
-  $('bHoriz').textContent=v?'横向':'纵向';        // 按钮显示当前方向
+  pagesEl.classList.toggle('horiz',$('chkHoriz').checked);
   scrollHome();
 };
 // 滚到内容原点：谱面顶边落在工具栏正下方（工具栏收起时贴视口顶）。
@@ -1420,7 +1424,6 @@ function scrollHome(){
   wrap.scrollTop=(parseFloat(cs.paddingTop)||0)-$('bar').offsetHeight;
   wrap.scrollLeft=parseFloat(cs.paddingLeft)||0;
 }
-$('bHoriz').onclick=()=>$('chkHoriz').click();
 
 /* 缩放并锚定在视口某个点（触控板捏合 / 双指缩放），该点下的内容保持不动。
    页面有 10px 固定边距，不随缩放变——直接按内容坐标整体缩放会差 margin*(zr-1)
@@ -3253,7 +3256,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
      · 只 reload 不够——HTTP 缓存（GitHub Pages 是 max-age=600）会把旧 HTML 直接还给你
      · 不注销 SW 不够——它的 navigation 分支虽然网络优先，但 fetch 仍可能命中 HTTP 缓存
      · 不带新 URL 不够——同一个地址还是可能被上面两层任一层截住 */
-const BUILD='v8';
+const BUILD='v9';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -3315,6 +3318,7 @@ function syncMode(){
   $('bUndo').style.display=(m!=='play')?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
   $('bGen').style.display=(m==='time')?'':'none';
   $('bSpec').style.display=(m==='time')?'':'none';
+  $('lblAutoRow').style.display=(m==='mark')?'':'none';   // 整行补齐只属于标小节
 }
 $('mode').onchange=()=>{
   syncMode();
@@ -3916,10 +3920,13 @@ function showLib(v){
 $('libClose').onclick=()=>showLib(false);
 // 工具栏的「PDF」和「＋ 导入谱子」都是"随便导一份"：清掉可能残留的待挂载项目，
 // 否则用户上次点「打开」却没选文件的话，这一次会莫名其妙挂到那个项目上
-$('libAdd').onclick=()=>{pendPid='';$('fPdf').click()};
-// 工具栏的 PDF 同理。只认点在 label 上的：程序化的 fPdf.click() 也会冒泡到这里，
-// 而那正是 openTrack 设好 pendPid 之后触发的
-$('lblPdf').onclick=e=>{if(e.target===$('lblPdf'))pendPid=''};
+// 只认点在 label 上的：程序化的 fPdf.click() 也会冒泡到这里，而那正是 openTrack /
+// 换谱 设好 pendPid 之后触发的——那两种要保留指定的项目，不能被清成空
+$('lblPdf').onclick=e=>{
+  if(e.target!==$('lblPdf'))return;
+  pendPid='';                            // 从菜单导 = 没指定项目，走"按文件名认领/新建"
+  $('menu').style.display='none';        // 收起菜单，选完文件直接看结果
+};
 $('libNew').onclick=()=>newProject();
 // 清掉历史谱子的文件本体（项目保留，只是换不回更早的谱子了）。
 // 只删「真有文件」的那些：同步下来的项目根本没存过文件，那些条目是认领线索，留着不占地方。
@@ -3956,7 +3963,7 @@ async function drawLib(){
     rows.push({p,d});
   }
   if(!rows.length){
-    list.innerHTML='<div class="libEmpty">还没有项目。<br>点「＋ 导入谱子」选一个 PDF（用文件名当项目名），<br>或者点「＋ 新建项目」先起名再补谱子。</div>';
+    list.innerHTML='<div class="libEmpty">还没有项目。<br>点上面的「＋ 新建项目」起个名字，<br>再在它那一行点「＋ 导入谱子」选一份谱子。</div>';
   }else{
     list.innerHTML=rows.map(({p,d})=>{
       const nb=d&&d.M?d.M.length:0;
@@ -3971,7 +3978,10 @@ async function drawLib(){
         '<span class="mi">已标 '+nb+' 小节</span><span class="mi">已打 '+neTxt+' 时间点</span>'+
         '<span class="mi">音频 '+(p.audios?p.audios.length:0)+'</span>'+
         '<span class="st">更新 '+(p.updatedAt?new Date(p.updatedAt).toLocaleString():'—')+'</span>'+
-        '<button class="open" data-h="'+esc(p.id)+'">打开</button>'+
+        // 还没有谱子的项目，这一格就是它的导入入口——两件事本来就是同一次点击
+        //（openTrack 对没有 pdf 的项目就是「选一次文件挂到本项目」）
+        '<button class="open" data-h="'+esc(p.id)+'"'+(p.pdf?'':' title="给这个项目选一份谱子（挂到本项目上，不靠文件名猜）"')+'>'+
+          (p.pdf?'打开':'＋ 导入谱子')+'</button>'+
         '<button class="pladd" data-h="'+esc(p.id)+'">加入列表</button>'+
         (p.pdf?'<button class="repl" data-h="'+esc(p.id)+'" title="换一份谱子（比如加完笔记重新导出的那份）。标注原样保留，旧谱子进历史">换谱</button>':'')+
         '<button class="ren" data-h="'+esc(p.id)+'">改名</button>'+
@@ -4618,7 +4628,7 @@ async function boot(){
 }
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
 syncRate();                                  // 胶囊上的速度键跟工具栏下拉对齐（按 #rate 生成档位）
-$('chkHoriz').onchange();                    // 初始横向：同步 horiz 类与按钮文字
+$('chkHoriz').onchange();                    // 初始横向：同步 horiz 类
 boot();
 
 /* ---------- PWA：注册 service worker（https 才生效，file:// 下静默跳过） ---------- */

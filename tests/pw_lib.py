@@ -21,9 +21,16 @@ async def main():
         print(ok(await pg.evaluate("$('lib').style.display==='flex'")), "启动即显示曲目库界面")
         print(ok("还没有项目" in await pg.inner_text("#libList")), "空库引导文案")
 
-        # 走真实用户路径：点「＋ 导入谱子」→ 文件选择器 → 选 PDF
+        # 走真实用户路径：先「＋ 新建项目」起名，再在那一行点「＋ 导入谱子」选文件
+        #（库头的「＋ 导入谱子」已去掉：项目才是身份，谱子挂在项目下面）
+        await pg.click("#libNew")
+        await pg.wait_for_selector("#dlg",state="visible")
+        await pg.fill("#dlgInp","斯卡布罗"); await pg.click("#dlgOk")
+        await pg.wait_for_function("()=>document.querySelectorAll('.libCard').length===1",timeout=8000)
+        print(ok((await pg.inner_text(".libCard button.open")).strip()=="＋ 导入谱子"),
+              "空项目那一行就是导入入口")
         async with pg.expect_file_chooser() as fc:
-            await pg.click("#libAdd")
+            await pg.click(".libCard button.open")
         await (await fc.value).set_files(PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
         print(ok(await pg.evaluate("$('lib').style.display==='none'")), "选完 PDF 自动进入谱面（库界面收起）")

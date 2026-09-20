@@ -16,12 +16,15 @@ async def main():
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pg.click("#bMenu"); await asyncio.sleep(0.2)
         # 导入JSON label 现在是按钮样式
-        cs=await pg.evaluate("""()=>{const l=document.querySelector('#menu .mbtn');const s=getComputedStyle(l);
-            return {bg:s.backgroundColor,disp:s.display,pad:s.padding,rad:s.borderRadius}}""")
-        print(ok(cs["bg"]=="rgb(68, 68, 68)" and cs["disp"]=="inline-block" and cs["rad"]!="0px"),
+        # 菜单里现在有两个 label.mbtn（「谱子 → 导一份新谱子」在前面），必须指名道姓
+        SEL="document.querySelector('#menu label:has(#fMap)')"
+        cs=await pg.evaluate(f"""()=>{{const l={SEL};const s=getComputedStyle(l);
+            return {{bg:s.backgroundColor,disp:s.display,pad:s.padding,rad:s.borderRadius}}}}""")
+        # 桌面（非粗指针）下仍是 inline-block；粗指针会被涂成 inline-flex 好让文字居中
+        print(ok(cs["bg"]=="rgb(29, 35, 44)" and cs["disp"]=="inline-block" and cs["rad"]!="0px"),
               f"导入JSON 有按钮样式: {cs}")
         # 跟导出JSON在同一排（y 相近）
-        y_imp=await pg.evaluate("document.querySelector('#menu .mbtn').getBoundingClientRect().top")
+        y_imp=await pg.evaluate(f"{SEL}.getBoundingClientRect().top")
         y_exp=await pg.evaluate("document.querySelector('#bExp').getBoundingClientRect().top")
         print(ok(abs(y_imp-y_exp)<2), f"导入JSON 和 导出JSON 同一排 (y差 {abs(y_imp-y_exp):.0f}px)")
         # 导入仍能工作（点 label 触发文件选择）

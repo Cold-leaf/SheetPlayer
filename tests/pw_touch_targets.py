@@ -190,7 +190,8 @@ async def main():
                                  y=document.querySelector(b).getBoundingClientRect();
             return {dt:Math.round(y.top-x.top),dh:Math.round(y.height-x.height),
                     disp:getComputedStyle(document.querySelector(b)).display}};
-          return {exp:pair('#bExp','#menu .mbtn'), lib:pair('#libAdd','#libHd label.libBtn')};
+          // 菜单里有两个 label.mbtn（「谱子 → 导一份新谱子」在前面），指名道姓找导入JSON
+          return {exp:pair('#bExp','#menu label:has(#fMap)'), lib:pair('#bSync','#libHd label.libBtn')};
         }""")
         # 容差 1px：button 和 label 是两套不同的盒模型，静态时实测完全重合，
         # 但布局刚变化时会读到 1px 的亚像素抖动。原来偏 9px，量级差在这里
@@ -294,9 +295,13 @@ async def main():
         await pgl.wait_for_timeout(400)
         await pgl.evaluate(JS)
         await scan("曲目库（空）",PANELS[3][1],PANELS[3][2],pgl)
-        # 走真实用户路径：点「＋ 导入谱子」→ 选 PDF → 回库看卡片
+        # 走真实用户路径：先「＋ 新建项目」起名，再在那一行点「＋ 导入谱子」选 PDF
+        await pgl.click("#libNew")
+        await pgl.wait_for_selector("#dlg",state="visible")
+        await pgl.fill("#dlgInp","触屏测试曲"); await pgl.click("#dlgOk")
+        await pgl.wait_for_function("()=>document.querySelectorAll('.libCard').length===1",timeout=8000)
         async with pgl.expect_file_chooser() as fc:
-            await pgl.click("#libAdd")
+            await pgl.click(".libCard button.open")
         await (await fc.value).set_files(PDF)
         await pgl.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pgl.wait_for_timeout(600)
