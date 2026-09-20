@@ -183,6 +183,34 @@ async def main():
         await pg.evaluate("$('bMenu').onclick()"); await pg.wait_for_timeout(250)
         await scan("菜单",PANELS[1][1],PANELS[1][2])
 
+        # 做成按钮样子的 <label>（导入JSON / 导入全部标注）必须跟相邻 <button> 齐平：
+        # <button> 把内容纵向居中、<label> 不会，min-height 一撑到 44 基线就差 9px
+        al=await pg.evaluate("""()=>{
+          const pair=(a,b)=>{const x=document.querySelector(a).getBoundingClientRect(),
+                                 y=document.querySelector(b).getBoundingClientRect();
+            return {dt:Math.round(y.top-x.top),dh:Math.round(y.height-x.height),
+                    disp:getComputedStyle(document.querySelector(b)).display}};
+          return {exp:pair('#bExp','#menu .mbtn'), lib:pair('#libAdd','#libHd label.libBtn')};
+        }""")
+        # 容差 1px：button 和 label 是两套不同的盒模型，静态时实测完全重合，
+        # 但布局刚变化时会读到 1px 的亚像素抖动。原来偏 9px，量级差在这里
+        print(ok(abs(al["exp"]["dt"])<=1 and al["exp"]["dh"]==0),
+              f"「导出JSON」与「导入JSON」齐平: top 差 {al['exp']['dt']}px / 高 差 {al['exp']['dh']}px"
+              f"（label display={al['exp']['disp']}）")
+        print(ok(abs(al["lib"]["dt"])<=1 and al["lib"]["dh"]==0),
+              f"曲目库「导入全部标注」与相邻按钮齐平: top 差 {al['lib']['dt']}px / 高 差 {al['lib']['dh']}px")
+
+        # 帮助 / 安装入口要在菜单一打开就在可视区里：手机上菜单内容远高于可视高度，
+        # 塞在最后一栏等于要滚半屏才看得到
+        rc=await pg.evaluate("""()=>{const m=$('menu'),mr=m.getBoundingClientRect(),
+            r=$('bInstall').getBoundingClientRect();
+          return {inView:r.top>=mr.top-1&&r.bottom<=mr.bottom+1,
+                  top:Math.round(r.top),mb:Math.round(mr.bottom),
+                  scrolls:m.scrollHeight>m.clientHeight+1}}""")
+        print(ok(rc["inView"]),
+              f"「安装到主屏幕」菜单一打开就可见: y={rc['top']} ≤ 菜单下沿 {rc['mb']}"
+              + ("（菜单本身仍要滚动）" if rc["scrolls"] else ""))
+
         await pg.evaluate("$('menu').style.display='none';openGen()"); await pg.wait_for_timeout(350)
         # 锚点 chip 只在实测点 ≤12 个时逐个列出来；造 4 个 src='tap' 的点让 B 层规则真的被量到
         await pg.evaluate("""()=>{E=[{m:1,t:0,src:'tap'},{m:2,t:4,src:'tap'},
@@ -345,6 +373,25 @@ async def main():
             if(!c)return null;const r=c.getBoundingClientRect();
             return {h:Math.round(r.height),n:document.querySelectorAll('#chips .chip').length}}""")
         print(ok(ch and ch["h"]<44), f"桌面 chip 保持 28px 高: {ch['h'] if ch else '没有 chip'}px（{ch['n'] if ch else 0} 个）")
+
+        # --- 手机：菜单内容远高于可视高度，帮助/安装必须在第一屏 ---
+        pgm=await b.new_page(viewport={"width":390,"height":844},has_touch=True,device_scale_factor=2)
+        pgm.on("pageerror",lambda e:errs.append(str(e)))
+        await pgm.goto("http://127.0.0.1:8821/player.html?direct=1")
+        await pgm.set_input_files("#fPdf",PDF)
+        await pgm.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
+        await pgm.wait_for_timeout(300)
+        await pgm.evaluate("$('bMenu').onclick()"); await pgm.wait_for_timeout(300)
+        rm=await pgm.evaluate("""()=>{const m=$('menu'),mr=m.getBoundingClientRect();
+          const chk=id=>{const r=$(id).getBoundingClientRect();
+            return {inView:r.top>=mr.top-1&&r.bottom<=mr.bottom+1,top:Math.round(r.top)}};
+          return {inst:chk('bInstall'),help:chk('bHelp'),mb:Math.round(mr.bottom),
+                  needsScroll:m.scrollHeight>m.clientHeight+1,
+                  scrollH:m.scrollHeight,clientH:m.clientHeight}}""")
+        print(ok(rm["inst"]["inView"] and rm["help"]["inView"]),
+              f"[手机] 帮助/安装都在菜单第一屏: 安装 y={rm['inst']['top']}、帮助 y={rm['help']['top']}"
+              f" ≤ 下沿 {rm['mb']}（菜单内容 {rm['scrollH']} / 可视 {rm['clientH']}，本来就要滚）")
+        await pgm.close()
 
         print("\npage errors:",errs or "(none)")
         await b.close()

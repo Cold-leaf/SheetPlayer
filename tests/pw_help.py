@@ -43,6 +43,12 @@ async def main():
 
         await pg.evaluate("toggleHelp(true)"); await pg.wait_for_timeout(250)
         print(ok(await pg.evaluate("getComputedStyle($('help')).display")=="flex"), "帮助面板打开")
+        await pg.evaluate("toggleHelp(false)")
+        # 走真实入口：☰ 菜单里的「? 快捷键」（它从「生成/数据」挪到了菜单最上面的「应用」栏）
+        await pg.evaluate("$('menu').style.display='block'"); await pg.wait_for_timeout(200)
+        await pg.click("#bHelp"); await pg.wait_for_timeout(300)
+        print(ok(await pg.evaluate("getComputedStyle($('help')).display")=="flex"),
+              "点菜单里的「? 快捷键」能打开（入口挪过位置）")
 
         box=await pg.evaluate(JS_RECT,"#help>div")
         print(ok(box["w"]<=834 and box["h"]<=1194), f"[平板] 面板不出视口: {box['w']:.0f}×{box['h']:.0f} (视口 834×1194)")

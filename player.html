@@ -390,6 +390,14 @@ body.hidebar #bar{display:none}
 #libHd b{font-size:17px}
 #libHd button,#libHd label.libBtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
 #libHd label.libBtn{display:inline-block}
+/* 做成按钮样子的 <label>（「导入JSON」「导入全部标注」）在触屏下要对齐相邻的 <button>。
+   <button> 会把内容纵向居中，<label> 只是普通行盒、文字贴着上边——min-height 一撑到 44px，
+   两者的基线就差出 9px，看上去"没在一条水平线上"。桌面高度只有 26px（盒子贴着内容），
+   居中等于顶部对齐，所以这个毛病只在触屏上露出来。
+   必须排在上面那两条基础规则之后：同特异性靠源码顺序取胜 */
+@media (pointer:coarse),(any-pointer:coarse){
+  #menu .mbtn,#libHd label.libBtn{display:inline-flex;align-items:center}
+}
 #libInfo{color:var(--text-dim);font-size:12px}
 .libCard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;
   display:flex;gap:12px;align-items:center;flex-wrap:wrap}
@@ -588,6 +596,11 @@ body.hidebar #reh{display:flex}
  </div>
 </div>
 <div id="menu" style="display:none">
+ <!-- 帮助 / 安装放最上面：菜单在手机上内容高 ~1190px、可视只有 ~660px，
+      放最后那栏等于要滚半屏才看得到——而这俩恰恰是手机上最该先看到的 -->
+ <div class="msec">应用</div>
+ <button id="bHelp">? 快捷键</button>
+ <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用">📲 安装到主屏幕</button>
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
  <div class="msec">小节</div>
@@ -633,8 +646,6 @@ body.hidebar #reh{display:flex}
  <div class="msec">生成 / 数据</div>
  <button id="bExp">导出JSON</button>
  <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
- <button id="bHelp">? 快捷键</button>
- <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用">📲 安装到主屏幕</button>
 </div>
 <!-- 播放列表弹层：点工具栏「列表 1/3」打开，点歌曲切换、加当前曲目、删、循环/暂停，跟曲目库的面板同一套列表 -->
 <div id="plPop" style="display:none">
