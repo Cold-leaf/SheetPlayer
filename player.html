@@ -384,8 +384,12 @@ body.hidebar #bar{display:none}
 #gStrip .cell.decl{outline:1.5px solid #fff;opacity:1}
 
 /* ---------- 曲目库 ---------- */
-#lib{position:fixed;inset:0;background:var(--bg);z-index:40;display:none;flex-direction:column;color:var(--text)}
-#libBox{width:100%;max-width:880px;margin:0 auto;padding:16px;box-sizing:border-box;height:100%;overflow:auto}
+#lib{position:fixed;inset:0;background:var(--bg);z-index:40;display:none;flex-direction:column;color:var(--text);
+  overflow:auto}
+/* 滚动条挂在整幅 #lib 上，不是挂在居中的 880px 内容栏上——否则宽屏下滚动条会停在
+   离屏幕右边几百 px 的地方，看上去像浮在页面中间。#libBox 只管「限宽 + 居中」。
+   min-height:100% 保证内容少时也铺满（短列表的悬停高亮不会只到半截） */
+#libBox{width:100%;max-width:880px;margin:0 auto;padding:16px;box-sizing:border-box;min-height:100%;flex:0 0 auto}
 #libHd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
 #libHd b{font-size:17px}
 #libHd button,#libHd label.libBtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
@@ -509,7 +513,6 @@ body.hidebar #reh{display:flex}
   <label>工具<select id="mode">
     <option value="play" selected>播放</option>
     <option value="mark">标小节</option>
-    <option value="autobar">标小节（半自动）</option>
     <option value="time">打时间</option>
     <option value="edit">编辑点</option>
   </select></label>
@@ -609,6 +612,7 @@ body.hidebar #reh{display:flex}
   <label title="谱上印着多小节休止(如 6)：填 6 再点，下一编号 = 最后一小节 + 6">跨小节<input type="number" id="skipN" min="1" step="1" value="1"></label>
   <button id="bSkip" title="下一编号 = 最后一个小节号 + 上面填的数，用完复位成 1">跳</button>
  </div>
+ <label title="标小节模式下：点一下行首，自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个"><input type="checkbox" id="chkAutoRow">整行补齐（点半自动）</label>
  <button id="bClr">清空时间点</button>
  <div class="msec">打点 / 时间</div>
  <div class="mrow">
@@ -1971,36 +1975,36 @@ pagesEl.onclick=e=>{
   const best=near(g);
 
   if(mode==='mark'){
+    // 半自动（菜单里「整行补齐」开关）：点一下行首，检测该行剩余印刷小节线，一次补齐整行。
+    // 行首（谱号/调号之后）没有印刷线，只能靠你点；往右的线是各小节边界，跳过最右的终止线。
+    if($('chkAutoRow').checked){
+      snap();
+      const sys=systemAt(g.page,g.ny);
+      const h=sys?Math.max(0.04,sys.bot-sys.top):lastH;
+      const nmk={page:g.page,nx:g.nx,ny:sys?sys.top:g.ny,m:nextM,h};
+      M.push(nmk);lastH=h;
+      let added=0,lines=null;
+      if(sys){
+        lines=detectRowBars(g.page,sys,g.nx);
+        if(lines&&lines.length>1){
+          for(const nx of lines.slice(0,-1)){        // 去掉最右的终止线
+            if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004))continue;   // 重复的点跳过
+            M.push({page:g.page,nx,ny:sys.top,m:++nextM,h});
+            added++;
+          }
+        }
+      }
+      syncNext();layout();save();
+      msg(added?('已补齐整行 '+added+' 个小节'+(lines&&lines.length>1?('（检测到 '+(lines.length-1)+' 条小节线）'):''))
+               :'未检测到更多小节线，已标 1 个（关掉「整行补齐」就变回手动逐个点）');
+      return;
+    }
     snap();
     const nmk={page:g.page,nx:g.nx,ny:g.ny,m:nextM,h:lastH};   // 新点沿用上次的高度
     M.push(nmk);
     const hit=applySnaps(nmk);
     syncNext();layout();save();
     if(hit)msg('小节 '+nmk.m+'：'+hit);
-    return;
-  }
-  if(mode==='autobar'){
-    // 半自动：点一下行首，检测该行剩余印刷小节线，一次补齐整行。
-    // 行首（谱号/调号之后）没有印刷线，只能靠你点；往右的线是各小节边界，跳过最右的终止线。
-    snap();
-    const sys=systemAt(g.page,g.ny);
-    const h=sys?Math.max(0.04,sys.bot-sys.top):lastH;
-    const nmk={page:g.page,nx:g.nx,ny:sys?sys.top:g.ny,m:nextM,h};
-    M.push(nmk);lastH=h;
-    let added=0,lines=null;
-    if(sys){
-      lines=detectRowBars(g.page,sys,g.nx);
-      if(lines&&lines.length>1){
-        for(const nx of lines.slice(0,-1)){          // 去掉最右的终止线
-          if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004))continue;   // 重复的点跳过
-          M.push({page:g.page,nx,ny:sys.top,m:++nextM,h});
-          added++;
-        }
-      }
-    }
-    syncNext();layout();save();
-    msg(added?('已补齐整行 '+added+' 个小节'+(lines&&lines.length>1?('（检测到 '+(lines.length-1)+' 条小节线）'):''))
-             :'未检测到更多小节线，已标 1 个（可切「标小节」手动补）');
     return;
   }
   if(!best){                                   // 之前这里是静默 return，跟着音频打点时根本发现不了漏点
@@ -3211,10 +3215,13 @@ $('helpClose').onclick=()=>toggleHelp(false);
 /* 这里用 matchMedia 是唯一的例外：CSS 表达不了 display-mode。
    装过就不显示入口——standalone/fullscreen/minimal-ui 都算装过；
    iOS Safari 的独立窗口不报 display-mode，另有非标准的 navigator.standalone */
+/* 只认「真的装成 App 启动」，不能把 minimal-ui / fullscreen 也算进来：
+   它们说的不是"装过"，而是"浏览器窗口长什么样"——
+   · Chrome Custom Tabs（微信 / 钉钉 / 各种 App 内置浏览器点开链接）报的就是 minimal-ui
+   · 桌面按 F11 全屏报 fullscreen
+   把这些当成"已安装"，就会在这些场景里把入口误藏掉，而它们恰恰最需要这个入口。 */
 function isStandalone(){
   return matchMedia('(display-mode: standalone)').matches||
-         matchMedia('(display-mode: fullscreen)').matches||
-         matchMedia('(display-mode: minimal-ui)').matches||
          navigator.standalone===true;
 }
 let installEvt=null;
@@ -3279,7 +3286,7 @@ $('mode').onchange=()=>{
   if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
   if($('mode').value!=='play'&&arm){arm=null;updLoop()}
   if($('mode').value==='time'&&!specOn())specShow(true);   // 打时间时把频谱条自动拉出来
-  msg({mark:'点谱面加小节标记',autobar:'点一下行首，自动补齐整行小节',
+  msg({mark:$('chkAutoRow').checked?'点一下行首，自动补齐整行小节':'点谱面加小节标记',
        time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍',
        edit:'拖中段挪位置，拖两端改长度，单击开面板'}[$('mode').value]);
 };

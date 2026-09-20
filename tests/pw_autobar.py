@@ -33,7 +33,20 @@ async def main():
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>pdf&&boxes.length>1",timeout=60000)
         await pg.evaluate("io&&io.disconnect();zoom=1.6;$('zoom').value=1.6;setPageSizes()")
-        await pg.select_option("#mode","autobar")
+        # 「半自动」不再是独立模式，改成「标小节」里的一个开关（☰ 菜单 → 小节 → 整行补齐）
+        modes=await pg.evaluate("[...$('mode').options].map(o=>o.value)")
+        print(ok("autobar" not in modes), f"模式下拉里不再有独立的半自动项: {modes}")
+        await pg.select_option("#mode","mark")
+        print(ok(not await pg.evaluate("$('chkAutoRow').checked")), "「整行补齐」默认关闭")
+        # 关着的时候：点一下只加一个（这就是原来的「标小节」）
+        gt9=row_of(2,0.267)
+        await click_row(pg,2,gt9[0][0],0.33)
+        await pg.wait_for_timeout(500)
+        n1=await pg.evaluate("M.length")
+        print(ok(n1==1), f"关掉「整行补齐」时点一下只加 1 个（加了 {n1} 个）")
+        await pg.evaluate("M=[];syncNext();layout();save()")
+        await pg.evaluate("$('menu').style.display='block';$('chkAutoRow').checked=true;$('menu').style.display='none'")
+        await pg.wait_for_timeout(200)
 
         # 行 2（真实 m=13..18，连续无多小节休止、无标注污染）：点头首 → 补齐整行
         gt2=row_of(2,0.267)
