@@ -183,20 +183,20 @@ async def main():
         await pg.evaluate("$('bMenu').onclick()"); await pg.wait_for_timeout(250)
         await scan("菜单",PANELS[1][1],PANELS[1][2])
 
-        # 做成按钮样子的 <label>（导入JSON / 导入全部标注）必须跟相邻 <button> 齐平：
+        # 做成按钮样子的 <label>（导入本曲标注 / 导入全部标注）必须跟相邻 <button> 齐平：
         # <button> 把内容纵向居中、<label> 不会，min-height 一撑到 44 基线就差 9px
         al=await pg.evaluate("""()=>{
           const pair=(a,b)=>{const x=document.querySelector(a).getBoundingClientRect(),
                                  y=document.querySelector(b).getBoundingClientRect();
             return {dt:Math.round(y.top-x.top),dh:Math.round(y.height-x.height),
                     disp:getComputedStyle(document.querySelector(b)).display}};
-          // 菜单里有两个 label.mbtn（「谱子 → 导一份新谱子」在前面），指名道姓找导入JSON
+          // 菜单里有两个 label.mbtn（「谱子 → 导一份新谱子」在前面），指名道姓找导入本曲标注
           return {exp:pair('#bExp','#menu label:has(#fMap)'), lib:pair('#bSync','#libHd label.libBtn')};
         }""")
         # 容差 1px：button 和 label 是两套不同的盒模型，静态时实测完全重合，
         # 但布局刚变化时会读到 1px 的亚像素抖动。原来偏 9px，量级差在这里
         print(ok(abs(al["exp"]["dt"])<=1 and al["exp"]["dh"]==0),
-              f"「导出JSON」与「导入JSON」齐平: top 差 {al['exp']['dt']}px / 高 差 {al['exp']['dh']}px"
+              f"「导出本曲标注」与「导入本曲标注」齐平: top 差 {al['exp']['dt']}px / 高 差 {al['exp']['dh']}px"
               f"（label display={al['exp']['disp']}）")
         print(ok(abs(al["lib"]["dt"])<=1 and al["lib"]["dh"]==0),
               f"曲目库「导入全部标注」与相邻按钮齐平: top 差 {al['lib']['dt']}px / 高 差 {al['lib']['dh']}px")

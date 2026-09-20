@@ -185,7 +185,7 @@ body.hidebar #bar{display:none}
 #menu .mrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 #menu button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:3px 9px;border-radius:5px;cursor:pointer;margin:3px 5px 3px 0}
 #menu .mbtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:3px 9px;border-radius:5px;cursor:pointer;
-   margin:3px 5px 3px 0;display:inline-block}     /* 文件选择的 label 也做成按钮样子，跟导出JSON一致 */
+   margin:3px 5px 3px 0;display:inline-block}     /* 文件选择的 label 也做成按钮样子，跟导出本曲标注一致 */
 /* 带上 type=text：新建/重命名模式那两个输入框原来没样式，暗色主题里露出白色系统外观 */
 #menu input[type=number],#menu input[type=text]{width:58px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px}
 #pages.horiz{display:flex;flex-direction:row;align-items:flex-start;width:max-content}
@@ -394,7 +394,7 @@ body.hidebar #bar{display:none}
 #libHd b{font-size:17px}
 #libHd button,#libHd label.libBtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
 #libHd label.libBtn{display:inline-block}
-/* 做成按钮样子的 <label>（「导入JSON」「导入全部标注」）在触屏下要对齐相邻的 <button>。
+/* 做成按钮样子的 <label>（「导入本曲标注（覆盖）」「导入全部标注」）在触屏下要对齐相邻的 <button>。
    <button> 会把内容纵向居中，<label> 只是普通行盒、文字贴着上边——min-height 一撑到 44px，
    两者的基线就差出 9px，看上去"没在一条水平线上"。桌面高度只有 26px（盒子贴着内容），
    居中等于顶部对齐，所以这个毛病只在触屏上露出来。
@@ -666,8 +666,8 @@ body.hidebar #reh{display:flex}
   <button id="bShiftP">应用</button>
  </div>
  <div class="msec">生成 / 数据</div>
- <button id="bExp">导出JSON</button>
- <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
+ <button id="bExp" title="导出当前这一首的标注（含所有模式），文件名用谱名。整库备份 / 跨设备同步请用曲目库里的「导出全部标注」">导出本曲标注</button>
+ <label class="mbtn" title="把这份 JSON 套到当前曲目上——会覆盖当前曲目的标注（替换前存了快照，可撤销）。整库合并请用曲目库里的「导入全部标注」">导入本曲标注（覆盖）<input type="file" id="fMap" hidden accept=".json"></label>
 </div>
 <!-- 播放列表弹层：点工具栏「列表 1/3」打开，点歌曲切换、加当前曲目、删、循环/暂停，跟曲目库的面板同一套列表 -->
 <div id="plPop" style="display:none">
@@ -3256,7 +3256,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
      · 只 reload 不够——HTTP 缓存（GitHub Pages 是 max-age=600）会把旧 HTML 直接还给你
      · 不注销 SW 不够——它的 navigation 分支虽然网络优先，但 fetch 仍可能命中 HTTP 缓存
      · 不带新 URL 不够——同一个地址还是可能被上面两层任一层截住 */
-const BUILD='v9';
+const BUILD='v10';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -3376,7 +3376,7 @@ const KEY=()=>'player:'+pdfName;
 const LS=(()=>{try{const k='__ls_test';localStorage.setItem(k,'1');localStorage.removeItem(k);return localStorage}catch(err){return null}})();
 let lsWarned=false;
 function warnLS(){if(!lsWarned){lsWarned=true;
-  msg('此浏览器禁用了本地存储（隐私模式或已阻止 Cookie），自动保存失效，请用「导出JSON」备份',1)}}
+  msg('此浏览器禁用了本地存储（隐私模式或已阻止 Cookie），自动保存失效，请用「导出本曲标注」备份',1)}}
 
 /* ---------- 三级存储：IndexedDB（曲目库模式）→ localStorage（传统模式）→ 内存 ---------- */
 let saveT=null,memStore=new Map();

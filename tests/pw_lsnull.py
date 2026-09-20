@@ -32,7 +32,7 @@ async def main():
         print(ok(await pg.evaluate("lsWarned")==True), "检测到不可用后已置 lsWarned（不再反复 warn）")
         # 直接看警告文案（在它被后续消息覆盖前单独验证一次）
         await pg.evaluate("lsWarned=false; warnLS()")
-        print(ok("本地存储" in await pg.inner_text("#msg") and "导出JSON" in await pg.inner_text("#msg")),
+        print(ok("本地存储" in await pg.inner_text("#msg") and "导出本曲标注" in await pg.inner_text("#msg")),
               "警告文案明确: \""+ (await pg.inner_text("#msg")) +"\"")
         print(ok(await pg.evaluate("M.length")>=4), f"没有本地存储时功能照常（已标 {await pg.evaluate(chr(39)+chr(39)) if False else chr(0)}" if False else "没有本地存储时功能照常（标记仍能加）")
 
