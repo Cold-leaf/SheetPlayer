@@ -19,8 +19,11 @@ body{margin:0;font:14px system-ui;display:flex;flex-direction:column;height:100v
 button{cursor:pointer}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button:active{opacity:.65}
+/* padding-top 带上安全区：横屏带刘海/圆角的设备上工具栏贴顶会被切掉一截。
+   env() 在没开 viewport-fit=cover 时恒为 0（那时系统自己会避开安全区），所以这条是白拿的保险 */
 #bar{position:fixed;top:0;left:0;right:0;z-index:20;background:rgba(21,26,33,.97);
-  color:var(--text);padding:5px 44px 5px 6px;display:flex;flex-direction:column;gap:5px;
+  color:var(--text);padding:calc(5px + env(safe-area-inset-top)) calc(44px + env(safe-area-inset-right)) 5px calc(6px + env(safe-area-inset-left));
+  display:flex;flex-direction:column;gap:5px;
   box-shadow:0 2px 12px rgba(0,0,0,.5)}
 /* safe center：宽屏居中好看；窄屏内容装不下时自动退回左对齐，保证横滑能划到最左边 */
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:safe center}
@@ -45,23 +48,67 @@ button:active{opacity:.65}
 #bar input[type=range]::-moz-range-thumb{width:22px;height:22px}
 #zoomVal{min-width:38px;color:var(--info);font-variant-numeric:tabular-nums}
 
-/* 触屏设备（iPad/手机）：工具栏点按目标加大到 44px、间距 8px；桌面鼠标保持现有密度。
+/* 触屏设备（iPad/手机）：点按目标一律加大到 44px、间距 8px；桌面鼠标保持现有密度。
    border-box 让 min-height 就是总高，否则 44 内容+padding+边框会涨到 60+ 一行。
-   含 select 的 label 收掉上下 padding——select 自己已 44，label 再垫会叠到 58 */
-@media (pointer:coarse){
-  #bar button,#bar label,#bar select{min-height:44px;box-sizing:border-box}
+   含 select 的 label 收掉上下 padding——select 自己已 44，label 再垫会叠到 58
+   条件带 any-pointer：二合一笔记本插着鼠标时 pointer 是 fine，但手指点下去一样要点得准。
+   下面「版式」那条 .row 不带 any-pointer —— 尺寸看"有没有触屏"，版式看"主输入是不是触摸"，
+   混用会把触屏笔记本变成手机版式 */
+@media (pointer:coarse),(any-pointer:coarse){
+  /* min-width 跟 min-height 一起给：只给高度的话，「▲」「×」「跳」这种一个字的方钮
+     会变成 39×44、34×44 的竖条，宽度还是点不准 */
+  #bar button,#bar label,#bar select{min-height:44px;min-width:44px;box-sizing:border-box}
   #bar button,#bar label{padding:6px 12px}
   #bar label:has(select){padding:2px 10px}
   .row{gap:8px}
+  /* 播放键是圆的：上面那条只给 min-height，height:40px 被压过、width:40px 没有
+     （#bar #bPlay 两个 id，特异性更高）→ 不补这条就变成 40×44 的竖椭圆。
+     这条能放在这儿，是因为 #bar #bPlay 的基础规则在它上面（同特异性靠源码顺序取胜） */
+  #bar #bPlay{width:44px;height:44px}
+
+  /* ---- A 层：所在容器可折行/可滚动，长高只花纵向空间、不会裁切 ---- */
+  #libHd button,#libHd label.libBtn,.libCard button,#plHd button,
+  .plRow button,.plRow select,#plPopHd button,#plPopHd label,
+  #menu button,#menu .mbtn,#menu input,#menu select,#menu label,
+  #dlg button,#dlg input,#dlgMode button,#dlgMode input,#dlgMode select,
+  #gen button,#gen input,#gen select,#gen label,
+  #davHd button,#davCfgBox button,#davCfgBox input,#davCfgBox select,
+  #panel button,#panel input,#help button,#instPop button,
+  #specHdr button,#specHdr label,#specHdr select,#specHdr input[type=number]
+  {min-height:44px;min-width:44px;box-sizing:border-box}
+  /* 勾选框不跟着长：13px 的方框被拉成 13×44 就是一根竖条，纯属变丑。
+     它的命中区本来就由外层 <label> 提供（标签内点哪儿都算）——label 自己已经 44 了 */
+  #bar input[type=checkbox],#menu input[type=checkbox],#gen input[type=checkbox],
+  #panel input[type=checkbox],#dlg input[type=checkbox],#davCfgBox input[type=checkbox],
+  #specHdr input[type=checkbox]{min-height:0;min-width:0}
+  /* 段落 chip 是 <div>，上面那串 button,label,select 永远匹配不到。
+     display:flex 是必须的：不改成 flex，长高后里面的字会贴着上边 */
+  .chip{min-height:44px;box-sizing:border-box;display:flex;align-items:center}
+  /* 频谱头 9 个控件挤在一条 nowrap、既无 overflow 也无 flex-wrap 的行里——
+     给粗指针补上换行，上面那批 44px 才安全 */
+  #specHdr{flex-wrap:wrap;row-gap:4px}
+
+  /* 锚点胶囊里的 × 是全文件最小的按钮。这里本来想走 B 层（::after 撑命中带、视觉盒不动），
+     但 #gAncList 的行距只有 5px，上下各撑 15px 必然压到下一行的胶囊上——
+     而"相邻命中区不许交叠"是硬约束，交叠会让 DOM 靠后的那个偷走点击。
+     所以改成长胶囊本身：列表本来就会 wrap，代价只是多占纵向空间。
+     特异性上必须压过上面那批 #gen button，否则 min-height 还是 44 但胶囊被撑裂 */
+  #gAncList .anc{min-height:44px;box-sizing:border-box}
+  #gAncList .anc button{min-height:44px;min-width:44px}
 }
 
-/* 窄屏（手机/小窗）：工具条每行横滑不折行，面板改底部抽屉 */
-@media (max-width:700px){
+/* 窄屏窗口 或 触摸设备（不分宽度）：工具条每行横滑不折行。
+   折行会把段落条顶成好几行，段落越多越高——实测 4 段时 iPad 竖屏工具栏吃掉 22% 屏高。
+   内容放得下时 nowrap 与 wrap 肉眼无差别（不会出现滚动条），放不下才横滑而不是折行。
+   两个条件是并集，不是替换：原来只有 max-width:700px，卡不住任何一台 iPad 竖屏
+   （mini 744 / 10.2" 810 / Air 820 / Pro11 834 / Pro12 1024）——把 pointer 加进来才是目的，
+   窄屏窗口那条不能顺手删掉（pw_ui3 盯着它）。
+   版式判断仍然不带 any-pointer：触屏笔记本的主输入还是鼠标，不该因此变成手机版式 */
+@media (max-width:700px),(pointer:coarse){
   .row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .row::-webkit-scrollbar{display:none}
-  /* 底部抽屉：限高到"工具栏下沿以下"，从下往上顶也不会盖住工具栏 */
-  #panel{left:8px;right:8px;top:auto;bottom:8px;min-width:0;
-         max-height:calc(100dvh - var(--barH,96px) - 20px)}
+}
+@media (max-width:700px){
   #aud{flex:none}
   /* select 的宽度由最长的那个选项撑开——曲库里有长名字的曲目就会把整条顶宽。
      窄屏封顶，超出的名字由 text-overflow 收掉（全名在 title 和曲目库里看） */
@@ -71,7 +118,7 @@ button:active{opacity:.65}
 /* flex:none + nowrap：窄屏 .row 是 nowrap 横滑的，不锁死会被挤成 1 字宽逐字竖排 */
 #stat{color:var(--info);white-space:nowrap;flex:none}
 /* 消息改成浮动 toast：定位在工具栏下方、悬浮在谱面上，不占布局，工具栏不会跳 */
-#msg{position:fixed;left:50%;top:calc(var(--barH,44px) + 10px);transform:translateX(-50%);
+#msg{position:fixed;left:50%;top:calc(var(--barH,96px) + 10px);transform:translateX(-50%);
   background:var(--bg-soft);color:var(--ok);padding:8px 16px;border-radius:8px;z-index:50;
   border:1px solid var(--border);
   pointer-events:none;max-width:86vw;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.4);
@@ -83,10 +130,11 @@ button:active{opacity:.65}
 #chipWrap{display:none;flex:1;min-width:0;align-items:center;gap:8px}
 /* 段落 chips 换行铺开，不挤进横向滚动条——段落是「一键跳段」的快捷钮，看得全比省地方重要 */
 #chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0}
-/* 窄屏跟着 .row 一起横滑，不能 wrap：.row 是 nowrap 滚动容器，flex:1 的 chipWrap
+/* 跟着 .row 一起横滑，不能 wrap：.row 是 nowrap 滚动容器，flex:1 的 chipWrap
    会被压成 0 宽，里面再 wrap 就变成每个 chip 一行、还溢出到「练习循环」上叠成一坨。
-   放在基础规则之后，否则同特异性下会被上面那条 #chipWrap 覆盖掉 */
-@media (max-width:700px){
+   条件必须跟上面那条 .row 一字不差（max-width:700px 或 pointer:coarse），
+   且放在基础规则之后——同特异性下靠源码顺序取胜，改动一处就会失效 */
+@media (max-width:700px),(pointer:coarse){
   #chipWrap{flex:none;min-width:auto}
   #chips{flex-wrap:nowrap}
 }
@@ -105,22 +153,41 @@ button:active{opacity:.65}
 #wrap{flex:1;overflow:auto;background:var(--bg);position:relative;min-height:0;touch-action:pan-x pan-y}
 body.hidebar #bar{display:none}
 /* 收缩/展开钉在同一个右上角位置，切换不跳 */
-#bBar{position:fixed;top:6px;right:10px;z-index:31}
-#barShow{position:fixed;top:6px;right:10px;z-index:30;display:none;background:var(--bg-soft);
+/* 这两个跟 #bar 一样钉在顶边，安全区要一起跟（否则工具栏缩下去了、它俩还贴着刘海） */
+#bBar{position:fixed;top:calc(6px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:31}
+#barShow{position:fixed;top:calc(6px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:30;display:none;background:var(--bg-soft);
    color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:13px}
+/* 这条必须放在上面那条之后：同特异性下靠源码顺序取胜，放到上面的触屏块里会被基础规则压掉。
+   ▼ 钉在 #bar 外面，#bar button 那套够不着它——而它是从排练态出来的唯一入口。
+   用 line-height 而不是 display:flex 居中：它的显示由 JS 写内联 style="display:block"，
+   内联样式压过这里的任何 display，改成 flex 是白改 */
+@media (pointer:coarse),(any-pointer:coarse){
+  #barShow{min-height:44px;min-width:44px;box-sizing:border-box;padding:0 14px;line-height:44px}
+}
 /* 弹出层一律钉在工具栏下方（--barH 由 JS 按实际高度实时写入），绝不盖住工具栏 */
-#menu{position:fixed;top:calc(var(--barH,44px) + 6px);right:8px;background:var(--bg-soft);color:var(--text);border:1px solid var(--border);
-   border-radius:8px;padding:10px 14px;z-index:25;overflow:auto;min-width:240px;
-   max-height:calc(100dvh - var(--barH,44px) - 22px);
+/* box-sizing:border-box 是必须的：max-height 算的是内容盒，不加这条，
+   自身 22px 的 padding+边框会叠在限高之外、底边多出 22px 出屏（实测 906 > 900）。
+   #panel / #plPop 同理。--barH 兜底值统一成 96px（JS 一开始就会写真实值，
+   兜底只在脚本还没跑起来的一瞬起作用） */
+#menu{position:fixed;top:calc(var(--barH,96px) + 6px);right:8px;background:var(--bg-soft);color:var(--text);border:1px solid var(--border);
+   border-radius:8px;padding:10px 14px;z-index:25;overflow:auto;min-width:240px;box-sizing:border-box;
+   max-height:calc(100dvh - var(--barH,96px) - 22px);
    box-shadow:0 6px 20px rgba(0,0,0,.55)}
 #menu .msec{color:var(--info);font-size:12px;font-weight:600;margin:10px 0 4px;border-top:1px solid var(--border);padding-top:10px}
 #menu .msec:first-child{margin-top:0;border-top:0;padding-top:0}
 #menu label{display:flex;gap:6px;align-items:center;margin:4px 0;white-space:nowrap;cursor:pointer}
+/* 窄屏：菜单从右边收缩 + min-width:240px + label 又 nowrap → 长行会往左伸出屏幕。
+   必须排在上面两条之后（同特异性靠源码顺序取胜），否则 min-width 和 white-space 都会被压回去 */
+@media (max-width:700px){
+  #menu{min-width:0;left:8px;right:8px}
+  #menu label{white-space:normal}
+}
 #menu .mrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 #menu button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:3px 9px;border-radius:5px;cursor:pointer;margin:3px 5px 3px 0}
 #menu .mbtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:3px 9px;border-radius:5px;cursor:pointer;
    margin:3px 5px 3px 0;display:inline-block}     /* 文件选择的 label 也做成按钮样子，跟导出JSON一致 */
-#menu input[type=number]{width:58px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px}
+/* 带上 type=text：新建/重命名模式那两个输入框原来没样式，暗色主题里露出白色系统外观 */
+#menu input[type=number],#menu input[type=text]{width:58px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px}
 #pages.horiz{display:flex;flex-direction:row;align-items:flex-start;width:max-content}
 #pages.horiz .page{margin:10px;flex:none}
 
@@ -179,16 +246,68 @@ body.hidebar #bar{display:none}
 
 #panel{position:fixed;right:10px;top:calc(var(--barH,96px) + 8px);background:var(--bg-soft);color:var(--text);padding:10px;
     border:1px solid var(--border);border-radius:8px;display:none;min-width:260px;overflow:auto;z-index:9;
-    max-height:calc(100dvh - var(--barH,96px) - 24px)}
+    box-sizing:border-box;max-height:calc(100dvh - var(--barH,96px) - 24px)}
+/* 面板改底部抽屉：限高到"工具栏下沿以下"，从下往上顶也不会盖住工具栏。
+   触摸设备上放宽到 1024px——iPad 竖屏全系（mini 744 / 10.2" 810 / Air 820 / Pro11 834 / Pro12 1024）都收进来。
+   必须排在上面那条之后：同特异性靠源码顺序取胜。这条原来在文件更靠前的位置，一直没被基础规则
+   让位过——top:auto 从来没生效，实际行为是"从工具栏下沿铺到近底部"的整幅面板，注释写的抽屉是假的 */
+@media (max-width:700px),(pointer:coarse) and (max-width:1024px){
+  #panel{left:8px;right:8px;top:auto;bottom:8px;min-width:0;
+         max-height:calc(100dvh - var(--barH,96px) - 20px)}
+}
 #panel button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:2px 6px;border-radius:5px;cursor:pointer;margin:0 2px}
 #panel input{width:78px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px}
 #panel .ip{color:var(--accent)}
 
 #help{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:20;
     align-items:center;justify-content:center}
-#help>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:8px;max-width:560px;line-height:1.8}
+/* 这个浮层原来只有 max-width、没有 max-height 也没有 overflow，而 body{overflow:hidden}
+   —— 屏幕一矮内容就够不着，全文件唯一一个不自我约束的浮层。
+   padding 归零、改由头部和各段自己出（见下），否则 sticky 头部没法贴到圆角上沿 */
+#help>div{background:var(--bg-soft);color:var(--text);padding:0;border-radius:8px;line-height:1.8;
+    width:560px;max-width:min(560px,92vw);max-height:88dvh;overflow:auto;
+    display:flex;flex-direction:column}
+/* 关闭键所在的头一直贴在滚动容器顶上：滚到哪都关得掉（平板上没有 Esc） */
+#helpHd{position:sticky;top:0;z-index:2;background:var(--bg-soft);border-radius:8px 8px 0 0;
+    display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)}
+#helpHd b{font-size:15px}
+#helpClose{margin-left:auto;background:var(--surface);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:4px 12px;font-size:14px;cursor:pointer;flex:none}
+#help .hs{padding:6px 18px 2px}
+#help .hs:last-child{padding-bottom:16px}
 #help kbd{background:var(--surface);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font:12px monospace}
+#help code{background:var(--surface);padding:1px 5px;border-radius:3px;color:var(--info);font-size:12px}
 #help h3{margin:.2em 0 .6em}
+/* 桌面：键盘表在最前（鼠标/键盘用户一打开就想看快捷键）。
+   order 在下面那条粗指针规则里被翻过来——只换顺序，不藏任何一段：
+   平板可能接着外接键盘，藏掉键盘表等于把功能藏了 */
+#helpKeys{order:1}
+#helpMouse{order:2}
+#helpGest{order:3}
+#helpLoop{order:4}
+/* 粗指针设备：手势段提到最前，键盘表沉底（但不隐藏） */
+@media (pointer:coarse),(any-pointer:coarse){
+  #helpGest{order:1}
+  #helpMouse{order:2}
+  #helpLoop{order:3}
+  #helpKeys{order:4}
+}
+
+/* 安装到主屏幕：菜单里的入口 + 一张按浏览器分列的说明卡。
+   已经装成 PWA（display-mode:standalone）就不显示入口——见 syncInstall() */
+#instPop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:22;
+    align-items:center;justify-content:center}
+#instPop>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;
+    width:520px;max-width:92vw;max-height:88dvh;overflow:auto;line-height:1.75;box-sizing:border-box}
+#instPop h3{margin:.1em 0 .6em;font-size:15px}
+#instPop h4{margin:14px 0 4px;font-size:13px;color:var(--info);font-weight:600;
+    border-top:1px solid var(--border);padding-top:12px}
+#instPop .dim{color:var(--text-dim);font-size:12px;white-space:normal}
+#instPop .warn{color:var(--accent);font-size:12px;white-space:normal;margin-top:14px}
+#instPop .grow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+#instPop button{background:var(--surface);color:var(--text);border:1px solid var(--border);
+    padding:5px 12px;border-radius:6px;cursor:pointer}
+#instPop button.pri{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600}
 
 /* 对话框永远盖在最上层（高于曲目库 40、ownCloud 面板 45、toast 50）——否则从面板里
    发起下载时，弹出的选模式对话框会被面板挡住点不到 */
@@ -305,9 +424,10 @@ body.hidebar #bar{display:none}
 #plBox{display:inline-flex;gap:4px;align-items:center}
 #bar #plBox button{padding:3px 8px}
 /* 播放列表弹层：钉在工具栏下方、居中，跟曲目库的列表面板共用 .plRow */
-#plPop{position:fixed;top:calc(var(--barH,44px) + 6px);left:50%;transform:translateX(-50%);z-index:36;
+#plPop{position:fixed;top:calc(var(--barH,96px) + 6px);left:50%;transform:translateX(-50%);z-index:36;
   background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:10px 12px;
-  min-width:340px;max-width:min(92vw,540px);max-height:calc(100dvh - var(--barH,44px) - 22px);overflow:auto;
+  min-width:340px;max-width:min(92vw,540px);max-height:calc(100dvh - var(--barH,96px) - 22px);overflow:auto;
+  box-sizing:border-box;
   box-shadow:0 8px 24px rgba(0,0,0,.6)}
 #plPopHd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 #plPopHd b{font-size:14px}
@@ -337,6 +457,11 @@ body.hidebar #reh{display:flex}
 #reh .prog .track{position:relative;height:8px;background:var(--surface);border-radius:4px;
   cursor:pointer;touch-action:none}
 #reh .prog .track::before{content:'';position:absolute;left:0;right:0;top:-14px;bottom:-14px}
+/* 粗指针下把命中带从 36px 扩到 44px（视觉轨道仍是 8px）。
+   同样必须排在上面那条之后——放前面的触屏块里会被它压掉 */
+@media (pointer:coarse),(any-pointer:coarse){
+  #reh .prog .track::before{top:-18px;bottom:-18px}
+}
 #reh .prog .track:active{background-color:var(--surface-2)}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
@@ -354,15 +479,15 @@ body.hidebar #reh{display:flex}
   border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
   transform:translateY(-1px) rotate(45deg);opacity:.55;pointer-events:none}
 /* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+速度+展开键。
-   靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行） */
+   靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行）。
+   按钮保持 44px 不缩：这是全 App 最触摸导向的 UI，窄屏恰恰是最需要手指点准的场合 */
 @media (max-width:700px){
   #reh{flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px;
        width:calc(100vw - 16px);border-radius:20px}
-  #reh button{width:40px;height:40px}
   #reh .rehMain,#reh .rehFoot{gap:8px}
   #reh .prog{min-width:0;max-width:none}
   #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
-  #reh select.rate{height:40px;padding:0 24px 0 12px;font-size:13px}
+  #reh select.rate{padding:0 24px 0 12px;font-size:13px}
 }
 
 </style>
@@ -509,6 +634,7 @@ body.hidebar #reh{display:flex}
  <button id="bExp">导出JSON</button>
  <label class="mbtn">导入JSON<input type="file" id="fMap" hidden accept=".json"></label>
  <button id="bHelp">? 快捷键</button>
+ <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用">📲 安装到主屏幕</button>
 </div>
 <!-- 播放列表弹层：点工具栏「列表 1/3」打开，点歌曲切换、加当前曲目、删、循环/暂停，跟曲目库的面板同一套列表 -->
 <div id="plPop" style="display:none">
@@ -586,23 +712,75 @@ body.hidebar #reh{display:flex}
   <div id="libList"></div>
  </div>
 </div>
+<!-- 四段用 order 排（不隐藏）：粗指针设备把手势提到最前、键盘表沉底，
+     桌面反过来——同一份内容，只换顺序。详见上面的 #helpGest/#helpKeys -->
 <div id="help"><div>
- <h3>快捷键（焦点不在输入框时生效）</h3>
- <kbd>空格</kbd> 打时间模式：给当前目标小节打点并自动前进；其他模式：播放/暂停<br>
- <kbd>Enter</kbd> 同上（只在打时间模式打点）<br>
- <kbd>Backspace</kbd> 撤销上一步<br>
- <kbd>[</kbd> <kbd>]</kbd> 打点目标 −1 / +1 个小节<br>
- <kbd>←</kbd> <kbd>→</kbd> 后退 / 前进 2 秒（按住 Shift 为 5 秒）<br>
- <kbd>K</kbd> 播放 / 暂停 &nbsp; <kbd>-</kbd> <kbd>=</kbd> 减速 / 加速 &nbsp; <kbd>0</kbd> 速度归 1<br>
- <kbd>H</kbd> 或 <kbd>Esc</kbd> 开关本窗口
- <h3>鼠标 / 触摸</h3>
- 标小节：点谱面加点 · 打时间：点圆点记时间（Shift+点 = 只把目标移过去，不记）<br>
- 播放：点圆点跳到<b>当前段落</b>的那一遍；<b>2 秒内再点同一个点</b>就换到下一遍<br>
- 编辑点：拖竖线中段挪位置，拖上/下端改长度，单击开面板（可设高度并应用到全部）
- <h3>反复 / 练习</h3>
- <b>段落条</b>自动从打点数据切出来（小节号往回跳 = 新的一遍），点一下跳到那一段；<br>
- 播放时当前段落会自动高亮，所以点小节默认就落在你正在听的那一遍。<br>
- <b>练习循环</b>：按「起点」再在谱面点一个小节 = 循环起点，「终点」同理（那一小节会唱完），再按「循环」开关。
+ <div id="helpHd"><b>操作说明</b><button id="helpClose" aria-label="关闭">✕ 关闭</button></div>
+
+ <section id="helpGest" class="hs">
+  <h3>手势（触摸屏）</h3>
+  <b>双指缩放</b>：两根手指捏合缩放谱面，以两指中点为锚点。<br>
+  桌面等价物：<b>Ctrl + 滚轮</b>（触控板双指捏合同理），只缩放谱面、不缩放工具栏。<br>
+  <b>单指拖动</b>谱面平移。拖动后自动跟随会暂停 <b>2.5 秒</b>，然后自己恢复——
+  不是跟随失灵，是让手先看完这一页。<br>
+  <b>排练胶囊</b>：点工具栏「▲」收起工具栏，底部出现一条胶囊
+  <code>[⏮][▶][⏭] ──进度── 曲名 [倍速] [⌃]</code>；
+  进度条<b>按住可以拖动走带</b>——触屏没有 ←/→ 键，这是唯一的精细定位手段；
+  两侧的 ⏮/⏭ 切曲目，「⌃」展开工具栏。<br>
+  <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
+  频谱头上的提示文字窄屏不显示，但手势一样管用。<br>
+  <b>编辑点模式</b>下才能拖竖线：按住中段拖动挪位置，拖上/下端改长度；
+  这个模式下谱面<b>不随手势滚动</b>（免得拖动时页面乱跑），要先切回别的模式才能滚谱。
+ </section>
+
+ <section id="helpMouse" class="hs">
+  <h3>鼠标</h3>
+  标小节：点谱面加点 · 打时间：点圆点记时间（Shift+点 = 只把目标移过去，不记）<br>
+  播放：点圆点跳到<b>当前段落</b>的那一遍；<b>2 秒内再点同一个点</b>就换到下一遍<br>
+  编辑点：拖竖线中段挪位置，拖上/下端改长度，单击开面板（可设高度并应用到全部）
+ </section>
+
+ <section id="helpKeys" class="hs">
+  <h3>快捷键（焦点不在输入框时生效）</h3>
+  <kbd>空格</kbd> 打时间模式：给当前目标小节打点并自动前进；其他模式：播放/暂停<br>
+  <kbd>Enter</kbd> 同上（只在打时间模式打点）<br>
+  <kbd>Backspace</kbd> 撤销上一步<br>
+  <kbd>[</kbd> <kbd>]</kbd> 打点目标 −1 / +1 个小节<br>
+  <kbd>←</kbd> <kbd>→</kbd> 后退 / 前进 2 秒（按住 Shift 为 5 秒）<br>
+  <kbd>K</kbd> 播放 / 暂停 &nbsp; <kbd>-</kbd> <kbd>=</kbd> 减速 / 加速 &nbsp; <kbd>0</kbd> 速度归 1<br>
+  <kbd>H</kbd> 或 <kbd>Esc</kbd> 开关本窗口
+ </section>
+
+ <section id="helpLoop" class="hs">
+  <h3>反复 / 练习</h3>
+  <b>段落条</b>自动从打点数据切出来（小节号往回跳 = 新的一遍），点一下跳到那一段；<br>
+  播放时当前段落会自动高亮，所以点小节默认就落在你正在听的那一遍。<br>
+  <b>练习循环</b>：按「起点」再在谱面点一个小节 = 循环起点，「终点」同理（那一小节会唱完），再按「循环」开关。
+ </section>
+
+ <section class="hs">
+  <h3>关闭浮层</h3>
+  点浮层外面的灰底，或者右上角的 ✕ / 「关闭」键。帮助、生成、ownCloud、各种对话框都是这么关的
+  （平板上没有 Esc 键，这两条是唯一的出路）。
+ </section>
+</div></div>
+
+<div id="instPop"><div>
+ <h3>安装到主屏幕</h3>
+ <div class="dim">装成 App 后有独立图标、全屏无地址栏、离线也能打开（谱子和音频本来就在本机）。
+  已经装过的话菜单里不会再出现这一项。</div>
+ <h4>iPhone / iPad（Safari）</h4>
+ 点底部的「分享」<b>⬆︎</b> → 往下找到「<b>添加到主屏幕</b>」→ 命名 → 添加。
+ <h4>Android / 桌面（Chrome、Edge）</h4>
+ 地址栏右侧的<b>安装</b>图标，或右上角 <b>⋮</b> →「<b>安装应用</b>」/「添加到主屏幕」。
+ <h4>桌面 Safari</h4>
+ 菜单「文件」→「<b>添加到程序坞</b>」。
+ <div class="warn"><b>改过图标之后，要先把旧图标从主屏幕删掉、再重新添加一次</b>——
+  图标是安装那一刻抓取的，不会自己更新。</div>
+ <div class="grow">
+  <button id="instGo" class="pri" style="display:none">立即安装</button>
+  <button id="instClose">关闭</button>
+ </div>
 </div></div>
 
 <div id="davPop"><div>
@@ -807,6 +985,8 @@ function askText(msg,def){
     const ok=()=>{$('dlg').style.display='none';res($('dlgInp').value)};
     const cancel=()=>{$('dlg').style.display='none';res(null)};
     $('dlgOk').onclick=ok;$('dlgCancel').onclick=cancel;
+    // 点遮罩关掉（跟 #gen/#help/#davPop 一致）。平板上没有 Esc，只能靠这个和「取消」
+    $('dlg').onclick=e=>{if(e.target===$('dlg'))cancel()};
     $('dlgInp').onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
     $('dlgInp').focus();$('dlgInp').select();
   });
@@ -832,6 +1012,7 @@ function askMode(msg,def){
     };
     const cancel=()=>{$('dlgMode').style.display='none';res(null)};
     $('dlgModeOk').onclick=ok;$('dlgModeCancel').onclick=cancel;
+    $('dlgMode').onclick=e=>{if(e.target===$('dlgMode'))cancel()};
     inp.onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
     syncNew();
   });
@@ -3006,9 +3187,43 @@ $('gRun').onclick=()=>{
   }catch(err){msg('生成失败：'+err.message,1)}
 };
 
-function toggleHelp(v){$('help').style.display=(v===undefined?$('help').style.display!=='flex':v)?'flex':'none'}
+function toggleHelp(v){
+  const on=(v===undefined?$('help').style.display!=='flex':v);
+  $('help').style.display=on?'flex':'none';
+  if(on){const d=$('help').firstElementChild;if(d)d.scrollTop=0}   // 每次从顶部开始看
+}
 $('bHelp').onclick=()=>toggleHelp();
 $('help').onclick=e=>{if(e.target===$('help'))toggleHelp(false)};
+$('helpClose').onclick=()=>toggleHelp(false);
+
+/* ---------- 安装到主屏幕 ---------- */
+/* 这里用 matchMedia 是唯一的例外：CSS 表达不了 display-mode。
+   装过就不显示入口——standalone/fullscreen/minimal-ui 都算装过；
+   iOS Safari 的独立窗口不报 display-mode，另有非标准的 navigator.standalone */
+function isStandalone(){
+  return matchMedia('(display-mode: standalone)').matches||
+         matchMedia('(display-mode: fullscreen)').matches||
+         matchMedia('(display-mode: minimal-ui)').matches||
+         navigator.standalone===true;
+}
+let installEvt=null;
+addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();                       // 拦下来，改由卡片里的「立即安装」按钮触发
+  installEvt=e;$('instGo').style.display='';
+});
+addEventListener('appinstalled',()=>{installEvt=null;syncInstall();msg('已安装到主屏幕')});
+function syncInstall(){$('bInstall').style.display=isStandalone()?'none':''}
+$('bInstall').onclick=()=>{$('menu').style.display='none';$('instPop').style.display='flex'};
+$('instClose').onclick=()=>{$('instPop').style.display='none'};
+$('instPop').onclick=e=>{if(e.target===$('instPop'))$('instPop').style.display='none'};
+$('instGo').onclick=async()=>{
+  if(!installEvt)return;
+  $('instPop').style.display='none';
+  installEvt.prompt();
+  try{await installEvt.userChoice}catch(e){}
+  installEvt=null;$('instGo').style.display='none';
+};
+syncInstall();
 
 /* ---------- 工具条 ---------- */
 $('fAud').onchange=async e=>{
