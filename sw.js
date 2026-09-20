@@ -1,6 +1,6 @@
 /* SheetPlayer Service Worker：把应用外壳（player.html + pdf.js + 图标）缓存下来，离线可用。
    每次发布改动记得 bump VER，旧缓存会在 activate 时清掉。 */
-const VER='v6';
+const VER='v8';
 const CACHE='sheetplayer-'+VER;
 const ASSETS=['./','./index.html','./player.html','./manifest.json',
   './lib/pdf.min.js','./lib/pdf.worker.min.js',
@@ -19,9 +19,12 @@ self.addEventListener('fetch',e=>{
   if(req.method!=='GET')return;
   if(new URL(req.url).origin!==location.origin)return;
   if(req.mode==='navigate'){
-    // 页面：网络优先（保证能拿到更新），离线退回缓存的 player.html
+    // 页面：网络优先（保证能拿到更新），离线退回缓存的 player.html。
+    // cache:'reload' 是关键——不加的话 fetch 仍可能命中浏览器的 HTTP 缓存
+    // （GitHub Pages 发的是 max-age=600），于是"网络优先"实际拿到的是十分钟前的旧页面，
+    // 表现就是"手机上某个新功能一直没有"。这个 HTML 才 250KB 左右，每次重取不心疼。
     e.respondWith(
-      fetch(req).then(r=>{
+      fetch(req,{cache:'reload'}).then(r=>{
         const cp=r.clone();caches.open(CACHE).then(c=>c.put('./player.html',cp));
         return r;
       }).catch(()=>caches.match('./player.html'))

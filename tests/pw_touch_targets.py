@@ -344,6 +344,15 @@ async def main():
         print(ok(st["vis"]), "已装成 App 时入口仍然可见（不再自动隐藏）")
         print(ok(st["now"]==st["sa"]), f"卡片里的「已装过」提示跟着状态走: 显示={st['now']}")
         print(ok("构建" in st["build"]), f"菜单里有构建号可对版本: «{st['build']}»")
+        # 点构建号 = 清缓存强制重载。手机上"更新不到新版本"时唯一的自救手段，
+        # 所以它必须真的能点、真的绕过 HTTP 缓存（带一个没见过的 query）
+        await pgs.evaluate("$('menu').style.display='block'"); await pgs.wait_for_timeout(200)
+        await pgs.click("#buildTag")
+        await pgs.wait_for_timeout(2500)
+        after=pgs.url
+        print(ok("_=" in after), f"点构建号能强制重载并绕过缓存: ...{after[-26:]}")
+        print(ok(await pgs.evaluate("!!document.getElementById('buildTag')")),
+              "重载后页面正常（构建号还在）")
         await pgs.close()
 
         # --- 7. 桌面回归：纯鼠标设备一个像素都不该动 ---

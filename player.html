@@ -609,9 +609,12 @@ body.hidebar #reh{display:flex}
  <div class="msec">应用</div>
  <button id="bHelp">? 快捷键</button>
  <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用">📲 安装到主屏幕</button>
- <!-- 构建号：浏览器/Service Worker 缓存没刷掉时，页面和仓库对不上，
-      有这行就能一眼看出手上这台跑的是哪一版（跟 sw.js 的 VER 一起 bump） -->
- <div id="buildTag" style="color:var(--text-dim);font-size:12px;margin-top:2px"></div>
+ <!-- 构建号 + 强制刷新：浏览器/Service Worker 缓存没刷掉时，页面和仓库对不上。
+      这一行既让人一眼看出手上跑的是哪一版，点一下还能把缓存清掉重新拉
+      （跟 sw.js 的 VER 一起 bump） -->
+ <div id="buildTag" role="button" tabindex="0"
+      title="点一下：清掉离线缓存并强制重新加载。手机上更新不到新版本时用它"
+      style="color:var(--info);font-size:12px;margin-top:2px;cursor:pointer;text-decoration:underline"></div>
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
  <div class="msec">小节</div>
@@ -3243,10 +3246,26 @@ addEventListener('appinstalled',()=>{installEvt=null;syncInstall();msg('已安�
    于是一个还没装的人翻遍菜单也找不到入口。判错的代价是不对称的：
    藏错了 = 用户彻底找不到；多显示了 = 卡片里多一句话。所以只更新卡片里那句状态。 */
 function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
-/* 构建号。跟 sw.js 里的 VER 一起 bump —— 两边不是自动同步的，改发布版本时记得都动。
-   手机上"看不到某个新东西"时，先让用户念这一行，就能分清是没发到还是缓存没刷掉 */
-const BUILD='v6';
-$('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'');
+/* 构建号 + 强制刷新。跟 sw.js 里的 VER 一起 bump —— 两边不是自动同步的，改发布版本时记得都动。
+   手机上"看不到某个新东西"时，先念这一行就能分清是没发到还是这台设备的缓存没刷掉。
+   点它 = 注销 SW + 清掉所有 Cache Storage + 用一个没见过的 URL 重新加载。
+   三步缺一不可：
+     · 只 reload 不够——HTTP 缓存（GitHub Pages 是 max-age=600）会把旧 HTML 直接还给你
+     · 不注销 SW 不够——它的 navigation 分支虽然网络优先，但 fetch 仍可能命中 HTTP 缓存
+     · 不带新 URL 不够——同一个地址还是可能被上面两层任一层截住 */
+const BUILD='v8';
+$('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
+async function forceReload(){
+  msg('正在清缓存重新加载…');
+  try{
+    if(window.caches){for(const k of await caches.keys())await caches.delete(k)}
+    if('serviceWorker' in navigator)
+      for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();
+  }catch(e){}
+  location.replace(location.pathname+'?_='+Date.now());
+}
+$('buildTag').onclick=forceReload;
+$('buildTag').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();forceReload()}};
 $('bInstall').onclick=()=>{$('menu').style.display='none';$('instPop').style.display='flex'};
 $('instClose').onclick=()=>{$('instPop').style.display='none'};
 $('instPop').onclick=e=>{if(e.target===$('instPop'))$('instPop').style.display='none'};
