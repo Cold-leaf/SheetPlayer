@@ -334,9 +334,16 @@ async def main():
         await pgs.set_input_files("#fPdf",PDF)
         await pgs.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pgs.wait_for_timeout(300)
-        st=await pgs.evaluate("()=>({sa:isStandalone(),disp:$('bInstall').style.display})")
-        print(ok(st["sa"] and st["disp"]=="none"),
-              f"浏览器报告 standalone 时 isStandalone()={st['sa']}，安装入口隐藏 (display={st['disp']!r})")
+        st=await pgs.evaluate("""()=>({sa:isStandalone(),
+            vis:getComputedStyle($('bInstall')).display!=='none',
+            now:getComputedStyle($('instNow')).display!=='none',
+            build:$('buildTag').textContent})""")
+        print(ok(st["sa"]), f"浏览器报告 standalone 时 isStandalone()={st['sa']}")
+        # 入口不藏：判"装没装"不可靠（有些 App 内置浏览器的 WebView 会报 standalone），
+        # 藏错了用户就彻底找不到入口。改成常显 + 卡片里写一句状态
+        print(ok(st["vis"]), "已装成 App 时入口仍然可见（不再自动隐藏）")
+        print(ok(st["now"]==st["sa"]), f"卡片里的「已装过」提示跟着状态走: 显示={st['now']}")
+        print(ok("构建" in st["build"]), f"菜单里有构建号可对版本: «{st['build']}»")
         await pgs.close()
 
         # --- 7. 桌面回归：纯鼠标设备一个像素都不该动 ---

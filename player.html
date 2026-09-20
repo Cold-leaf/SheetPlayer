@@ -609,6 +609,9 @@ body.hidebar #reh{display:flex}
  <div class="msec">应用</div>
  <button id="bHelp">? 快捷键</button>
  <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用">📲 安装到主屏幕</button>
+ <!-- 构建号：浏览器/Service Worker 缓存没刷掉时，页面和仓库对不上，
+      有这行就能一眼看出手上这台跑的是哪一版（跟 sw.js 的 VER 一起 bump） -->
+ <div id="buildTag" style="color:var(--text-dim);font-size:12px;margin-top:2px"></div>
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
  <div class="msec">小节</div>
@@ -787,8 +790,8 @@ body.hidebar #reh{display:flex}
 
 <div id="instPop"><div>
  <h3>安装到主屏幕</h3>
- <div class="dim">装成 App 后有独立图标、全屏无地址栏、离线也能打开（谱子和音频本来就在本机）。
-  已经装过的话菜单里不会再出现这一项。</div>
+ <div class="dim">装成 App 后有独立图标、全屏无地址栏、离线也能打开（谱子和音频本来就在本机）。</div>
+ <div class="dim" id="instNow" style="display:none">看起来你现在就是从装好的 App 打开的，那就不用再装一次了。</div>
  <h4>iPhone / iPad（Safari）</h4>
  点底部的「分享」<b>⬆︎</b> → 往下找到「<b>添加到主屏幕</b>」→ 命名 → 添加。
  <h4>Android / 桌面（Chrome、Edge）</h4>
@@ -3235,7 +3238,15 @@ addEventListener('beforeinstallprompt',e=>{
   installEvt=e;$('instGo').style.display='';
 });
 addEventListener('appinstalled',()=>{installEvt=null;syncInstall();msg('已安装到主屏幕')});
-function syncInstall(){$('bInstall').style.display=isStandalone()?'none':''}
+/* 入口一直显示，不再"装过就藏起来"。
+   判"装没装"本来就不可靠——有些 App 内置浏览器的 WebView 会报 standalone，
+   于是一个还没装的人翻遍菜单也找不到入口。判错的代价是不对称的：
+   藏错了 = 用户彻底找不到；多显示了 = 卡片里多一句话。所以只更新卡片里那句状态。 */
+function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
+/* 构建号。跟 sw.js 里的 VER 一起 bump —— 两边不是自动同步的，改发布版本时记得都动。
+   手机上"看不到某个新东西"时，先让用户念这一行，就能分清是没发到还是缓存没刷掉 */
+const BUILD='v6';
+$('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'');
 $('bInstall').onclick=()=>{$('menu').style.display='none';$('instPop').style.display='flex'};
 $('instClose').onclick=()=>{$('instPop').style.display='none'};
 $('instPop').onclick=e=>{if(e.target===$('instPop'))$('instPop').style.display='none'};
