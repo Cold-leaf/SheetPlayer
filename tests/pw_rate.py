@@ -40,6 +40,24 @@ async def main():
         # 可点、够大
         bb=await pg.evaluate("(r=>({w:r.width,h:r.height}))($('rehRate').getBoundingClientRect())")
         print(ok(bb["w"]>=44 and bb["h"]>=40), f"是够大的触控目标（{round(bb['w'])}×{round(bb['h'])}）")
+        # 收窄成一个圆：定宽 44（原来按最宽档位「1.25×」撑成 78px 的胶囊），
+        # 且每个档位的文字都要放得下——不然「1.25×」会被切掉
+        sh=await pg.evaluate("""()=>{const s=$('rehRate'),cs=getComputedStyle(s);
+            return {w:s.getBoundingClientRect().width,h:s.getBoundingClientRect().height,
+                    br:cs.borderRadius,align:cs.textAlign,alignLast:cs.textAlign_last||cs.textAlignLast,
+                    inner:s.clientWidth-parseFloat(cs.borderLeftWidth)*2}}""")
+        print(ok(abs(sh["w"]-sh["h"])<0.5 and abs(sh["w"]-44)<0.5), f"定宽正方（圆）: {round(sh['w'])}×{round(sh['h'])}")
+        print(ok(sh["br"].startswith("50%")), f"圆角 50%: {sh['br']}")
+        print(ok(sh["align"]=="center"), f"数字居中: text-align={sh['align']} / text-align-last={sh['alignLast']}")
+        fit=await pg.evaluate("""()=>{const s=$('rehRate'),c=document.createElement('canvas').getContext('2d');
+            const cs=getComputedStyle(s);c.font=cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;
+            const inner=s.clientWidth-parseFloat(cs.borderLeftWidth)*2;
+            const bad=[...s.options].filter(o=>c.measureText(o.textContent).width>inner)
+              .map(o=>o.textContent+'='+c.measureText(o.textContent).width.toFixed(1));
+            return {bad,inner,longest:[...s.options].reduce((a,o)=>
+              c.measureText(o.textContent).width>c.measureText(a).width?o.textContent:a,'')}}""")
+        print(ok(not fit["bad"]), f"每个档位都放得下（最宽 «{fit['longest']}»，可用 {fit['inner']}px）"
+              + (f" —— 溢出 {fit['bad']}" if fit["bad"] else ""))
 
         # 切宽窄不一的档位，控件宽度不变（胶囊不会跟着抖）
         w1=await pg.evaluate("$('rehRate').getBoundingClientRect().width")

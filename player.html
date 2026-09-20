@@ -478,18 +478,22 @@ body.hidebar #reh{display:flex}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
-/* 速度：原生 select 涂成胶囊的样子。appearance:none 只去掉系统外观，选择器本身还是系统弹的
-   —— 平板上目标大、跟系统深色模式走，比自己搭浮层稳当，也省掉定位/收起/宽度那一摊。
-   width:auto 让浏览器按最宽的选项（1.25×）撑开，切档时宽度不变，胶囊不会抖 */
-#reh select.rate{width:auto;height:44px;padding:0 26px 0 14px;border-radius:22px;
+/* 速度：原生 select 涂成一个 44px 的圆，跟胶囊里其它圆钮（⏮ ▶ ⏭ ⌃）一套语言。
+   appearance:none 只去掉系统外观，选择器本身还是系统弹的——平板上目标大、
+   跟系统深色模式走，比自己搭浮层稳当。
+   定宽 44：最宽的档位是「1.25×」（14px 下 ~35px），圆里去掉边框还剩 42px，放得下，
+   所以字号不用缩；定宽也顺带保证了切档时宽度不变、胶囊不会抖。
+   text-align-last:center 是必须的：appearance:none 的 select 在某些浏览器里
+   选中项仍然左对齐，只写 text-align 不一定够 */
+#reh select.rate{width:44px;flex:none;height:44px;padding:0;border-radius:50%;
   border:1px solid var(--border);background-color:transparent;color:var(--text);
   font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer;
-  appearance:none;-webkit-appearance:none;text-align:left}
-/* appearance:none 把原生下拉箭头一起去掉了，自己补一个（currentColor 跟着主题走） */
+  appearance:none;-webkit-appearance:none;text-align:center;text-align-last:center}
+/* appearance:none 把原生下拉箭头一起去掉了。圆里没地方补箭头（补了就压住数字），
+   改用底色提示可点：跟进度条 :active 一个套路 */
+#reh select.rate:hover{background-color:var(--surface)}
+#reh select.rate:active{background-color:var(--surface-2)}
 #reh .rateWrap{position:relative;display:inline-flex;align-items:center}
-#reh .rateWrap::after{content:'';position:absolute;right:12px;width:5px;height:5px;
-  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
-  transform:translateY(-1px) rotate(45deg);opacity:.55;pointer-events:none}
 /* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+速度+展开键。
    靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行）。
    按钮保持 44px 不缩：这是全 App 最触摸导向的 UI，窄屏恰恰是最需要手指点准的场合 */
@@ -499,7 +503,8 @@ body.hidebar #reh{display:flex}
   #reh .rehMain,#reh .rehFoot{gap:8px}
   #reh .prog{min-width:0;max-width:none}
   #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
-  #reh select.rate{padding:0 24px 0 12px;font-size:13px}
+  /* 只动字号——padding 交给上面的圆规则，这里再写一次就会把圆撑成椭圆 */
+  #reh select.rate{font-size:13px}
 }
 
 </style>
