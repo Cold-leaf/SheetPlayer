@@ -1,6 +1,6 @@
 /* SheetPlayer Service Worker：把应用外壳（player.html + pdf.js + 图标）缓存下来，离线可用。
    每次发布改动记得 bump VER，旧缓存会在 activate 时清掉。 */
-const VER='v10';
+const VER='v11';
 const CACHE='sheetplayer-'+VER;
 const ASSETS=['./','./index.html','./player.html','./manifest.json',
   './lib/pdf.min.js','./lib/pdf.worker.min.js',

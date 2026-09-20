@@ -20,14 +20,16 @@ async def main():
         # 默认已横向，显式切回纵向再测切换
         await pg.evaluate("$('chkHoriz').checked=false;$('chkHoriz').onchange()"); await asyncio.sleep(0.2)
 
-        # --- 横向/纵向：原来是工具栏上的按钮，现在收进菜单「视图」当勾选项 ---
-        print(ok(not await pg.evaluate("!!document.getElementById('bHoriz')")), "工具栏上的方向按钮已移除")
+        # --- 横向/纵向：工具栏一个按钮（一眼找得到的入口）+ 菜单「视图」一个勾选框（状态本体） ---
+        print(ok(await pg.is_visible("#bHoriz")), "工具栏上的方向按钮在")
+        print(ok(await pg.evaluate("$('bHoriz').textContent")=="纵向"), "按钮文案显示的是当前方向（刚切成纵向）")
         print(ok(await pg.evaluate("$('chkHoriz').checked")==False), "切回纵向后 chkHoriz 未勾选")
         print(ok(not await pg.evaluate("pagesEl.classList.contains('horiz')")), "纵向：没有 horiz 类")
         await pg.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
         print(ok(await pg.is_visible("#chkHoriz")), "菜单「视图」里能看到「横向铺开」")
         lbl=(await pg.evaluate("document.querySelector('label:has(#chkHoriz)').innerText")).strip()
-        print(ok(lbl=="横向铺开"), f"勾选项文案: «{lbl}»")
+        # 文案里必须出现「纵向」：只写「横向铺开」时，找"横竖切换"的人会径直划过去
+        print(ok("横向铺开" in lbl and "纵向" in lbl), f"勾选项文案横竖都读得出: «{lbl}»")
         await pg.click("#chkHoriz"); await asyncio.sleep(0.3)
         print(ok(await pg.evaluate("$('chkHoriz').checked") and await pg.evaluate("pagesEl.classList.contains('horiz')")), "勾上后切到横向铺开")
         # 横向铺开实际生效：第2页在第1页右侧
@@ -37,6 +39,13 @@ async def main():
         await pg.click("#chkHoriz"); await asyncio.sleep(0.3)
         print(ok(await pg.evaluate("$('chkHoriz').checked")==False and not await pg.evaluate("pagesEl.classList.contains('horiz')")), "取消勾选切回纵向")
         await pg.evaluate("$('menu').style.display='none'")
+        # 按钮只是 chkHoriz 的壳：点它一样能翻，文案跟着走（跟 #rate ↔ #rehRate 同一套）
+        await pg.click("#bHoriz"); await asyncio.sleep(0.3)
+        print(ok(await pg.evaluate("$('chkHoriz').checked") and await pg.evaluate("$('bHoriz').textContent")=="横向"),
+              "点工具栏按钮翻到横向，按钮文案跟着变")
+        await pg.click("#bHoriz"); await asyncio.sleep(0.3)
+        print(ok(await pg.evaluate("$('chkHoriz').checked")==False and await pg.evaluate("$('bHoriz').textContent")=="纵向"),
+              "再点一下翻回纵向")
 
         # --- stat 单独一行 ---
         rows=await pg.eval_on_selector_all("#bar .row","e=>e.length")
@@ -57,8 +66,16 @@ async def main():
             return {ws:getComputedStyle(b).whiteSpace, h:b.clientHeight, t:b.textContent}}""")
         print(ok(ws["ws"]=="nowrap"), f"窄屏按钮 white-space={ws['ws']}")
         print(ok(ws["h"]<30), f"「{ws['t']}」按钮高度 {ws['h']}px（正常，非竖排）")
-        # 窄屏横滑：第一行精简之后（PDF / 方向键都收进菜单了），380px 下已经放得下、
-        # 不再溢出——该断言的是"每行都是横滑容器"，而不是"第一行一定溢出"
+        # 窄屏把方向按钮藏掉，是为了不让它挤掉「☰ 菜单」——菜单才是手机上通往一切设置的入口。
+        # 所以「按钮不显示」和「菜单在」是同一条取舍的两面，得一起断言
+        bh=await pg2.evaluate("""()=>{const b=document.getElementById('bHoriz');
+            return {exists:!!b, shown:b?getComputedStyle(b).display!=='none':false,
+                    on:$('chkHoriz').checked}}""")
+        print(ok(bh["exists"] and not bh["shown"]),
+              f"窄屏 380 下方向按钮不显示（仍在 DOM 里，可被脚本驱动: {bh['exists']}）")
+        print(ok(bh["on"]==False), f"窄屏 380 初始就是纵向堆叠: chkHoriz={bh['on']}")
+        # 窄屏横滑：第 1 行精简之后（PDF 收进菜单、方向键 ≤700px 时被 CSS 藏掉），
+        # 380px 下已经放得下、不再溢出——该断言的是"每行都是横滑容器"，而不是"第一行一定溢出"
         rows2=await pg2.evaluate("""()=>[...document.querySelectorAll('#bar .row')].map(r=>
             ({ox:getComputedStyle(r).overflowX, sw:r.scrollWidth, cw:r.clientWidth}))""")
         print(ok(all(r["ox"]=="auto" for r in rows2)), f"窄屏每行都是横滑容器: {[r['ox'] for r in rows2]}")

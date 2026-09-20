@@ -109,6 +109,11 @@ button:active{opacity:.65}
   .row::-webkit-scrollbar{display:none}
 }
 @media (max-width:700px){
+  /* 方向按钮把位置让给「☰ 菜单」：390px 下第 1 行加上它要多占 78px，
+     而真实路径下那行本来只剩几十像素——挤掉的正是手机通往一切设置的入口。
+     手机默认就是纵向，方向在这上面属于"一台上设一次"的罕见操作，菜单「视图」里够用。
+     只按宽度藏、不带 pointer:coarse：iPad mini 744 起放得下，按钮就该留在手指底下 */
+  #bHoriz{display:none}
   #aud{flex:none}
   /* select 的宽度由最长的那个选项撑开——曲库里有长名字的曲目就会把整条顶宽。
      窄屏封顶，超出的名字由 text-overflow 收掉（全名在 title 和曲目库里看） */
@@ -526,6 +531,10 @@ body.hidebar #reh{display:flex}
   <input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3" hidden>
   <button id="bFitW" title="纵向：适应宽度；横向：适应高度" hidden>适应</button>
   <span id="zoomVal" hidden>130%</span>
+  <!-- 只是 chkHoriz 的可见壳：文案显示**当前**方向，点一下翻过去——跟 #rate ↔ #rehRate 同一套写法。
+       状态本体是菜单「视图」里那个勾选框。两处都得在：按钮是"一眼找得到"的入口，
+       勾选框管窄屏（≤700px 时这个壳被 CSS 藏掉）和收起工具栏时的兜底 -->
+  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">横向</button>
   <span class="sep"></span>
   <button id="bUndo">撤销</button>
   <button id="bGen">自动生成</button>
@@ -636,9 +645,9 @@ body.hidebar #reh{display:flex}
   <button id="bShift">应用平移</button>
  </div>
  <div class="msec">视图</div>
- <!-- 原来是工具栏第一行的一个按钮（文字显示当前方向）。菜单里这一栏都是勾选项，
-      换成同一种形式更顺；chkHoriz 本来就是真正的状态，按钮只是它的 .click() 壳 -->
- <label title="谱面左右铺开；不勾就是纵向堆叠"><input type="checkbox" id="chkHoriz" checked>横向铺开</label>
+ <!-- 真正的状态在这儿；工具栏那个「横向/纵向」按钮只是它的 .click() 壳。
+      文案里必须出现「纵向」——只写「横向铺开」，找"横竖切换"的人会径直划过去 -->
+ <label title="谱面左右铺开；不勾就是纵向堆叠"><input type="checkbox" id="chkHoriz" checked>横向铺开（不勾＝纵向堆叠）</label>
  <label><input type="checkbox" id="chkNum" checked>显示编号</label>
  <label><input type="checkbox" id="chkProg" checked>小节进度</label>
  <div class="msec">音频模式</div>
@@ -1414,7 +1423,9 @@ $('bFitW').onclick=()=>{                         // 纵向：适应宽度；横�
   applyZoom();scrollHome();
 };
 $('chkHoriz').onchange=()=>{                     // 页面左右铺开
-  pagesEl.classList.toggle('horiz',$('chkHoriz').checked);
+  const v=$('chkHoriz').checked;
+  pagesEl.classList.toggle('horiz',v);
+  $('bHoriz').textContent=v?'横向':'纵向';        // 按钮显示当前方向
   scrollHome();
 };
 // 滚到内容原点：谱面顶边落在工具栏正下方（工具栏收起时贴视口顶）。
@@ -1424,6 +1435,7 @@ function scrollHome(){
   wrap.scrollTop=(parseFloat(cs.paddingTop)||0)-$('bar').offsetHeight;
   wrap.scrollLeft=parseFloat(cs.paddingLeft)||0;
 }
+$('bHoriz').onclick=()=>$('chkHoriz').click();
 
 /* 缩放并锚定在视口某个点（触控板捏合 / 双指缩放），该点下的内容保持不动。
    页面有 10px 固定边距，不随缩放变——直接按内容坐标整体缩放会差 margin*(zr-1)
@@ -3256,7 +3268,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
      · 只 reload 不够——HTTP 缓存（GitHub Pages 是 max-age=600）会把旧 HTML 直接还给你
      · 不注销 SW 不够——它的 navigation 分支虽然网络优先，但 fetch 仍可能命中 HTTP 缓存
      · 不带新 URL 不够——同一个地址还是可能被上面两层任一层截住 */
-const BUILD='v10';
+const BUILD='v11';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4628,7 +4640,12 @@ async function boot(){
 }
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
 syncRate();                                  // 胶囊上的速度键跟工具栏下拉对齐（按 #rate 生成档位）
-$('chkHoriz').onchange();                    // 初始横向：同步 horiz 类
+// 初始方向：窄了就该一页一行。700 跟窄屏版式那条查询同一个数，不引入第二个魔数——
+// 所以窄窗口天然是「横滑版式 + 纵向堆叠」，两条规则讲同一个故事。
+// 只看当前窗口宽（不用短边）：手机横过来打开就是横向铺开，844px 宽确实放得下两页并排。
+// 一次会话里只算这一下，旋转屏幕不重算；也不持久化，跟 chkNum/chkProg/chkFollow 一致
+$('chkHoriz').checked=innerWidth>700;
+$('chkHoriz').onchange();                    // 同步 horiz 类与按钮文字
 boot();
 
 /* ---------- PWA：注册 service worker（https 才生效，file:// 下静默跳过） ---------- */
