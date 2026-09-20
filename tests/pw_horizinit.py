@@ -7,15 +7,17 @@ socketserver.TCPServer.allow_reuse_address=True
 srv=socketserver.TCPServer(("127.0.0.1",8777),H); threading.Thread(target=srv.serve_forever,daemon=True).start()
 def ok(c): return "OK   " if c else "FAIL "
 
-# 量当前方向：状态（chkHoriz + horiz 类）、前两页的相对位置、工具栏按钮的文字与显隐
+# 量当前方向：状态（chkHoriz + horiz 类）、前两页的相对位置，以及方向按钮
+# —— 它该**只在菜单里**一处，文案显示当前方向。量之前菜单是开着的（见 probe），
+# 否则 display:none 的元素 getBoundingClientRect 全是 0。
 GEO="""()=>{
   const ps=[...document.querySelectorAll('.page')].map(p=>p.getBoundingClientRect());
-  const b=document.getElementById('bHoriz');
+  const b=document.getElementById('bHoriz'), r=b.getBoundingClientRect();
   return {on:$('chkHoriz').checked, cls:pagesEl.classList.contains('horiz'),
-          exists:!!b,
-          txt:b?b.textContent:'', shown:b?getComputedStyle(b).display!=='none':false,
-          w:b?Math.round(b.getBoundingClientRect().width):0,
-          h:b?Math.round(b.getBoundingClientRect().height):0,
+          txt:b.textContent, shown:getComputedStyle(b).display!=='none',
+          inMenu:!!b.closest('#menu'), inBar:!!b.closest('#bar'),
+          l:Math.round(r.left), r:Math.round(r.right), vw:innerWidth,
+          w:Math.round(r.width), h:Math.round(r.height),
           dx:ps.length>1?Math.round(ps[1].left-ps[0].left):0,
           dy:ps.length>1?Math.round(ps[1].top-ps[0].top):0};
 }"""
@@ -28,6 +30,8 @@ async def probe(b,w,h,touch,errs):
     await pg.evaluate("localStorage.clear()"); await pg.reload()
     await pg.set_input_files("#fPdf",PDF)
     await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
+    # 直接写 display 而不是点 #bMenu——菜单按钮事件绑在别处，这里只要它开着
+    await pg.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
     return pg
 
 async def main():
@@ -52,12 +56,20 @@ async def main():
               f"[390] 初始纵向堆叠: chkHoriz={g['on']}，有 horiz 类={g['cls']}")
         print(ok(abs(g["dx"])<2 and g["dy"]>0),
               f"[390] 第2页在第1页正下方 (x差 {abs(g['dx'])}px, y下移 {g['dy']}px)")
-        # 这次取舍的护栏：为了给「☰ 菜单」腾地方才把方向按钮藏掉，菜单就绝不能反被挤掉。
-        # direct=1 那条路 boot() 会把「曲目库」藏掉，量出来的余量是假的——这里补回来，
-        # 复现真实路径下第 1 行的内容，否则这条护栏在按钮可见时也能过
+        # 方向按钮只该有一处，且在菜单里：工具栏第 1 行 390px 下只剩 2px 余量，塞不下第二个入口
+        print(ok(g["inMenu"] and not g["inBar"]),
+              f"[390] 方向按钮只在菜单里一处（inMenu={g['inMenu']}，inBar={g['inBar']}）")
+        print(ok(g["shown"] and g["l"]>=0 and g["r"]<=g["vw"]+1),
+              f"[390] 按钮在菜单里点得到、横向不出屏: [{g['l']},{g['r']}] ⊆ 0–{g['vw']}")
+        print(ok(g["w"]>=44 and g["h"]>=44),
+              f"[390 触摸] 按钮命中区 {g['w']}×{g['h']}px ≥44（手机上真点得准）")
+        # 光"看得见"不够——手机上点一下得真的切得动（这正是"手机上改不了方向"那个窟窿）
+        await pgm.click("#bHoriz"); await asyncio.sleep(0.3)
+        g2=await pgm.evaluate(GEO)
+        print(ok(g2["on"] and g2["cls"] and g2["txt"]=="横向铺开" and g2["dx"]>0),
+              f"[390] 点菜单里的按钮切到横向、文案变 «{g2['txt']}»（第2页右移 {g2['dx']}px）")
+        # 「☰ 菜单」是手机上通往一切设置的入口，方向按钮又住在里面——它被挤掉就什么都改不了
         await pgm.evaluate("$('bLib').style.display=''"); await asyncio.sleep(0.2)
-        print(ok(g["exists"] and not g["shown"]),
-              f"[390] 方向按钮在 DOM 里（可被脚本/测试驱动）但不显示: exists={g['exists']} shown={g['shown']}")
         mb=await pgm.evaluate("""()=>{const m=$('bMenu').getBoundingClientRect();
             return {l:Math.round(m.left),r:Math.round(m.right),vw:innerWidth,
                     lib:getComputedStyle($('bLib')).display!=='none'}}""")
@@ -66,36 +78,26 @@ async def main():
               f"（工具栏右侧给固定定位的「▲」留了 44px，量的是真实余量）")
         await pgm.close()
 
-        # --- 桌面/横屏宽窗：默认横向铺开，方向按钮在工具栏上 ---
+        # --- 桌面宽窗：默认横向铺开，按钮在菜单里显示当前方向、点一下翻过去 ---
         pgd=await probe(b,1440,900,False,errs)
         g=await pgd.evaluate(GEO)
         print(ok(g["on"] and g["cls"] and g["dx"]>0 and abs(g["dy"])<2),
               f"[1440] 初始横向铺开: 第2页在右侧 (x移 {g['dx']}px, y差 {abs(g['dy'])}px)")
-        print(ok(g["exists"] and g["shown"] and g["txt"]=="横向"),
-              f"[1440] 工具栏方向按钮可见、文案显示当前方向 «{g['txt']}»")
-        # 点它 = 翻过去，文案跟着变（按钮只是 chkHoriz 的壳）
+        print(ok(g["shown"] and g["inMenu"] and not g["inBar"] and g["txt"]=="横向铺开"),
+              f"[1440] 菜单里的方向按钮显示当前方向 «{g['txt']}»，工具栏上没有")
         await pgd.click("#bHoriz"); await asyncio.sleep(0.3)
         g2=await pgd.evaluate(GEO)
-        print(ok(not g2["on"] and not g2["cls"] and g2["txt"]=="纵向" and abs(g2["dx"])<2 and g2["dy"]>0),
+        print(ok(not g2["on"] and not g2["cls"] and g2["txt"]=="纵向堆叠" and abs(g2["dx"])<2 and g2["dy"]>0),
               f"点一下翻到纵向、文案变 «{g2['txt']}»（第2页下移 {g2['dy']}px）")
         await pgd.click("#bHoriz"); await asyncio.sleep(0.3)
         g3=await pgd.evaluate(GEO)
-        print(ok(g3["on"] and g3["cls"] and g3["txt"]=="横向" and g3["dx"]>0),
+        print(ok(g3["on"] and g3["cls"] and g3["txt"]=="横向铺开" and g3["dx"]>0),
               f"再点一下翻回横向、文案变 «{g3['txt']}»（第2页右移 {g3['dx']}px）")
-        # 菜单里那个勾选框跟按钮是同一个状态：按钮翻完，勾选框跟着走
-        await pgd.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
-        chk=await pgd.evaluate("$('chkHoriz').checked")
-        lbl=(await pgd.evaluate("document.querySelector('label:has(#chkHoriz)').innerText")).strip()
-        print(ok(chk and "纵向" in lbl), f"菜单勾选框与按钮同一状态（勾着={chk}），文案能读出纵向: «{lbl}»")
-        await pgd.evaluate("$('menu').style.display='none'")
+        # 按钮只是 hidden #chkHoriz 的壳：程序化改状态，文案也得跟着走（bFitW 那条路靠它）
+        await pgd.evaluate("$('chkHoriz').checked=false;$('chkHoriz').onchange()"); await asyncio.sleep(0.2)
+        print(ok(await pgd.evaluate("$('bHoriz').textContent")=="纵向堆叠"),
+              "直接改 chkHoriz 状态，按钮文案同步（壳不自己存状态）")
         await pgd.close()
-
-        # --- 触摸宽屏（iPad 744 起）：按钮不藏，且够 44px 手指点 ---
-        pgt=await probe(b,834,1194,True,errs)
-        g=await pgt.evaluate(GEO)
-        print(ok(g["shown"] and g["w"]>=44 and g["h"]>=44),
-              f"[834 触摸] 方向按钮可见且 {g['w']}×{g['h']}px ≥44（窄屏才藏，iPad 放得下）")
-        await pgt.close()
 
         print("\npage errors:",errs or "(none)")
         await b.close()

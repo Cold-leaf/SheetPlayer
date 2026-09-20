@@ -25,9 +25,9 @@ async def main():
             return {x0:ps[0].left, x1:ps[1].left, y0:ps[0].top, y1:ps[1].top}}""")
         print(ok(abs(v["x0"]-v["x1"])<2 and v["y1"]>v["y0"]), f"纵向：第2页在第1页正下方 (x差 {abs(v['x0']-v['x1']):.0f}px, y下移 {v['y1']-v['y0']:.0f}px)")
 
-        # 开横向展开（勾选项在菜单「视图」里，不在工具栏上了）
+        # 开横向展开（方向按钮在菜单「视图」里，不在工具栏上）
         await pg.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
-        await pg.click("#chkHoriz"); await asyncio.sleep(0.3)
+        await pg.click("#bHoriz"); await asyncio.sleep(0.3)
         await pg.evaluate("$('menu').style.display='none'")
         h=await pg.evaluate("""()=>{const ps=[...document.querySelectorAll('.page')].map(p=>p.getBoundingClientRect());
             return {x0:ps[0].left, x1:ps[1].left, y0:ps[0].top, y1:ps[1].top, sw:wrap.scrollWidth, cw:wrap.clientWidth}}""")
@@ -55,7 +55,7 @@ async def main():
 
         # 切回纵向，「适应」按宽度
         await pg.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
-        await pg.click("#chkHoriz"); await asyncio.sleep(0.3)
+        await pg.click("#bHoriz"); await asyncio.sleep(0.3)
         await pg.evaluate("$('menu').style.display='none'")
         await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         pw2=await pg.evaluate("boxes[1].clientWidth"); vw=await pg.evaluate("wrap.clientWidth")

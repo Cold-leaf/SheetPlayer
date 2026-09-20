@@ -109,11 +109,6 @@ button:active{opacity:.65}
   .row::-webkit-scrollbar{display:none}
 }
 @media (max-width:700px){
-  /* 方向按钮把位置让给「☰ 菜单」：390px 下第 1 行加上它要多占 78px，
-     而真实路径下那行本来只剩几十像素——挤掉的正是手机通往一切设置的入口。
-     手机默认就是纵向，方向在这上面属于"一台上设一次"的罕见操作，菜单「视图」里够用。
-     只按宽度藏、不带 pointer:coarse：iPad mini 744 起放得下，按钮就该留在手指底下 */
-  #bHoriz{display:none}
   #aud{flex:none}
   /* select 的宽度由最长的那个选项撑开——曲库里有长名字的曲目就会把整条顶宽。
      窄屏封顶，超出的名字由 text-overflow 收掉（全名在 title 和曲目库里看） */
@@ -531,10 +526,6 @@ body.hidebar #reh{display:flex}
   <input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3" hidden>
   <button id="bFitW" title="纵向：适应宽度；横向：适应高度" hidden>适应</button>
   <span id="zoomVal" hidden>130%</span>
-  <!-- 只是 chkHoriz 的可见壳：文案显示**当前**方向，点一下翻过去——跟 #rate ↔ #rehRate 同一套写法。
-       状态本体是菜单「视图」里那个勾选框。两处都得在：按钮是"一眼找得到"的入口，
-       勾选框管窄屏（≤700px 时这个壳被 CSS 藏掉）和收起工具栏时的兜底 -->
-  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">横向</button>
   <span class="sep"></span>
   <button id="bUndo">撤销</button>
   <button id="bGen">自动生成</button>
@@ -645,9 +636,12 @@ body.hidebar #reh{display:flex}
   <button id="bShift">应用平移</button>
  </div>
  <div class="msec">视图</div>
- <!-- 真正的状态在这儿；工具栏那个「横向/纵向」按钮只是它的 .click() 壳。
-      文案里必须出现「纵向」——只写「横向铺开」，找"横竖切换"的人会径直划过去 -->
- <label title="谱面左右铺开；不勾就是纵向堆叠"><input type="checkbox" id="chkHoriz" checked>横向铺开（不勾＝纵向堆叠）</label>
+ <!-- 方向切换是个**按钮**不是勾选框：勾选框只写得出「横向铺开」这一个词，
+      找"横竖切换"的人扫过去就划走了。文案显示**当前**方向（不是点了会变成什么），
+      跟原来工具栏上那个按钮一致。真正的状态还是下面那个 hidden 输入——bFitW 和初始方向
+      都读它——按钮只是它的 .click() 壳，自己不存状态 -->
+ <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">横向铺开</button>
+ <input type="checkbox" id="chkHoriz" hidden checked>
  <label><input type="checkbox" id="chkNum" checked>显示编号</label>
  <label><input type="checkbox" id="chkProg" checked>小节进度</label>
  <div class="msec">音频模式</div>
@@ -1425,7 +1419,7 @@ $('bFitW').onclick=()=>{                         // 纵向：适应宽度；横�
 $('chkHoriz').onchange=()=>{                     // 页面左右铺开
   const v=$('chkHoriz').checked;
   pagesEl.classList.toggle('horiz',v);
-  $('bHoriz').textContent=v?'横向':'纵向';        // 按钮显示当前方向
+  $('bHoriz').textContent=v?'横向铺开':'纵向堆叠';   // 按钮显示当前方向
   scrollHome();
 };
 // 滚到内容原点：谱面顶边落在工具栏正下方（工具栏收起时贴视口顶）。
@@ -3268,7 +3262,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
      · 只 reload 不够——HTTP 缓存（GitHub Pages 是 max-age=600）会把旧 HTML 直接还给你
      · 不注销 SW 不够——它的 navigation 分支虽然网络优先，但 fetch 仍可能命中 HTTP 缓存
      · 不带新 URL 不够——同一个地址还是可能被上面两层任一层截住 */
-const BUILD='v11';
+const BUILD='v12';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
