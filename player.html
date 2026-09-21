@@ -535,8 +535,8 @@ body.hidebar #reh{display:flex}
   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
  <div class="row">
-  <!-- 原生控件整个收掉，只留自制精简条：播放键 + 进度条 + 时间。点小节/频谱走带是粗定位，
-       进度条是唯一精细定位（触屏没有 ←/→）；音量 iPad 有实体键、桌面用系统音量，不再重复 -->
+  <!-- 原生控件整个收掉，只留自制精简条：播放键 + 时间。点小节/频谱走带是粗定位，
+       精细定位在排练胶囊那条进度条上（触屏没有 ←/→）；音量 iPad 有实体键、桌面用系统音量，不再重复 -->
   <audio id="aud" style="display:none"></audio>
   <span id="transport">
    <button id="bPlay" class="primary" aria-label="播放" aria-pressed="false" title="播放/暂停">
@@ -1521,7 +1521,7 @@ function syncReh(){
   $('rehLbl').innerHTML=track?esc(dispName(track.name))+(modeTxt?'<small>'+esc(modeTxt)+'</small>':''):'';
   $('rehLbl').title=track?track.name:'';
   $('rehDur').textContent=fmt(isFinite(aud.duration)?aud.duration:0);
-  // 工具栏里的自制播放键 + 进度条 + 时间
+  // 工具栏里的自制播放键 + 时间
   $('bPlay').setAttribute('aria-pressed',String(playing));
   $('bPlay').setAttribute('aria-label',playing?'暂停':'播放');
   $('icPlay').style.display=playing?'none':'';
@@ -2595,7 +2595,7 @@ function tick(){
     const d=isFinite(aud.duration)?aud.duration:0;
     $('rehFill').style.width=(d>0?Math.min(100,t/d*100):0)+'%';
   }
-  syncSeek();                                 // 工具栏进度条 + 时间
+  syncSeek();                                 // 工具栏那行的时间（进度条在胶囊上，见上面）
   const i=occIndex(t),o=i<0?null:OCC[i],m=o?o.m:null;
   updateProg(t,i,o);                      // 每帧都要动，不能等小节切换
   if(i!==lastIdx){lastIdx=i;updateNow(o)}

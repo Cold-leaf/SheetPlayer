@@ -69,6 +69,33 @@ async def main():
         await pg.wait_for_timeout(200)
         print(ok(await pg.evaluate("wrap.scrollLeft")==0), f"页面窄于视口时不横滚: scrollLeft={await pg.evaluate('wrap.scrollLeft')}")
 
+        # 整页在屏幕内时，**一行一行走完**一次都不该横移。
+        # 上面那条只跟一个小节，而且是在 900 宽的视口里跟一个 298 宽的小页面——±40px 那条边
+        # 根本够不着，漏掉了真正的症状。用户 2026-09-21 报的"行末直接跳到下一行行首"，
+        # 得在手机这种「页面宽度和视口是同一个量级」的几何下才现形：
+        # 判横向跟随的前置条件原来写成 wrap.scrollWidth>clientWidth，而 #pages 有
+        # calc(90vw-20px) 横向留白 → 恒真 → 每行行末横移一次、下一行行首又横移回来。
+        await pg.set_viewport_size({"width":390,"height":844})
+        await pg.evaluate("""()=>{setBarHidden(true);$('chkHoriz').checked=false;$('chkHoriz').onchange();
+          $('bFitW').onclick();M=[];E=[];let k=1;
+          for(const ny of [.12,.42,.72]) for(const nx of [.12,.38,.63,.86]){
+            M.push({page:1,nx,ny,m:k,h:.10});E.push({m:k,t:k*2.5,src:'tap'});k++;}
+          syncNext();layout();userScrollUntil=0;scrollHome()}""")
+        await pg.wait_for_timeout(500)
+        d=await pg.evaluate("""()=>{
+          const wr=wrap.getBoundingClientRect(),pgb=boxes[1].getBoundingClientRect();
+          const moves=[];
+          for(let m=1;m<=M.length;m++){
+            const el=(byM.get(m)||[])[0];if(!el)continue;
+            const sl0=wrap.scrollLeft;follow(el);
+            if(wrap.scrollLeft!==sl0)moves.push({m,dx:Math.round(wrap.scrollLeft-sl0)});
+          }
+          return {pageW:Math.round(pgb.width),vw:Math.round(wr.width),n:M.length,moves};}""")
+        print(ok(d["pageW"]<=d["vw"]+2 and not d["moves"]),
+              f"[390 手机] 整页在屏幕内（页宽 {d['pageW']}px ≤ 视口 {d['vw']}px）时，"
+              f"一页 {d['n']} 个小节逐个跟随 0 次横移"
+              + (f" —— 实际横移 {d['moves']}" if d["moves"] else ""))
+
         print("\npage errors:",errs or "(none)")
         await b.close()
 asyncio.run(main())
