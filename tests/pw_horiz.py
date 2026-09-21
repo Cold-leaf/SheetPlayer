@@ -63,18 +63,24 @@ async def main():
         # 原来是 sl>=0——恒真，等于没断言。follow 的目的是把页面拉进视野，就该真的滚了
         print(ok(sl>0), f"横向跟随滚动生效 (scrollLeft={sl:.0f})")
 
-        # 「适应」在横向下按高度适配
+        # 「适应屏幕」= 整页装进视口（取宽度/高度里更小的那条边），这个窗口里由高度决定。
+        # 可用高必须减掉工具栏：它是 fixed 浮层，#wrap 仍是整个视口高，
+        # 原来不减 barH，量出来的"刚好"其实底部被顶出屏幕一截
         await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         ph_=await pg.evaluate("boxes[1].clientHeight"); vh=await pg.evaluate("wrap.clientHeight")
-        print(ok(ph_<=vh-24+1), f"横向「适应」按高度: 页高 {ph_}px ≤ 视口 {vh}px")
+        bh=await pg.evaluate("barHpx()")
+        print(ok(ph_<=vh-bh-24+1), f"横向「适应屏幕」整页装进视口: 页高 {ph_}px ≤ 可用高 {vh-bh}px（工具栏 {bh}px 已扣除）")
 
-        # 切回纵向，「适应」按宽度
+        # 切回纵向，「适应屏幕」仍要整页装得下（方向只决定翻页往哪边，不参与缩放）
         await pg.evaluate("$('menu').style.display='block'"); await asyncio.sleep(0.2)
         await pg.click("#bHoriz"); await asyncio.sleep(0.3)
         await pg.evaluate("$('menu').style.display='none'")
         await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         pw2=await pg.evaluate("boxes[1].clientWidth"); vw=await pg.evaluate("wrap.clientWidth")
-        print(ok(pw2<=vw-24+1), f"纵向「适应」按宽度: 页宽 {pw2}px ≤ 视口 {vw}px")
+        ph2=await pg.evaluate("boxes[1].clientHeight"); vh2=await pg.evaluate("wrap.clientHeight")
+        bh2=await pg.evaluate("barHpx()")
+        print(ok(pw2<=vw-24+1 and ph2<=vh2-bh2-24+1),
+              f"纵向「适应屏幕」整页装进视口: 页 {pw2}×{ph2}px ⊆ 可用 {vw-24}×{vh2-bh2-24}px")
 
         # 横向模式下缩放仍是滑条
         print(ok(await pg.evaluate("document.getElementById('zoom').type")=="range"), "缩放仍是 range 滑条")

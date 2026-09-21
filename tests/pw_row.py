@@ -29,14 +29,17 @@ async def main():
         await pg.fill("#pH","120")
         await pg.click("#pHAll"); await asyncio.sleep(0.3)   # 点击时 blur 触发 change(改单条) + onclick(改整行)
         hs=await pg.evaluate("M.map(x=>Math.round(x.h*boxes[1].clientHeight))")
-        print(ok(hs==[120,120,120,55,55]), f"只影响第 1 行: {hs} (期望 [120,120,120,55,55])")
+        # 异行那两根的像素高度不能写死 55：那个数来自「默认缩放 1.3 × 页高 842 = 1090」，
+        # 现在进谱面按视口自动适配，页高不再是 1090。默认高度是 0.05，按当前页高折算
+        dflt=round(0.05*await pg.evaluate("boxes[1].clientHeight"))
+        print(ok(hs==[120,120,120,dflt,dflt]), f"只影响第 1 行: {hs} (期望 [120,120,120,{dflt},{dflt}])")
         print(ok("整行 3 条" in await pg.inner_text("#msg")), f'提示: "{await pg.inner_text("#msg")}"')
         # 真实用法：填值+点按钮 = 两步（blur 改单条 → 应用到整行），撤销两次全回 55
         await pg.evaluate("undo()"); await asyncio.sleep(0.2)
         mid=await pg.evaluate("M.map(x=>Math.round(x.h*boxes[1].clientHeight))")
         await pg.evaluate("undo()"); await asyncio.sleep(0.2)
         end=await pg.evaluate("M.map(x=>Math.round(x.h*boxes[1].clientHeight))")
-        print(ok(mid==[120,55,55,55,55] and end==[55,55,55,55,55]),
+        print(ok(mid==[120,dflt,dflt,dflt,dflt] and end==[dflt]*5),
               f"可撤销: 一次 {mid} -> 两次 {end}")
         print("\npage errors:",errs or "(none)")
         await b.close()

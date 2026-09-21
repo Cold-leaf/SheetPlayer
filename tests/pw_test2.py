@@ -31,15 +31,23 @@ async def main():
             return {cssW:b.clientWidth,backW:c.width,dpr:window.devicePixelRatio}}""")
         print(ok(d["backW"]==round(d["cssW"]*d["dpr"])), f"DPR 渲染: CSS {d['cssW']}px, 背板 {d['backW']}px, dpr={d['dpr']}")
 
-        bb = await (await pg.query_selector('.page[data-page="1"]')).bounding_box()
+        # 点击坐标一律按页盒**比例**给，别写死像素。原来写的是 +120/+220/+320/+420 和 +600，
+        # 那些数是按"默认缩放 1.3 → 页宽 775"算的；现在进谱面按视口自动适配，页尺寸跟窗口走，
+        # +600 会落到页外，提示就变成「这一页还没有标记」而不是「没点中标记」了。
+        # 每次点之前重新量页盒：切模式会让工具栏长高，自动适配跟着重算页尺寸，旧的 bb 会过期
+        async def pbox():
+            return await (await pg.query_selector('.page[data-page="1"]')).bounding_box()
+        bb = await pbox()
         await pg.select_option("#mode","mark")   # 默认是播放模式，标小节要先切
+        bb = await pbox()
         for i in range(4):
-            await pg.mouse.click(bb["x"]+120+i*100, bb["y"]+200)
+            await pg.mouse.click(bb["x"]+bb["width"]*(0.15+0.13*i), bb["y"]+bb["height"]*0.18)
 
         # --- 打时间模式：没点中标记要有提示（旧版是静默无反应）---
         await pg.select_option("#mode","time")
         await asyncio.sleep(0.3)   # 频谱条自动展开会压缩谱面区，点击位置要落在仍可见的范围内
-        await pg.mouse.click(bb["x"]+600, bb["y"]+520)
+        bb = await pbox()
+        await pg.mouse.click(bb["x"]+bb["width"]*0.77, bb["y"]+bb["height"]*0.48)
         m1 = await pg.inner_text("#msg")
         cls = await pg.get_attribute("#msg","class")
         print(ok("没点中" in m1 and cls=="err"), f'漏点提示: "{m1}"')

@@ -19,13 +19,18 @@ async def main():
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
 
-        # --- 打开后页宽（缩放 1.3 时）vs 屏幕，然后适应宽度 ---
+        # --- 进谱面就该自动整页适配，页宽不再溢出屏幕 ---
+        # 原来这里断言的是 w0>vw（"默认 130% 在平板竖屏下溢出"）——那是待修的 bug，
+        # 不是要保的行为：768×1024 现在是纵向堆叠 + 进谱面自动适配
         w0=await pg.evaluate("boxes[1].clientWidth"); vw=await pg.evaluate("wrap.clientWidth")
-        print(f"      初始页宽 {w0}px / 视口 {vw}px")
-        print(ok(w0>vw), f"默认 130% 在平板竖屏下溢出: {w0} > {vw}")
+        h0=await pg.evaluate("boxes[1].clientHeight"); vh=await pg.evaluate("wrap.clientHeight")
+        bh=await pg.evaluate("barHpx()")
+        print(f"      初始页 {w0}×{h0}px / 视口 {vw}×{vh}px，工具栏占 {bh}px")
+        print(ok(w0<=vw-24+1), f"进谱面自动适配：页宽 {w0}px ≤ 视口 {vw}px")
+        print(ok(h0<=vh-bh-24+1), f"「整页装得下」：页高 {h0}px ≤ 可用高 {vh-bh}px（工具栏已扣除）")
         await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
         w1=await pg.evaluate("boxes[1].clientWidth"); z=await pg.evaluate("zoom")
-        print(ok(w1<=vw-24+1), f"「适应宽度」后页宽 {w1}px ≤ 视口 {vw}px (缩放 {Math.round if False else ''}{round(z*100)}%)")
+        print(ok(w1<=vw-24+1), f"「适应屏幕」后页宽 {w1}px ≤ 视口 {vw}px (缩放 {round(z*100)}%)")
         print(ok(await pg.inner_text("#zoomVal")==str(round(z*100))+"%"), "缩放显示:", await pg.inner_text("#zoomVal"))
 
         # --- 缩放是滑动条 ---

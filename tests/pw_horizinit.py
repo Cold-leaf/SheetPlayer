@@ -39,14 +39,17 @@ async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch()
 
-        # --- 阈值两侧各站一次：初始方向只看当前窗口宽，跟版式那条 (max-width:700px) 同一个数 ---
-        for w,exp in [(700,False),(701,True),(1440,True),(390,False)]:
-            pg=await b.new_page(viewport={"width":w,"height":800})
+        # --- 初始方向 = 窗口宽 >700 且 宽≥高。两档各站一次，700 跟版式那条 (max-width:700px) 同一个数 ---
+        # 必须带上高度：单看宽度的话 iPad 竖屏（744–1024）跟桌面同一档，
+        # "竖着拿"那一档就是靠第二个条件分出来的（见 player.html 里那段注释）
+        for w,h,exp in [(700,800,False),(701,700,True),(1440,900,True),
+                        (390,844,False),(834,1194,False),(1194,834,True)]:
+            pg=await b.new_page(viewport={"width":w,"height":h})
             pg.on("pageerror",lambda e:errs.append(str(e)))
             await pg.goto("http://127.0.0.1:8777/player.html?direct=1")
             v=await pg.evaluate("()=>({on:$('chkHoriz').checked,cls:pagesEl.classList.contains('horiz')})")
             print(ok(v["on"]==exp and v["cls"]==exp),
-                  f"[{w}px] 初始就是{'横向铺开' if exp else '纵向堆叠'}（chkHoriz={v['on']}，horiz 类={v['cls']}）")
+                  f"[{w}×{h}] 初始就是{'横向铺开' if exp else '纵向堆叠'}（chkHoriz={v['on']}，horiz 类={v['cls']}）")
             await pg.close()
 
         # --- 手机竖屏 390（触摸）：窄了就该一页一行 ---
@@ -77,6 +80,21 @@ async def main():
               f"[390] 「曲目库」在场时「☰ 菜单」仍完整可见: [{mb['l']},{mb['r']}] ⊆ 视口 0–{mb['vw']}"
               f"（工具栏右侧给固定定位的「▲」留了 44px，量的是真实余量）")
         await pgm.close()
+
+        # --- 平板竖屏 834（触摸）：宽过 700 但比自己高 → 纵向堆叠，且整页装得下 ---
+        # 这一档是新增的：以前只看宽度，834 跟桌面同一档、竖着也左右铺开。
+        # 光看 chkHoriz 不够——真正要保的是"竖着拿时一页一行，且不用横滑也能看全整页"
+        pgt=await probe(b,834,1194,True,errs)
+        g=await pgt.evaluate(GEO)
+        print(ok(not g["on"] and abs(g["dx"])<2 and g["dy"]>0),
+              f"[834×1194 平板竖屏] 纵向堆叠: 第2页在第1页正下方 (x差 {abs(g['dx'])}px, y下移 {g['dy']}px)")
+        fit=await pgt.evaluate("""()=>{const b=boxes[1].getBoundingClientRect();
+            return {w:Math.round(b.width),h:Math.round(b.height),
+                    vw:wrap.clientWidth,vh:wrap.clientHeight,bh:barHpx()}}""")
+        print(ok(fit["w"]<=fit["vw"]-24+1 and fit["h"]<=fit["vh"]-fit["bh"]-24+1),
+              f"[834×1194 平板竖屏] 进谱面整页装进视口: 页 {fit['w']}×{fit['h']}px ⊆ 可用 "
+              f"{fit['vw']-24}×{fit['vh']-fit['bh']-24}px（工具栏 {fit['bh']}px 已扣除）")
+        await pgt.close()
 
         # --- 桌面宽窗：默认横向铺开，按钮在菜单里显示当前方向、点一下翻过去 ---
         pgd=await probe(b,1440,900,False,errs)

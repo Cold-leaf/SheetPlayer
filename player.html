@@ -524,7 +524,6 @@ body.hidebar #reh{display:flex}
        只在标小节模式下露面（syncMode 控制），别的模式藏起来 -->
   <label id="lblAutoRow" style="display:none" title="点一下行首，自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个"><input type="checkbox" id="chkAutoRow">整行补齐</label>
   <input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3" hidden>
-  <button id="bFitW" title="纵向：适应宽度；横向：适应高度" hidden>适应</button>
   <span id="zoomVal" hidden>130%</span>
   <span class="sep"></span>
   <button id="bUndo">撤销</button>
@@ -641,6 +640,11 @@ body.hidebar #reh{display:flex}
       跟原来工具栏上那个按钮一致。真正的状态还是下面那个 hidden 输入——bFitW 和初始方向
       都读它——按钮只是它的 .click() 壳，自己不存状态 -->
  <button id="bHoriz" title="切换横向铺开 / 纵向堆叠">横向铺开</button>
+ <!-- 「适应」原来在工具栏上、带着 hidden，而全文件没有一处把它显出来——是个死按钮，
+      那套算法从上线起没被真人点过。跟方向按钮同理挪进菜单：工具栏第 1 行在 390px
+      真实路径下只剩 2px 余量。进谱面和切方向会自动适配，这个按钮是**手动缩放之后**
+      一键回正的入口（手一动缩放，自动适配就交出控制权，见 applyFit） -->
+ <button id="bFitW" title="把整页缩放到刚好装进窗口；方向只决定翻页往左右还是往上下">适应屏幕</button>
  <input type="checkbox" id="chkHoriz" hidden checked>
  <label><input type="checkbox" id="chkNum" checked>显示编号</label>
  <label><input type="checkbox" id="chkProg" checked>小节进度</label>
@@ -1334,7 +1338,9 @@ async function buildPages(){
     box.className='page';box.dataset.page=n;
     boxes[n]=box;pagesEl.appendChild(box);
   }
-  applyZoom();layout();observe();
+  // 进谱面先整页装进视口；用户此前手动缩放过就不插手，按他留下的 zoom 铺
+  if(autofit)applyFit(true);else{syncZoomUI();applyZoom()}
+  layout();observe();
   scrollHome();                                 // 初始位置：谱面顶落在工具栏下方，而不是空白留白区
 }
 function setPageSizes(){
@@ -1373,7 +1379,15 @@ async function renderPage(n){
   const vp=p.getViewport({scale});
   let c=cvs[n];
   if(!c){c=document.createElement('canvas');cvs[n]=c;box.insertBefore(c,box.firstChild)}
-  c.width=Math.round(vp.width);c.height=Math.round(vp.height);   // 背板按 DPR 放大，CSS 尺寸由 .page 撑满 → 高清屏不糊
+  /* 背板按 DPR 放大，CSS 尺寸由 .page 撑满 → 高清屏不糊。
+     取整必须跟 setPageSizes 那两行**同源**：CSS 那侧是 round(base宽*zoom)、这里再各自
+     round(base宽*zoom*DPR)，同一个 x 会被舍成两个数——x=534.38 时 CSS 得 534、背板得 1069，
+     差 1px，canvas 又被 width:100% 拉伸，整页就有 1/背板宽 的重采样误差（约一半的缩放值会踩到，
+     旧代码固定 zoom=1.3 只是碰巧躲过去）。先算 CSS 那一档再乘 DPR，两边就恒等了。
+     触到 MAXDIM 封顶时 scale 已被改小，这时背板本来就该比 CSS 小，按 scale 算 */
+  const exact=scale===zoom*DPR;
+  c.width=exact?Math.round(Math.round(base.width*zoom)*DPR):Math.round(vp.width);
+  c.height=exact?Math.round(Math.round(base.height*zoom)*DPR):Math.round(vp.height);
   const task=p.render({canvasContext:c.getContext('2d'),viewport:vp});
   tasks.set(n,task);
   try{await task.promise;box.dataset.done=want}
@@ -1397,8 +1411,54 @@ function freePage(n){
   if(boxes[n])delete boxes[n].dataset.done;
 }
 let zoomDeb=null;
+function syncZoomUI(){$('zoom').value=zoom;$('zoomVal').textContent=Math.round(zoom*100)+'%'}
+// 工具栏在视口顶部实际占了多高。它是 position:fixed 的浮层，#wrap 仍是整个 100dvh，
+// 所以 wrap.clientHeight 里含着一截被盖住的区域；而 scrollHome() 把谱面顶边停在工具栏
+// 正下方，不减掉它，谱子底部就会被顶出屏幕。hidebar 时工具栏 display:none，取 0
+function barHpx(){return document.body.classList.contains('hidebar')?0:$('bar').offsetHeight}
+
+/* 自动适配：把整页缩放到刚好装进视口。取「按宽度」和「按高度」里**更小**的那个。
+   为什么不是只按一条边：只按宽度时，平板竖屏那种「页面比视口还高」的几何会把谱子
+   拦腰截断——iPad 竖屏 834×1194，按宽度缩放 1.36 → 页高 1146，而可视高只有 1060，
+   最下面一行谱表看不到。取更小的那条边永远整页可见，两端各自退化成直觉里的那一条：
+   手机按宽度（页面比视口矮，宽度先到顶 → 页宽=屏幕宽），
+   桌面按高度（宽度富余，高度先到顶 → 页长=视口高）。
+   方向（chkHoriz）只管翻页往左右还是往上下，不再参与缩放。
+   -24 是 .page 的上下/左右各 10px 外边距 + 4px 余量，跟原来「适应」用的数一致 */
+function fitZoom(){
+  let w=0,h=0;
+  for(let n=1;n<boxes.length;n++)if(pageVP[n]){w=Math.max(w,pageVP[n].width);h=Math.max(h,pageVP[n].height)}
+  if(!w||!h)return null;
+  return Math.max(0.05,Math.min(10,Math.min((wrap.clientWidth-24)/w,(wrap.clientHeight-barHpx()-24)/h)));
+}
+let autofit=true;                                // 用户自己动过缩放就置 false，之后不再插手
+let fitBox='';                                   // 上次适配时的视口盒子，用来判断"真的变了没"
+function applyFit(home){
+  const z=fitZoom();if(z==null)return false;
+  fitBox=wrap.clientWidth+'x'+wrap.clientHeight+'x'+barHpx();
+  if(!home&&Math.abs(z-zoom)<1e-9)return false;  // 算出来一样就别动，省掉一次全量重渲染
+  const anchor=home?null:wrap.scrollTop/Math.max(1,wrap.scrollHeight);
+  zoom=z;syncZoomUI();applyZoom();
+  if(home)scrollHome();                          // 进谱面/切方向：回到内容原点
+  else wrap.scrollTop=anchor*Math.max(1,wrap.scrollHeight);   // 窗口变了：位置按比例留住
+  return true;
+}
+/* 视口尺寸真的变了才重算。用尾随防抖而不是 rAF 合并，是因为手机上地址栏收起/展开
+   会改 100dvh（dvh 就是跟着浏览器 UI 走的），高度一动就发 resize——按帧合并的话
+   会在滚动动画途中一路把谱子改大改小。防抖到"停手之后"再算一次就没有这个问题 */
+let fitTimer=0;
+function scheduleFit(){
+  if(!autofit)return;
+  clearTimeout(fitTimer);
+  fitTimer=setTimeout(()=>{
+    if(!autofit)return;
+    if(wrap.clientWidth+'x'+wrap.clientHeight+'x'+barHpx()===fitBox)return;
+    applyFit(false);
+  },250);
+}
 $('zoom').oninput=()=>{
   zoom=+$('zoom').value;
+  autofit=false;                                 // 手一动滑杆就归用户管
   $('zoomVal').textContent=Math.round(zoom*100)+'%';
   if(!pdf)return;
   const anchor=wrap.scrollTop/Math.max(1,wrap.scrollHeight);
@@ -1407,20 +1467,15 @@ $('zoom').oninput=()=>{
   clearTimeout(zoomDeb);
   zoomDeb=setTimeout(applyZoom,120);             // 停顿后再重画 canvas
 };
-$('bFitW').onclick=()=>{                         // 纵向：适应宽度；横向：适应高度
+$('bFitW').onclick=()=>{                         // 一键回正：整页装进视口，并交回自动适配
   if(!pdf||!boxes[1])return;
-  let w=0,h=0;for(let n=1;n<boxes.length;n++)if(pageVP[n]){w=Math.max(w,pageVP[n].width);h=Math.max(h,pageVP[n].height)}
-  const avail=$('chkHoriz').checked?wrap.clientHeight-24:wrap.clientWidth-24;
-  const dim=$('chkHoriz').checked?h:w;
-  zoom=Math.max(0.05,Math.min(10,avail/dim));
-  $('zoom').value=zoom;$('zoomVal').textContent=Math.round(zoom*100)+'%';
-  applyZoom();scrollHome();
+  autofit=true;applyFit(true);
 };
 $('chkHoriz').onchange=()=>{                     // 页面左右铺开
   const v=$('chkHoriz').checked;
   pagesEl.classList.toggle('horiz',v);
   $('bHoriz').textContent=v?'横向铺开':'纵向堆叠';   // 按钮显示当前方向
-  scrollHome();
+  if(!(autofit&&applyFit(true)))scrollHome();    // 适配开着一并重算，否则至少回到内容原点
 };
 // 滚到内容原点：谱面顶边落在工具栏正下方（工具栏收起时贴视口顶）。
 // 四周大留白由 #pages 的 padding 提供——scrollTop=0 时反而是空白区，不能用 0 当初始位置
@@ -1448,7 +1503,8 @@ function zoomAt(z,ax,ay){
        cy>=b.offsetTop&&cy<=b.offsetTop+b.offsetHeight){box=b;break}
   }
   zoom=z;
-  $('zoom').value=z;$('zoomVal').textContent=Math.round(z*100)+'%';
+  autofit=false;                                   // 捏合/ctrl+滚轮已经表达了"我自己要这个大小"
+  syncZoomUI();
   if(box){
     // 页内相对位置用【旧】盒尺寸算，缩放后不变；新盒位置+新尺寸×比例=该点的新内容坐标
     const fx=(cx-box.offsetLeft)/box.offsetWidth,fy=(cy-box.offsetTop)/box.offsetHeight;
@@ -1586,10 +1642,14 @@ function syncRate(){
   s.title='播放速度 '+(aud.playbackRate||1)+'×（也可以按 - / = 微调、0 归位）';
 }
 $('rehRate').onchange=()=>setRate(+$('rehRate').value);
-// 把工具栏实际高度写进 --barH：菜单/面板据此钉在它下方，行数变化（段落条出现等）也跟得上
+// 把工具栏实际高度写进 --barH：菜单/面板据此钉在它下方，行数变化（段落条出现等）也跟得上。
+// 顺带在这条路上重算自动适配——它同时覆盖了「工具栏变高」「窗口缩放」「收起工具栏」三种
+// 会让"刚合适"过期的情况。段落条是在 buildPages() 之后才长出来的，所以进谱面那一次
+// 适配量到的工具栏高度是旧的，靠这里补上一次
 function syncBarH(){
-  const h=document.body.classList.contains('hidebar')?0:$('bar').offsetHeight;
+  const h=barHpx();
   document.documentElement.style.setProperty('--barH',h+'px');
+  scheduleFit();
 }
 // hidebar 是加在 body 上的 class，ResizeObserver 看不到（#bar 只是 display:none），
 // 而收起按钮的点击可能被"点菜单外关菜单"的 capture 拦截，所以直接盯 class 变化
@@ -4662,11 +4722,17 @@ async function boot(){
 }
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
 syncRate();                                  // 胶囊上的速度键跟工具栏下拉对齐（按 #rate 生成档位）
-// 初始方向：窄了就该一页一行。700 跟窄屏版式那条查询同一个数，不引入第二个魔数——
-// 所以窄窗口天然是「横滑版式 + 纵向堆叠」，两条规则讲同一个故事。
-// 只看当前窗口宽（不用短边）：手机横过来打开就是横向铺开，844px 宽确实放得下两页并排。
+// 初始方向：窗口宽过 700 **且不比自己高**才横向铺开，否则纵向堆叠。
+// 700 跟窄屏版式那条查询同一个数，不引入第二个魔数——窄窗口天然是「横滑版式 + 纵向堆叠」，
+// 两条规则讲同一个故事。第二个条件（宽 ≥ 高）是补上"竖着拿"的那一档：iPad 竖屏全系
+// （mini 744 / 10.2" 810 / Air 820 / Pro11 834 / Pro12 1024）宽度全都过 700，只看宽度的话
+// 它们跟桌面同一档、竖着也左右铺开。加上这条，竖着的窗口（平板竖屏、竖长的桌面窗口、分屏）
+// 走纵向堆叠，横着的（桌面、平板横屏、手机横屏）仍左右铺开——手机横过来 844px 宽确实放得下两页。
+// 注意这是**窗口形状**判据，不是设备分类：宽度是窗口的属性，分屏、浏览器缩放、拉窗口都会改它，
+// 同一台机器可以在两边跳。也正因为不看 pointer，触屏笔记本在宽窗口下不会被误判成手机版式
+// （跟版式那几条查询一致：尺寸看"有没有触屏"，版式/方向看窗口本身）。
 // 一次会话里只算这一下，旋转屏幕不重算；也不持久化，跟 chkNum/chkProg/chkFollow 一致
-$('chkHoriz').checked=innerWidth>700;
+$('chkHoriz').checked=innerWidth>700&&innerWidth>=innerHeight;
 $('chkHoriz').onchange();                    // 同步 horiz 类与按钮文字
 boot();
 

@@ -75,10 +75,14 @@ async def main():
         print(ok(await pg.is_visible("#pH")), f"面板出现高度输入: {await pg.input_value('#pH')}px")
         await pg.fill("#pH","80"); await pg.dispatch_event("#pH","change"); await asyncio.sleep(0.2)
         print(ok(abs(await pg.evaluate("M.find(x=>x.m===2).h")*ph_-80)<2), f"改单条: {await pg.evaluate('M.find(x=>x.m===2).h')*ph_:.0f}px")
+        hs0=await pg.evaluate("M.map(x=>Math.round(x.h*boxes[1].clientHeight))")
         await pg.click("#pHAll"); await asyncio.sleep(0.3)
         hs=await pg.evaluate("M.map(x=>Math.round(x.h*boxes[1].clientHeight))")
-        # 现在按钮是「应用到整行」：只有同一行（同 ny）的竖线一起变
-        print(ok(hs==[80,80,80,80,120]), f"应用到整行: {hs} (同行的变 80，异行的 120 不动)")
+        # 现在按钮是「应用到整行」：只有同一行（同 ny）的竖线一起变。
+        # 异行那根的高度**不能写死**：原来是 120px，那个数来自「默认缩放 1.3 × 页高 842 = 1090」；
+        # 现在进谱面按视口自动适配，页高不再是 1090。改成跟点击前的它自己比——这才是这句的本意
+        print(ok(hs[:4]==[80,80,80,80] and hs[4]==hs0[4]),
+              f"应用到整行: {hs} (同行的变 80，异行的 {hs0[4]} 不动)")
         await pg.evaluate("undo()"); await asyncio.sleep(0.2)
         print(ok(len(set(await pg.evaluate('M.map(x=>x.h)')))>1), "可撤销")
         await pg.click("#pHAll"); await asyncio.sleep(0.3)
