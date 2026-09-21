@@ -1905,8 +1905,10 @@ function staves(page){
   let mx=0;for(let y=0;y<H;y++)if(pr2[y]>mx)mx=pr2[y];
   const alt=findStaves(pr2,Math.max(0.12,mx*0.18));
   if(alt.length>out.length){
-    if(out.length*2<=alt.length)scanPages.add(page);  // 严格法连一半都没认出来 → 大概率是扫描/影印件
+    const scanned=out.length*2<=alt.length;         // 严格法连一半都没认出来 → 大概率是扫描/影印件
+    if(scanned)scanPages.add(page);
     out=alt;
+    if(scanned)out.scan=true;                       // 给下游用：影印件才允许放宽判定
   }
   // 相邻两个谱表是否属于同一个系统：看左端有没有连谱线/括号把它们连起来。这是印刷上真正的
   // 依据。拿「间隙小于某个阈值」去猜是切不开的 —— 实测这份密排合唱谱行【内】（中间夹两行
@@ -1959,18 +1961,33 @@ function snapBarX(mk,winPx){
     }
     return false;
   };
-  const okCol=[];
-  for(let ix=1;ix<iw-1;ix++){
-    let okAll=true;
-    for(const s of hit){
-      const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
-      const hh=bb-a+1;
-      if(hh<6){okAll=false;break}
-      let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
-      if(n/hh<0.93){okAll=false;break}
-    }
-    if(okAll)okCol.push(x0-1+ix);
+  // 跨声部校验 + 两档阈值，和 detectRowBars 同一套。原来是「每个声部都 ≥0.93」，影印件上
+  // 同一条真小节线在各声部实测 0.66~0.76，一条都吸不上（该谱 22 条只吸中 1 条）。清晰的
+  // 谱子上真线 0.97、符干最多 0.83，所以先按 0.9 严格的扫，一个合格列都没有才退到 majority。
+  const bands=[];
+  for(const s of hit){
+    const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
+    if(bb-a+1>=6)bands.push([a,bb]);
   }
+  if(!bands.length)return null;
+  const need=Math.max(1,Math.ceil(bands.length*0.75));
+  const scan=fill=>{
+    const okCol=[];
+    for(let ix=1;ix<iw-1;ix++){
+      let cnt=0;
+      for(const[a,bb]of bands){
+        let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
+        if(n/(bb-a+1)>=fill)cnt++;
+      }
+      if(cnt>=need)okCol.push(x0-1+ix);
+    }
+    return okCol;
+  };
+  let okCol=scan(0.9);
+  // 退档只对影印件开。清晰谱子上窗口里没有印刷小节线时，0.72 会把符干当线吸过去
+  //（pw_bar 的拖拽用例因此偏了 11px）。判据来自 staves()：严格法认出的谱表不到相对阈值法的
+  // 一半才算影印件 —— 实测该谱 0.12、清晰的谱子全是 0.82~1.00，中间没有含糊地带。
+  if(!okCol.length&&st.scan)okCol=scan(0.72);
   if(!okCol.length)return null;
   // 相邻的合格列属于同一条线（线有宽度还有抗锯齿），取每段中心，
   // 这样从左边靠近还是右边靠近，落点都一样
@@ -2015,16 +2032,26 @@ function rowRightEdge(mk){
           }
           return false;
         };
+        const bands=[];
+        for(const s of hit){
+          const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
+          if(bb-a+1>=6)bands.push([a,bb]);
+        }
+        // 只有阈值随页面类型变，扫描方向始终是从右往左一趟 —— 这里不能像 snapBarX 那样「先严格
+        // 档、再退档」。实测影印件的真终止线填充率反而【低于】半路那些竖线：
+        //   真终止线 [0.79,0.55,0.97,0.79]（3/4 过 0.72）vs 半路的 [0.72,0.79,0.9,0.79]（4/4）
+        // 严格档会先把半路那条抢走，退档根本没机会走到真终止线。多数表决 + 单趟扫描才稳。
+        // 不修的话这里返回 null（进度带退回默认宽度），或吸到半路（实测该谱第 3 页返回 0.37，
+        // 真值 0.936，进度带画错半行）。
+        const fill=st.scan?0.72:0.93;
+        const need=Math.max(1,Math.ceil(bands.length*0.75));
         for(let ix=iw-2;ix>=1;ix--){                 // 从右往左，第一条通到底的竖线就是行末
-          let okAll=true;
-          for(const s of hit){
-            const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
-            const hh=bb-a+1;
-            if(hh<6){okAll=false;break}
+          let cnt=0;
+          for(const[a,bb]of bands){
             let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
-            if(n/hh<0.93){okAll=false;break}
+            if(n/(bb-a+1)>=fill)cnt++;
           }
-          if(okAll){out=(cx+ix)/W;break}
+          if(cnt>=need){out=(cx+ix)/W;break}
         }
       }catch(err){}
     }
@@ -2056,7 +2083,7 @@ function systemAt(page,ny){
     while(lo>0&&st[lo].top-st[lo-1].bot<GAP)lo--;
     while(hi<st.length-1&&st[hi+1].top-st[hi].bot<GAP)hi++;
   }
-  return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1)};
+  return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1),scan:!!st.scan};
 }
 // 扫描一行（谱表组）里所有印刷小节线，返回 nx（升序，含最右的终止线，由调用方去掉）
 function detectRowBars(page,sys,rightOfNx){
@@ -2142,6 +2169,9 @@ function detectRowBars(page,sys,rightOfNx){
   // 可影印件上真小节线会掉到 0.74（同一条线在各声部里 0.74~1.00），同一道坎一条都留不下。
   // 所以先按严格的扫，只有条数明显不够（一行怎么也不止两三个小节）才放宽重扫 ——
   // 清晰的谱子根本走不到第二档，精度不受影响。
+  // 这里不加 sys.scan 门控：本函数是「两档各扫一遍、谁找得多用谁」，严格法在真正影印的那几页
+  // 之外也常有单行凑不齐 4 条的情况，门控会连真线一起挡掉（实测召回 95.8%→83.1%）。加门槛的
+  // 必要性在 snapBarX 那边 —— 它是在小窗口里就近取一条，没有「谁多」这个相互制约。
   let out=scan(0.9);
   if(out.length<4){const w=scan(0.72);if(w.length>out.length)out=w}
   return out;
