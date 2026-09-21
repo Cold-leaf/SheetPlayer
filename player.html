@@ -2526,21 +2526,35 @@ function calibrate(){
 }
 
 /* ---------- 高亮跟随（rAF，200ms 轮询的滞后没了） ---------- */
+/* 跟随的位移走平滑滚动：位移量一点没变，观感从"弹过去"变成"滑过去"。
+   只在 follow() 里用，**不**在 #wrap 上写 scroll-behavior:smooth——那会连 scrollHome()
+   的初始定位和 zoomAt() 的缩放锚点一起变成动画，缩放时会飘。
+   用户开了「减少动态效果」就退回瞬移：跟随是无人操作时自己发生的位移，正是晕动症最吃不消的 */
+const canGlide=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+let glideUntil=0;                                 // 平滑滚动预计还在跑的时刻
+function glide(dx,dy){
+  const top=wrap.scrollTop+dy,left=wrap.scrollLeft+dx;
+  if(canGlide){wrap.scrollTo({top,left,behavior:'smooth'});glideUntil=performance.now()+800}
+  else{wrap.scrollTop=top;wrap.scrollLeft=left}
+}
 function follow(el,force){
   if(!el)return;
   if(!force&&(!$('chkFollow').checked||performance.now()<userScrollUntil))return;
   const wr=wrap.getBoundingClientRect();
+  // 两个轴先各自算出位移再一次滚，别分两次写：分两次会起两段独立动画，
+  // 时长按各自距离算，斜着跟的时候两个轴会不同步
+  let dx=0,dy=0;
   if($('chkHoriz').checked){
     // 横向展开：按「页」跟随，而不是按小节。谱子里换行(系统)时竖线的 x 会跳回行首，
     // 按小节横向判断会在一页内来回抖；整页贴左才是稳定的一页一页推进。
     const box=el.closest('.page');if(!box)return;
     const r=box.getBoundingClientRect();
     if(r.left<wr.left+8||r.right>wr.left+wr.width-8)
-      wrap.scrollLeft+=r.left-(wr.left+8);
+      dx=r.left-(wr.left+8);
   }else{                                            // 纵向：上下跟随
     const r=el.getBoundingClientRect();
     if(r.top<wr.top+wr.height*0.2||r.bottom>wr.top+wr.height*0.8)
-      wrap.scrollTop+=r.top-(wr.top+wr.height*0.35);
+      dy=r.top-(wr.top+wr.height*0.35);
     // 放大到页面比视口宽时，当前小节也会横向跑出视野——纵向模式原来只管上下，
     // 于是"跟随"看着像失灵了。页面装不下时同样横向跟一下。
     // 判的必须是**页面**宽不宽，不能判 wrap.scrollWidth>clientWidth：#pages 有
@@ -2549,10 +2563,20 @@ function follow(el,force){
     const box=el.closest('.page'),br=box&&box.getBoundingClientRect();
     if(br&&br.width>wr.width+2&&
        (r.left<wr.left+40||r.right>wr.left+wr.width-40))
-      wrap.scrollLeft+=r.left-(wr.left+wr.width*0.35);
+      dx=r.left-(wr.left+wr.width*0.35);
   }
+  if(dx||dy)glide(dx,dy);
 }
-['wheel','touchmove'].forEach(ev=>wrap.addEventListener(ev,()=>{userScrollUntil=performance.now()+2500},{passive:true}));
+// 手一碰就停在原地。实测滚轮**不会**自动打断进行中的平滑滚动——Chromium 里它会一路走完
+// 既定目标，把用户刚滚的那一下整个吃掉（探针里滚轮加了 150px，最后还是停在 follow 的目标上）。
+// 只在动画确实在跑的时候掐，平时这是一次原地重设，不干扰原生滚动
+['wheel','touchmove'].forEach(ev=>wrap.addEventListener(ev,()=>{
+  userScrollUntil=performance.now()+2500;
+  if(performance.now()<glideUntil){
+    glideUntil=0;
+    wrap.scrollTo({top:wrap.scrollTop,left:wrap.scrollLeft,behavior:'auto'});
+  }
+},{passive:true}));
 /* 当前小节的流动进度：一条高亮带盖住这一小节，一条扫描线在里面从左走到右。
    下一小节换行/换页时就扫到本行右边缘。 */
 function hideProg(){

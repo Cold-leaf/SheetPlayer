@@ -7,6 +7,19 @@ socketserver.TCPServer.allow_reuse_address=True
 srv=socketserver.TCPServer(("127.0.0.1",8759),H); threading.Thread(target=srv.serve_forever,daemon=True).start()
 def ok(c): return "OK   " if c else "FAIL "
 
+# follow() 现在走平滑滚动（glide），位移是异步的——量位置之前先等它真的停下。
+# 判据是"连续 8 帧位置不变"。踩过两次坑，都不是"多等一会"能解决的：
+#   · 3 帧太少——缓动起步那一两帧本来就不动，会被当成已经停稳（follow 回小节1 这么假绿过）
+#   · scrollend 会串台——紧挨着的一次普通滚动（比如 wrap.scrollLeft=0）也会发 scrollend，
+#     监听挂上去时它正好到达，于是立刻返回，读到的还是动画开始前的位置
+async def settle(pg):
+    await pg.evaluate("""()=>new Promise(r=>{let last=-1,n=0,t=0;
+      const f=()=>{const v=wrap.scrollTop+'/'+wrap.scrollLeft;
+        if(v===last){if(++n>=8)return r()}else n=0;
+        last=v;if(++t>240)return r();                 // 兜底：最多等约 4 秒
+        requestAnimationFrame(f)};
+      requestAnimationFrame(f)})""")
+
 async def main():
     errs=[]
     async with async_playwright() as p:
@@ -45,8 +58,10 @@ async def main():
             syncNext();layout();aud.pause();aud.currentTime=0}""")
         await pg.evaluate("wrap.scrollLeft=0")
         await pg.evaluate("$('chkFollow').checked=true;follow(byM.get(1)[0],true)")
+        await settle(pg)
         sl=await pg.evaluate("wrap.scrollLeft")
-        print(ok(sl>=0), f"横向跟随滚动生效 (scrollLeft={sl:.0f})")
+        # 原来是 sl>=0——恒真，等于没断言。follow 的目的是把页面拉进视野，就该真的滚了
+        print(ok(sl>0), f"横向跟随滚动生效 (scrollLeft={sl:.0f})")
 
         # 「适应」在横向下按高度适配
         await pg.evaluate("$('bFitW').onclick()"); await asyncio.sleep(0.8)
