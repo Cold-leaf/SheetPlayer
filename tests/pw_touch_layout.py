@@ -76,6 +76,9 @@ async def main():
             pg.on("pageerror",lambda e:errs.append(str(e)))
             await pg.goto("http://127.0.0.1:8820/player.html?direct=1")
             await pg.evaluate("localStorage.clear()")
+            # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+            # 这个文件量的是工具栏的换行版式与屏高占比，必须在展开态量
+            await pg.evaluate("setBarHidden(false)")
             await pg.set_input_files("#fPdf",PDF)
             await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
             await pg.wait_for_timeout(250)

@@ -28,6 +28,10 @@ async def probe(b,w,h,touch,errs):
     pg.on("pageerror",lambda e:errs.append(str(e)))
     await pg.goto("http://127.0.0.1:8777/player.html?direct=1")
     await pg.evaluate("localStorage.clear()"); await pg.reload()
+    # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+    # 这里有一条断言量的是工具栏里「☰ 菜单」的位置——不展开的话 #bar 是 display:none，
+    # 它的 rect 恒为 [0,0]，那条会**假绿**（0 当然落在视口里）
+    await pg.evaluate("setBarHidden(false)")
     await pg.set_input_files("#fPdf",PDF)
     await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
     # 直接写 display 而不是点 #bMenu——菜单按钮事件绑在别处，这里只要它开着

@@ -128,6 +128,10 @@ async def main():
         pg.on("pageerror",lambda e:errs.append(str(e)))
         await pg.goto("http://127.0.0.1:8821/player.html?direct=1")
         await pg.evaluate("localStorage.clear()")
+        # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+        # 这个文件量工具栏/菜单/胶囊的触摸目标，按展开态量；不展开的话 #bar 是
+        # display:none，量到的全是 0，而且 Playwright 的 click 会一路等到超时
+        await pg.evaluate("setBarHidden(false)")
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pg.wait_for_timeout(300)
@@ -290,6 +294,10 @@ async def main():
         pgl=await b.new_page(viewport={"width":834,"height":1194},has_touch=True,device_scale_factor=2)
         pgl.on("pageerror",lambda e:errs.append(str(e)))
         await pgl.goto("http://127.0.0.1:8821/player.html")
+        # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+        # 这个文件量工具栏/菜单/胶囊的触摸目标，按展开态量；不展开的话 #bar 是
+        # display:none，量到的全是 0，而且 Playwright 的 click 会一路等到超时
+        await pgl.evaluate("setBarHidden(false)")
         await pgl.wait_for_function("()=>idb!==null",timeout=20000)
         await pgl.wait_for_function("()=>$('lib').style.display==='flex'",timeout=20000)
         await pgl.wait_for_timeout(400)
@@ -336,6 +344,10 @@ async def main():
           };
         """)
         await pgs.goto("http://127.0.0.1:8821/player.html?direct=1")
+        # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+        # 这个文件量工具栏/菜单/胶囊的触摸目标，按展开态量；不展开的话 #bar 是
+        # display:none，量到的全是 0，而且 Playwright 的 click 会一路等到超时
+        await pgs.evaluate("setBarHidden(false)")
         await pgs.set_input_files("#fPdf",PDF)
         await pgs.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pgs.wait_for_timeout(300)
@@ -399,6 +411,10 @@ async def main():
         pgm=await b.new_page(viewport={"width":390,"height":844},has_touch=True,device_scale_factor=2)
         pgm.on("pageerror",lambda e:errs.append(str(e)))
         await pgm.goto("http://127.0.0.1:8821/player.html?direct=1")
+        # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+        # 这个文件量工具栏/菜单/胶囊的触摸目标，按展开态量；不展开的话 #bar 是
+        # display:none，量到的全是 0，而且 Playwright 的 click 会一路等到超时
+        await pgm.evaluate("setBarHidden(false)")
         await pgm.set_input_files("#fPdf",PDF)
         await pgm.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pgm.wait_for_timeout(300)

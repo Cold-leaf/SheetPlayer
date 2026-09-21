@@ -11,10 +11,13 @@ def ok(c): return "OK   " if c else "FAIL "
 #   1) 整页装得下（高和宽都不超可用区）
 #   2) 有一条边**贴住**可用区（否则就是没适配，只是碰巧小）
 #   3) 方向只管翻页往哪边，不参与缩放——同一个窗口里切方向，页大小不该变
+# 可用区跟 fitZoom 用同一套口径：顶部减工具栏、底部减胶囊。
+# 漏掉 rehHpx() 的话，收起工具栏之后（触屏的默认态）量出来的"可用高"会比实际大
+# 一整个胶囊的高度，断言会以为谱面没贴边
 GEO="""()=>{const b=boxes[1].getBoundingClientRect();
   return {w:Math.round(b.width),h:Math.round(b.height),
-          vw:wrap.clientWidth,vh:wrap.clientHeight,bh:barHpx(),
-          aw:wrap.clientWidth-24,ah:wrap.clientHeight-barHpx()-24,
+          vw:wrap.clientWidth,vh:wrap.clientHeight,bh:barHpx(),rh:rehHpx(),
+          aw:wrap.clientWidth-24,ah:wrap.clientHeight-barHpx()-rehHpx()-24,
           zoom:Math.round(zoom*1000)/1000,autofit:autofit};}"""
 
 def fits(g):

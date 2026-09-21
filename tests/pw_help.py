@@ -49,6 +49,10 @@ async def main():
         await pg.click("#bHelp"); await pg.wait_for_timeout(300)
         print(ok(await pg.evaluate("getComputedStyle($('help')).display")=="flex"),
               "点菜单里的「? 快捷键」能打开（入口挪过位置）")
+        # 打开面板必须顺手收菜单——#help 的 z-index(20) 比 #menu(25) 低，不收就被盖住。
+        # 收起工具栏（触屏默认态）之后菜单抽屉能长高 160 多像素，盖掉的正是关闭键，
+        # 「? 快捷键」点了像没反应。跟「安装卡片」那条一个惯例
+        print(ok(await pg.evaluate("$('menu').style.display==='none'")), "打开帮助时菜单自动收起")
 
         box=await pg.evaluate(JS_RECT,"#help>div")
         print(ok(box["w"]<=834 and box["h"]<=1194), f"[平板] 面板不出视口: {box['w']:.0f}×{box['h']:.0f} (视口 834×1194)")

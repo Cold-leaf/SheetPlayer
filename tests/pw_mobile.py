@@ -16,6 +16,11 @@ async def main():
         pg.on("pageerror",lambda e:errs.append(str(e)))
         await pg.goto("http://127.0.0.1:8758/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
+        # 手机/平板现在打开就收起工具栏、只留胶囊（player.html 里 pointer:coarse 那段）。
+        # 这个文件量的是「工具栏展开时」的几何，先展开再往下走。两个理由：
+        # 一是断言里的可用高就该按展开态算；二是 Playwright 的 click/select_option
+        # 要求元素可见，工具栏 display:none 时「工具」下拉那些动作会一路等到超时
+        await pg.evaluate("setBarHidden(false)")
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
 

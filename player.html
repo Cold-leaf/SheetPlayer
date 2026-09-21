@@ -478,6 +478,15 @@ body.hidebar #reh{display:flex}
 #reh .prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px}
 #reh .lbl{font-size:13px;color:var(--text);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 #reh .lbl small{color:var(--text-dim)}
+/* 曲名从纯文本变成按钮。必须覆盖 #reh button 那套「44px 圆形按钮」，否则曲名会被撑成圆钮；
+   但触摸上仍要保住 44px 的**命中高度**（这是全 App 最触摸导向的 UI）。
+   刻意不写 flex：窄屏那条 #reh .lbl{flex:1} 要靠它把曲名撑满一行，这里写了会以更高的
+   特异性把它压掉，胶囊第二行就散架了 */
+#reh button.lbl{width:auto;height:auto;min-height:44px;display:inline-flex;align-items:center;gap:5px;
+  border:0;background:transparent;border-radius:8px;padding:0 8px;text-align:left;cursor:pointer;color:var(--text)}
+#reh button.lbl:hover{background:var(--surface)}
+#reh button.lbl>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#reh button.lbl>i{font-style:normal;font-size:10px;color:var(--text-dim);flex:none}
 /* 速度：原生 select 涂成一个 44px 的圆，跟胶囊里其它圆钮（⏮ ▶ ⏭ ⌃）一套语言。
    appearance:none 只去掉系统外观，选择器本身还是系统弹的——平板上目标大、
    跟系统深色模式走，比自己搭浮层稳当。
@@ -595,7 +604,9 @@ body.hidebar #reh{display:flex}
  <div class="prog"><div class="t"><span id="rehCur">0:00</span><span id="rehDur">0:00</span></div><div class="track"><div id="rehFill" class="fill"></div></div></div>
  </div>
  <div class="rehFoot">
- <span id="rehLbl" class="lbl"></span>
+ <!-- 曲名是个**按钮**：点一下开播放列表。文字单独套一层 span——省略号必须落在
+      这一个盒子（text-overflow 在 flex 容器上对匿名文本不生效），▾ 才能永远留在最右边 -->
+ <button id="rehLbl" class="lbl" title=""><span id="rehLblTxt"></span><i id="rehLblCaret" aria-hidden="true">▾</i></button>
  <span class="rateWrap"><select id="rehRate" class="rate" aria-label="播放速度" title="播放速度"></select></span>
  <button id="rehUp" aria-label="展开工具栏" title="展开工具栏">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
@@ -1416,6 +1427,13 @@ function syncZoomUI(){$('zoom').value=zoom;$('zoomVal').textContent=Math.round(z
 // 所以 wrap.clientHeight 里含着一截被盖住的区域；而 scrollHome() 把谱面顶边停在工具栏
 // 正下方，不减掉它，谱子底部就会被顶出屏幕。hidebar 时工具栏 display:none，取 0
 function barHpx(){return document.body.classList.contains('hidebar')?0:$('bar').offsetHeight}
+// 收起工具栏时胶囊浮在底部，谱面要把这块高度让出来，否则最后一行谱表被盖住。
+// 量到视口底（而不是 offsetHeight）是因为底距是 max(16px, 安全区)，机型不同；
+// 胶囊在工具栏展开时是 display:none，高度天然是 0，不用额外判分支
+function rehHpx(){
+  const r=$('reh');
+  return r&&r.offsetHeight?Math.max(0,innerHeight-r.getBoundingClientRect().top):0;
+}
 
 /* 自动适配：把整页缩放到刚好装进视口。取「按宽度」和「按高度」里**更小**的那个。
    为什么不是只按一条边：只按宽度时，平板竖屏那种「页面比视口还高」的几何会把谱子
@@ -1424,18 +1442,23 @@ function barHpx(){return document.body.classList.contains('hidebar')?0:$('bar').
    手机按宽度（页面比视口矮，宽度先到顶 → 页宽=屏幕宽），
    桌面按高度（宽度富余，高度先到顶 → 页长=视口高）。
    方向（chkHoriz）只管翻页往左右还是往上下，不再参与缩放。
+   顶部减工具栏、底部减胶囊（两者互斥，另一个天然是 0）。
    -24 是 .page 的上下/左右各 10px 外边距 + 4px 余量，跟原来「适应」用的数一致 */
 function fitZoom(){
   let w=0,h=0;
   for(let n=1;n<boxes.length;n++)if(pageVP[n]){w=Math.max(w,pageVP[n].width);h=Math.max(h,pageVP[n].height)}
   if(!w||!h)return null;
-  return Math.max(0.05,Math.min(10,Math.min((wrap.clientWidth-24)/w,(wrap.clientHeight-barHpx()-24)/h)));
+  const availH=wrap.clientHeight-barHpx()-rehHpx()-24;
+  return Math.max(0.05,Math.min(10,Math.min((wrap.clientWidth-24)/w,availH/h)));
 }
 let autofit=true;                                // 用户自己动过缩放就置 false，之后不再插手
-let fitBox='';                                   // 上次适配时的视口盒子，用来判断"真的变了没"
+// 上次适配时的"可用盒子"：适配依赖的每一项都进来，少一项就会出现"变了却不重算"。
+// 胶囊高度也要算——曲名换长的、窗口宽度变了都可能让胶囊从一行折成两行
+const fitBoxKey=()=>wrap.clientWidth+'x'+wrap.clientHeight+'x'+barHpx()+'x'+rehHpx();
+let fitBox='';
 function applyFit(home){
   const z=fitZoom();if(z==null)return false;
-  fitBox=wrap.clientWidth+'x'+wrap.clientHeight+'x'+barHpx();
+  fitBox=fitBoxKey();
   if(!home&&Math.abs(z-zoom)<1e-9)return false;  // 算出来一样就别动，省掉一次全量重渲染
   const anchor=home?null:wrap.scrollTop/Math.max(1,wrap.scrollHeight);
   zoom=z;syncZoomUI();applyZoom();
@@ -1452,7 +1475,7 @@ function scheduleFit(){
   clearTimeout(fitTimer);
   fitTimer=setTimeout(()=>{
     if(!autofit)return;
-    if(wrap.clientWidth+'x'+wrap.clientHeight+'x'+barHpx()===fitBox)return;
+    if(fitBoxKey()===fitBox)return;
     applyFit(false);
   },250);
 }
@@ -1574,8 +1597,11 @@ function syncReh(){
   $('rehPrev').disabled=!hasPL;
   $('rehNext').disabled=!hasPL;
   const modeTxt=track&&Object.keys(MODES).length>1?' · '+activeMode:'';
-  $('rehLbl').innerHTML=track?esc(dispName(track.name))+(modeTxt?'<small>'+esc(modeTxt)+'</small>':''):'';
-  $('rehLbl').title=track?track.name:'';
+  $('rehLblTxt').innerHTML=track?esc(dispName(track.name))+(modeTxt?'<small>'+esc(modeTxt)+'</small>':''):'';
+  $('rehLbl').title=track?track.name+'（点一下看播放列表）':'';
+  // 没曲目时整个按钮收掉：文字和 ▾ 都是空的，留着就是个 16px 宽的隐形命中区
+  //（触屏上点不准，pw_touch_targets 的「控件 ≥44px」那条也会把它揪出来）
+  $('rehLbl').style.display=track?'':'none';
   $('rehDur').textContent=fmt(isFinite(aud.duration)?aud.duration:0);
   // 工具栏里的自制播放键 + 时间
   $('bPlay').setAttribute('aria-pressed',String(playing));
@@ -1665,9 +1691,12 @@ document.addEventListener('click',e=>{
     $('menu').style.display='none';
     if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode'))e.stopPropagation();
   }
-  if($('plPop').style.display!=='none'&&!e.target.closest('#plPop')&&!e.target.closest('#plNow')){
+  if($('plPop').style.display!=='none'&&!e.target.closest('#plPop')&&!e.target.closest('#plNow')
+     &&!e.target.closest('#rehLbl')){
     $('plPop').style.display='none';
-    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar'))e.stopPropagation();
+    // #reh 跟 #bar 同理：列表开着时点胶囊上的播放/上一首/下一首/进度条，
+    // 列表该关，但**这一下本身要生效**。capture 阶段不 stopPropagation，事件才到得了按钮
+    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar,#reh'))e.stopPropagation();
   }
 },{capture:true});
 $('bMenu').onclick=()=>{const m=$('menu');m.style.display=m.style.display==='none'?'block':'none'};
@@ -3315,7 +3344,11 @@ function toggleHelp(v){
   $('help').style.display=on?'flex':'none';
   if(on){const d=$('help').firstElementChild;if(d)d.scrollTop=0}   // 每次从顶部开始看
 }
-$('bHelp').onclick=()=>toggleHelp();
+// 跟 bInstall 一个惯例：开面板之前先收菜单。#help 的 z-index(20) 比 #menu(25) 低，
+// 不收就被菜单盖住；而收起工具栏（触屏的默认态）之后菜单抽屉的 max-height 从
+// 100dvh-164-22 变成 100dvh-22，能一下长高 160 多像素，在 iPad 上直接盖掉整个帮助面板——
+// 「? 快捷键」点了像没反应，点关闭键也点不到（命中被菜单截走）
+$('bHelp').onclick=()=>{$('menu').style.display='none';toggleHelp()};
 $('help').onclick=e=>{if(e.target===$('help'))toggleHelp(false)};
 $('helpClose').onclick=()=>toggleHelp(false);
 
@@ -4535,8 +4568,25 @@ $('plPrev').onclick=()=>plPlay(plIdx-1,!aud.paused);
 $('plNext').onclick=()=>plPlay(plIdx+1,!aud.paused);
 $('plStop').onclick=()=>{plStop();msg('已退出播放列表')};
 // 播放列表弹层：点「列表 1/3」开合，点歌曲切换、加当前曲目、删、循环/暂停
-$('plNow').onclick=e=>{e.stopPropagation();const p=$('plPop');
-  p.style.display=p.style.display==='none'?'block':'none';if(p.style.display==='block')drawPL()};
+/* 两个入口各弹各的方向：工具栏那个钉在工具栏下方；胶囊上的曲名在屏幕最底部，
+   列表要顶在它上面——手机上从屏幕最底去够屏幕最顶的列表太远。
+   每次打开都重设，所以关闭时不用还原 */
+function plPopAt(anchor){
+  const p=$('plPop');
+  if(anchor==='reh'){
+    const r=$('reh').getBoundingClientRect();
+    p.style.top='auto';
+    p.style.bottom=Math.round(innerHeight-r.top+8)+'px';
+    p.style.maxHeight=Math.round(r.top-24)+'px';
+  }else{p.style.top='';p.style.bottom='';p.style.maxHeight=''}
+}
+function togglePL(anchor){
+  const p=$('plPop'),open=p.style.display!=='block';
+  if(open){plPopAt(anchor);p.style.display='block';drawPL()}
+  else p.style.display='none';
+}
+$('plNow').onclick=e=>{e.stopPropagation();togglePL('bar')};
+$('rehLbl').onclick=e=>{e.stopPropagation();togglePL('reh')};
 $('plPopClose').onclick=()=>{$('plPop').style.display='none'};
 $('plPopAdd').onclick=async()=>{if(!pid)return msg('先打开一个项目',1);await plAdd(pid)};
 $('plPopStart').onclick=()=>{
@@ -4734,6 +4784,13 @@ syncRate();                                  // 胶囊上的速度键跟工具�
 // 一次会话里只算这一下，旋转屏幕不重算；也不持久化，跟 chkNum/chkProg/chkFollow 一致
 $('chkHoriz').checked=innerWidth>700&&innerWidth>=innerHeight;
 $('chkHoriz').onchange();                    // 同步 horiz 类与按钮文字
+// 主输入是手指的设备（手机/平板）打开就收起工具栏，只留底部的排练胶囊：
+// 这台设备是拿来放音/看谱的，不是拿来编辑的（桌面才是编辑器）。
+// 判据用 pointer 而不是窗口宽——窄窗口的桌面仍然是编辑器，不该收起；
+// 触屏笔记本插着鼠标时 pointer 是 fine，也不收。这跟版式/方向那几条正好相反：
+// 那几条刻意不看 pointer（怕触屏笔记本被当成手机），这条恰恰要看，因为判的是"设备拿来干嘛"。
+// 不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认；想编辑就点 ▼ 或胶囊的 ↑
+if(matchMedia('(pointer:coarse)').matches)setBarHidden(true);
 boot();
 
 /* ---------- PWA：注册 service worker（https 才生效，file:// 下静默跳过） ---------- */

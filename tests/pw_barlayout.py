@@ -68,6 +68,10 @@ async def main():
                              has_touch=True,is_mobile=True,device_scale_factor=2)
         pg2.on("pageerror",lambda e:errs.append(str(e)))
         await pg2.goto("http://127.0.0.1:8789/player.html?direct=1")
+        # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
+        # 这里量的是工具栏**展开时**的行数/换行版式，先展开；不展开的话
+        # #bar 是 display:none，量到的全是 0，断言会假绿
+        await pg2.evaluate("setBarHidden(false)")
         await pg2.set_input_files("#fPdf",PDF)
         await pg2.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
         await pg2.wait_for_timeout(300)
