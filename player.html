@@ -1419,7 +1419,7 @@ async function renderPage(n){
       const st=staves(n);
       if(st&&st.length){scanChecked=true;
         if(scanPages.size){scanPages.clear();
-          msg('这份谱子像是扫描/影印版（谱线不连续），「标小节（半自动）」可能标不准，建议用「标小节」手动标',1)}
+          msg('这份谱子像是扫描/影印版（谱线发灰不连续），「整行补齐」会自动按影印件放宽判定，补完扫一眼有没有多补漏补',1)}
       }
     }catch(e){}
   }
@@ -1832,44 +1832,101 @@ function staves(page){
     }
     return pr;
   };
-  // 5 条等距的线 = 一个谱表；容差按间距自适应
-  const group=ct=>{
-    const out=[];
-    for(let i=0;i+4<ct.length;){
-      const g=ct.slice(i,i+5),sp=(g[4]-g[0])/4;
-      const tol=Math.max(2.5,sp*0.3);
-      if(sp>2&&g.every((v,k)=>k===0||Math.abs(v-g[k-1]-sp)<=tol)){
-        out.push({top:g[0]/H,bot:g[4]/H});i+=5;
-      }else i++;
+  // 本页的谱线间距：逐列数黑/白游程，黑众数 = 线粗、白众数 = 线间空白，相加就是线距。
+  // 不能拿「候选行之间的间距」去猜：影印件上一条谱线常糊成挨着的两个峰，猜出来会小一半。
+  const lineGap=()=>{
+    const CAP=64,bl=new Array(CAP).fill(0),wh=new Array(CAP).fill(0);
+    const step=Math.max(1,Math.round(W/240));
+    for(let x=0;x<W;x+=step){
+      let run=0,cur=-1;
+      for(let y=0;y<H;y++){
+        const p=(y*W+x)*4;
+        const b=d[p]*.299+d[p+1]*.587+d[p+2]*.114<175?1:0;
+        if(b===cur)run++;
+        else{if(cur===1&&run<CAP)bl[run]++;else if(cur===0&&run<CAP)wh[run]++;cur=b;run=1}
+      }
     }
-    return out;
+    const mode=a=>{let bi=1,bv=-1;for(let i=1;i<CAP;i++)if(a[i]>bv){bv=a[i];bi=i}return bi};
+    return mode(bl)+mode(wh);
+  };
+  const S=lineGap();
+  // 5 条等距的线 = 一个谱表：拿「间距 sp 的五线模板」在占比曲线上滑，按得分取互不重叠的。
+  // 以前是从候选行里挑【连续】5 条 —— 影印件上一条线糊成两个峰、或整条掉出阈值，连续 5 条
+  // 不是错位就是凑不齐（实测同一页给出过 13px 和 27px 两种「谱表」，框全是歪的）。
+  // 模板匹配允许 5 条里缺 1 条，sp 又只在游程估计的 ±30% 内找，噪声行再多也冒充不了谱表。
+  const findStaves=(pr,th)=>{
+    const at=y=>{const i=Math.round(y);return(i<1||i>H-2)?0:Math.max(pr[i-1],pr[i],pr[i+1])};
+    const md=y=>{const i=Math.round(y);return(i<0||i>H-1)?0:pr[i]};
+    // 得分要扣掉线与线之间的黑度：歌词行、密集符杠整块都是黑的，只看 5 条线的总和会被它们骗走
+    const score=(y,sp)=>{
+      let sum=0,good=0;
+      for(let k=0;k<5;k++){const v=at(y+k*sp);sum+=v;if(v>=th)good++}
+      if(good<4)return 0;                           // 允许 5 条里缺 1 条（影印件上常有整条掉出阈值的）
+      let bg=0;for(let k=0;k<4;k++)bg+=md(y+(k+0.5)*sp);
+      return sum-bg*1.25;
+    };
+    // 某个 sp 下：按得分从高到低挑互不重叠的框
+    const pickAt=sp=>{
+      const hits=[];
+      for(let y=0;y+4*sp<H;y++){const v=score(y,sp);if(v>0)hits.push({y,v})}
+      hits.sort((a,b)=>b.v-a.v);
+      // 余量取 1.5 倍线距：相邻两个真谱表之间最窄也有 4 倍线距（实测 4.2），而夹在两个谱表
+      // 当中的「幽灵框」离邻居只有 1 倍出头，这道坎正好把它挡掉
+      const pick=[],pad=sp*1.5;
+      for(const h of hits){
+        const t=h.y,b=h.y+4*sp;
+        if(pick.some(o=>b>=o.t-pad&&t<=o.b+pad))continue;
+        pick.push({t,b,v:h.v});
+      }
+      return pick;                                  // 已按得分降序
+    };
+    // 全页只认一个线距：让每个谱表各挑各的 sp，会挑出 5/6/7 三种（实测同页高度 20/24/28px
+    // 混着来），框就全歪了。选 sp 用【得分平方和】——奖励「少而强」的框；拿所有正分直接求和
+    // 会偏向那种摊出一堆弱响应的 sp（实测第 3 页因此选歪 0.5px，混进 2 个幽灵谱表）。
+    let best=null,bv=-1;
+    for(let q=S*0.8;q<=S*1.3+1e-9;q+=0.25){
+      const pk=pickAt(q);
+      let s=0;for(const h of pk)s+=h.v*h.v;
+      if(s>bv){bv=s;best=pk}
+    }
+    if(!best||!best.length)return [];
+    // 真谱表之间得分很接近，杂项（歌词行之类）明显低一档 —— 按中位数砍掉尾巴
+    const med=best[best.length>>1].v;
+    return best.filter(o=>o.v>=med*0.55).sort((a,b)=>a.t-b.t)
+               .map(o=>({top:o.t/H,bot:o.b/H}));
   };
   // ① 严格：整行 35% 以上纯黑 —— 数字排版的谱子（多数）走这条，久经验证
-  const pr1=profile(140);
-  const ct=[];let grp=[];
-  for(let y=0;y<H;y++){
-    if(pr1[y]>0.35){if(grp.length&&y-grp[grp.length-1]<=2)grp.push(y);else{
-      if(grp.length)ct.push(grp.reduce((a,b)=>a+b)/grp.length);grp=[y]}}
-  }
-  if(grp.length)ct.push(grp.reduce((a,b)=>a+b)/grp.length);
-  let out=group(ct);
+  let out=findStaves(profile(140),0.35);
   // ② 兜底：影印/扫描件的谱线发灰又断续，同一谱表 5 条线的占比能差 3 倍（实测 0.19~0.69），
-  //    固定阈值永远凑不齐 5 条 → 严格法一个都没认出来时，改用「局部峰值 + 相对阈值」重来
-  if(!out.length){
-    const pr=profile(175);
-    let mx=0;for(let y=0;y<H;y++)if(pr[y]>mx)mx=pr[y];
-    const th=Math.max(0.12,mx*0.18);
-    const ct2=[];
-    for(let y=1;y<H-1;y++){
-      if(pr[y]<th)continue;
-      let isMax=true;
-      for(let k=Math.max(0,y-2);k<=Math.min(H-1,y+2);k++)if(pr[k]>pr[y]){isMax=false;break}
-      if(!isMax||(ct2.length&&y-ct2[ct2.length-1]<=2))continue;
-      ct2.push(y);
-    }
-    out=group(ct2);
-    if(out.length)scanPages.add(page);            // 严格法颗粒无收、兜底才认出来 → 大概率是扫描/影印件
+  //    固定阈值凑不齐 5 条 → 改用相对阈值重来。以前是「严格法一个都没认出来」才兜底，可严格法
+  //    在影印件上常常刚好凑出一两个（实测整页 15 个谱表只认出 1 个），兜底就被整个跳过，剩下的
+  //    行点下去 systemAt 直接返回 null。改成两条都跑、谁认得多用谁。
+  const pr2=profile(175);
+  let mx=0;for(let y=0;y<H;y++)if(pr2[y]>mx)mx=pr2[y];
+  const alt=findStaves(pr2,Math.max(0.12,mx*0.18));
+  if(alt.length>out.length){
+    if(out.length*2<=alt.length)scanPages.add(page);  // 严格法连一半都没认出来 → 大概率是扫描/影印件
+    out=alt;
   }
+  // 相邻两个谱表是否属于同一个系统：看左端有没有连谱线/括号把它们连起来。这是印刷上真正的
+  // 依据。拿「间隙小于某个阈值」去猜是切不开的 —— 实测这份密排合唱谱行【内】（中间夹两行
+  // 歌词）的间隙有 2.46 倍谱表高，而另一份谱子行【间】的间隙才 2.48 倍，两者完全重叠。
+  const linked=(a,b)=>{
+    const y0=Math.min(H-1,Math.round(a.bot*H)),y1=Math.max(0,Math.round(b.top*H));
+    if(y1<=y0+1)return true;
+    const xe=Math.max(4,Math.round(W*0.22)),hh=y1-y0+1;
+    for(let x=1;x<xe;x++){
+      let n=0;
+      for(let y=y0;y<=y1;y++){                      // 扫描件的连谱线会歪，右边多容 1px
+        const p=(y*W+x)*4,q=p+4;
+        if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<175||
+           (x+1<W&&d[q]*.299+d[q+1]*.587+d[q+2]*.114<175))n++;
+      }
+      if(n/hh>=0.9)return true;
+    }
+    return false;
+  };
+  out.link=out.slice(0,-1).map((s,i)=>linked(s,out[i+1]));
   staffCache.set(key,out);
   return out;
 }
@@ -1987,8 +2044,18 @@ function systemAt(page,ny){
   }
   if(bd>0.08)return null;                    // 离所有谱表都太远（点在页边/空白），不猜
   let lo=best,hi=best;
-  while(lo>0&&st[lo].top-st[lo-1].bot<0.06)lo--;
-  while(hi<st.length-1&&st[hi+1].top-st[hi].bot<0.06)hi++;
+  const lk=st.link;
+  if(lk&&lk.length===st.length-1){                  // 左端连谱线：同一系统才连着（见 staves）
+    while(lo>0&&lk[lo-1])lo--;
+    while(hi<st.length-1&&lk[hi])hi++;
+  }else{
+    // 连谱线没认出来时的退路：按谱表高自适应。写死 0.06 页高在密排合唱谱上会把整页并成一组
+    //（谱表高只有 0.019 页高时，行距 0.03~0.05 全落在阈值以内），detectRowBars 于是变成
+    // 「找一条从页顶贯到页底的竖线」，一条都找不到。
+    const hs=st.map(s=>s.bot-s.top).sort((a,b)=>a-b),GAP=Math.max(0.012,hs[hs.length>>1]*2.2);
+    while(lo>0&&st[lo].top-st[lo-1].bot<GAP)lo--;
+    while(hi<st.length-1&&st[hi+1].top-st[hi].bot<GAP)hi++;
+  }
   return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1)};
 }
 // 扫描一行（谱表组）里所有印刷小节线，返回 nx（升序，含最右的终止线，由调用方去掉）
@@ -2009,25 +2076,74 @@ function detectRowBars(page,sys,rightOfNx){
     }
     return false;
   };
-  const cols=[];
-  for(let ix=1;ix<iw-1;ix++){
-    let okAll=true;
-    for(const s of sys.staves){              // 跨声部校验：得穿过组内【每一个】谱表
-      const a=Math.max(ys,Math.round(s.top*H)),bb=Math.min(ye,Math.round(s.bot*H));
-      const hh=bb-a+1;
-      if(hh<6){okAll=false;break}
-      let n=0;for(let y=a;y<=bb;y++)if(dark(ix,y))n++;
-      if(n/hh<0.95){okAll=false;break}
-    }
-    if(okAll)cols.push(ix);
+  // 每列先做一次竖向前缀和：之后任意一段的黑像素数都是 O(1)，够本钱去试各种倾斜
+  const hgt=ye-ys+1,cum=new Uint16Array(W*(hgt+1));   // 计数上限就是 hgt，画布高远不到 65535
+  for(let ix=0;ix<W;ix++){
+    let n=0;const base=ix*(hgt+1);
+    for(let y=0;y<hgt;y++){if(dark(ix,ys+y))n++;cum[base+y+1]=n}
   }
-  const runs=[];
-  for(const x of cols){const r=runs[runs.length-1];
-    if(r&&x-r[1]<=3)r[1]=x;else runs.push([x,x])}
-  const lines=runs.map(([a,b])=>(a+b)/2/W).filter(x=>x>rightOfNx+0.002).sort((a,b)=>a-b);
-  // 符干紧贴小节线时也会通到底：去掉间距过近的（比最小小节窄得多）——保留靠左那条（真小节线）
-  const out=[];
-  for(const x of lines){if(!out.length||x-out[out.length-1]>=0.025)out.push(x)}
+  const seg=(ix,a,b)=>{                        // a,b 是相对 ys 的行号
+    if(a<0||b>=hgt||b<a)return -1;
+    const base=ix*(hgt+1);
+    return (cum[base+b+1]-cum[base+a])/(b-a+1);
+  };
+  // 影印件常有倾斜/弯曲：一条谱表从左到右能抬升十几个像素，而判定带是水平的 —— 带子一半落在
+  // 谱表外，小节线的填充率就永远够不着阈值（实测同页斜掉的那几行，每个谱表的合格列从 70 条
+  // 掉到 20 条，交集直接空）。先拿左右两段各自找一下最佳竖向偏移，量出倾斜，判定带跟着斜。
+  const tiltOf=(a,bb)=>{
+    const wq=Math.max(8,Math.round(W*0.22)),M=Math.max(3,Math.round((bb-a+1)*0.5));
+    const bestOff=x0=>{
+      let bo=0,bv=-1;
+      for(let k=-M;k<=M;k++){
+        let s=0,m=0;
+        for(let ix=x0;ix<x0+wq&&ix<W;ix+=2){const v=seg(ix,a+k,bb+k);if(v>=0){s+=v;m++}}
+        if(m&&s/m>bv){bv=s/m;bo=k}
+      }
+      return bo;
+    };
+    const xl=Math.round(W*0.12),xr=Math.max(xl+1,W-wq-2);
+    let ol=bestOff(xl),or_=bestOff(xr);
+    // 两端量出来的偏移差得比一个谱表还多 → 多半有一端吸到了别的东西（这里找的是「最黑」，
+    // 不是「最像谱表」）。宁可不纠偏，也别把判定带整条挪歪。
+    if(Math.abs(or_-ol)>bb-a+1){ol=0;or_=0}
+    const cl=xl+wq/2,cr=xr+wq/2,k=(or_-ol)/Math.max(1,cr-cl);
+    return {k,b:ol-k*cl};
+  };
+  // 跨声部校验：得穿过组内的谱表。原来是「每一个都 ≥0.95」，影印件上过不了 —— 实测同一条
+  // 小节线在四个声部里的填充率是 0.74~1.00，卡死 0.95 一条都留不下。改成「单个声部放宽到
+  // 0.72、但四个里至少 3 个要过」：符干顶到头的最多只有一两个声部，majority 照样把它挡在外面。
+  const need=Math.max(1,Math.ceil(sys.staves.length*0.75));
+  const bands=[];
+  for(const s of sys.staves){
+    const a=Math.max(ys,Math.round(s.top*H))-ys,bb=Math.min(ye,Math.round(s.bot*H))-ys;
+    if(bb-a+1<6)return null;
+    bands.push({a,bb,t:tiltOf(a,bb)});
+  }
+  const scan=fill=>{
+    const cols=[];
+    for(let ix=1;ix<iw-1;ix++){
+      let hit=0;
+      for(const bd2 of bands){
+        const off=Math.round(bd2.t.k*ix+bd2.t.b);
+        if(seg(ix,bd2.a+off,bd2.bb+off)>=fill)hit++;
+      }
+      if(hit>=need)cols.push(ix);
+    }
+    const runs=[];
+    for(const x of cols){const r=runs[runs.length-1];
+      if(r&&x-r[1]<=3)r[1]=x;else runs.push([x,x])}
+    const lines=runs.map(([a,b])=>(a+b)/2/W).filter(x=>x>rightOfNx+0.002).sort((a,b)=>a-b);
+    // 符干紧贴小节线时也会通到底：去掉间距过近的（比最小小节窄得多）——保留靠左那条（真小节线）
+    const res=[];
+    for(const x of lines){if(!res.length||x-res[res.length-1]>=0.025)res.push(x)}
+    return res;
+  };
+  // 两档阈值。印刷清晰的谱子上，真小节线的填充率实测 0.97、符干最多 0.83，0.9 这道坎正好；
+  // 可影印件上真小节线会掉到 0.74（同一条线在各声部里 0.74~1.00），同一道坎一条都留不下。
+  // 所以先按严格的扫，只有条数明显不够（一行怎么也不止两三个小节）才放宽重扫 ——
+  // 清晰的谱子根本走不到第二档，精度不受影响。
+  let out=scan(0.9);
+  if(out.length<4){const w=scan(0.72);if(w.length>out.length)out=w}
   return out;
 }
 function applySnaps(mk){
