@@ -2543,7 +2543,11 @@ function follow(el,force){
       wrap.scrollTop+=r.top-(wr.top+wr.height*0.35);
     // 放大到页面比视口宽时，当前小节也会横向跑出视野——纵向模式原来只管上下，
     // 于是"跟随"看着像失灵了。页面装不下时同样横向跟一下。
-    if(wrap.scrollWidth>wrap.clientWidth+2&&
+    // 判的必须是**页面**宽不宽，不能判 wrap.scrollWidth>clientWidth：#pages 有
+    // calc(90vw-20px) 的横向留白（为拖拽留的空白），那个条件恒真——整页适应时也会跟着跑，
+    // 于是每行行末横移一次、下一行行首又横移回来，整页明明全在屏幕里却来回甩。
+    const box=el.closest('.page'),br=box&&box.getBoundingClientRect();
+    if(br&&br.width>wr.width+2&&
        (r.left<wr.left+40||r.right>wr.left+wr.width-40))
       wrap.scrollLeft+=r.left-(wr.left+wr.width*0.35);
   }
