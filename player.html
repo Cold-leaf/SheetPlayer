@@ -1027,13 +1027,20 @@ function doNewMode(name){
   msg('已新建模式「'+name+'」（时间点留空，拍号/速度沿用当前模式）');
 }
 // 应用内输入框：不用 window.prompt（Chrome 对原生弹窗有"阻止再显示"机制，PWA 里尤其容易被静默屏蔽）
+/* 当前对话框的取消路径。返回键要能关掉它，而且必须走**这条路**——
+   直接 style.display='none' 只会把它藏起来，await 它的那半边代码就永远挂在那儿了
+   （「新建项目」等名字、切模式等选值都是这个形状）。askText/askMode 共用，
+   同一时刻只会有一个开着；dialog 关掉时置回 null */
+let dlgCancel=null;
 function askText(msg,def){
   return new Promise(res=>{
     $('dlgMsg').textContent=msg;
     $('dlgInp').value=def||'';
     $('dlg').style.display='flex';
-    const ok=()=>{$('dlg').style.display='none';res($('dlgInp').value)};
-    const cancel=()=>{$('dlg').style.display='none';res(null)};
+    const done=v=>{$('dlg').style.display='none';dlgCancel=null;res(v)};
+    const ok=()=>done($('dlgInp').value);
+    const cancel=()=>done(null);
+    dlgCancel=cancel;
     $('dlgOk').onclick=ok;$('dlgCancel').onclick=cancel;
     // 点遮罩关掉（跟 #gen/#help/#davPop 一致）。平板上没有 Esc，只能靠这个和「取消」
     $('dlg').onclick=e=>{if(e.target===$('dlg'))cancel()};
@@ -1053,14 +1060,16 @@ function askMode(msg,def){
     sel.onchange=syncNew;
     $('dlgModeMsg').textContent=msg;
     $('dlgMode').style.display='flex';
+    const done=v=>{$('dlgMode').style.display='none';dlgCancel=null;res(v)};
     const ok=()=>{
       if(sel.value==='__new__'){
         const n=(inp.value||'').trim();
         if(!n){inp.focus();return}               // 新建但没填名，别关
-        $('dlgMode').style.display='none';res('new:'+n);
-      }else{$('dlgMode').style.display='none';res(sel.value)}
+        done('new:'+n);
+      }else done(sel.value)
     };
-    const cancel=()=>{$('dlgMode').style.display='none';res(null)};
+    const cancel=()=>done(null);
+    dlgCancel=cancel;
     $('dlgModeOk').onclick=ok;$('dlgModeCancel').onclick=cancel;
     $('dlgMode').onclick=e=>{if(e.target===$('dlgMode'))cancel()};
     inp.onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
@@ -4040,9 +4049,49 @@ $('bDelAud').onclick=async()=>{
 };
 
 /* ---------- 曲目库界面 ---------- */
+/* ---------- 返回键：曲目库 ↔ 谱面 两级 ----------
+   不往历史栈里记东西的话，手机上按返回键会直接退出应用（装成 PWA 之后就是整个关掉）。
+   做法是最朴素的一层一条记录：进谱面压一条 {v:'score'}，回曲目库时把它弹掉，
+   于是「库里」永远是最底那层——在库里再按返回，记录走完了，浏览器自然退出应用，
+   正好是"曲目库界面返回再退出"。
+   · 只在真的换层时压：不然在库和谱面之间来回切会把历史栈越撑越长
+   · 冷启动（PWA 被系统回收后再回来）会带着上次留下的 state，而开机显示的是曲目库。
+     这种走 syncView('lib') 会把那条 score 记录弹掉，否则用户在库里的第一次返回
+     会"什么都没发生"（记录弹回来了、界面没变）
+   · direct 模式（?direct=1）没有曲目库，整段不参与，返回键照旧直接退出 */
+function syncView(v){
+  if(direct)return;
+  const cur=history.state&&history.state.v;
+  if(cur===v)return;
+  if(v==='score')history.pushState({v:'score'},'');
+  else if(cur==='score')history.back();          // 弹回库那层；popstate 会再进来一次，那时 cur 已是 lib
+  else history.replaceState({v:'lib'},'');       // 首次开机：把"库"这层标在当前记录上
+}
+// 返回键要能先关掉最上面那层浮层。用**它们各自的关闭路径**，不是统统 display:none——
+// #dlg/#dlgMode 是 Promise，藏起来等于把 await 它的那半边代码挂死
+function closeTopLayer(){
+  if($('dlg').style.display==='flex'&&dlgCancel){dlgCancel();return true}
+  if($('dlgMode').style.display==='flex'&&dlgCancel){dlgCancel();return true}
+  if($('gen').style.display==='flex'){$('gen').style.display='none';return true}
+  if($('davPop').style.display==='flex'){$('davPop').style.display='none';return true}
+  if($('instPop').style.display==='flex'){$('instPop').style.display='none';return true}
+  if(getComputedStyle($('help')).display!=='none'){toggleHelp(false);return true}
+  if($('menu').style.display!=='none'){$('menu').style.display='none';return true}
+  if($('plPop').style.display==='block'){$('plPop').style.display='none';return true}
+  return false;
+}
+addEventListener('popstate',e=>{
+  const v=(e.state&&e.state.v)||'lib';
+  if(v==='lib'&&$('lib').style.display!=='flex'){
+    // 浮层开着：这一下只关浮层，并把记录补回去——下一次返回才是回曲目库
+    if(closeTopLayer()){history.pushState({v:'score'},'');return}
+    showLib(true);                                // 这里 syncView 是空操作，状态已经对上了
+  }else if(v==='score'&&$('lib').style.display==='flex')showLib(false);
+});
 function showLib(v){
   $('lib').style.display=v?'flex':'none';
   if(v)drawLib();
+  syncView(v?'lib':'score');
 }
 $('libClose').onclick=()=>showLib(false);
 // 工具栏的「PDF」和「＋ 导入谱子」都是"随便导一份"：清掉可能残留的待挂载项目，
