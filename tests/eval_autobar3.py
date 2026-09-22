@@ -55,13 +55,58 @@ async def main():
             await pg.evaluate("io&&io.disconnect();zoom=1.6;$('zoom').value=1.6;setPageSizes()")
             bypage=defaultdict(list)
             for (page,ny),marks in T["rows"].items(): bypage[page].append((ny,marks))
+            # 页码平移：标注用的那份 PDF 和上传到这里的可能差一页封面（实测「在水一方」
+            # 「明天会更好」都是：不平移 15%/11%，平移 -1 就是 94.6%/96.1%）。差一页时
+            # 每行都像"整页错位"，不平移的话召回会塌到 10% 出头。区分度这么大，直接试几个
+            # 平移量、取最好的那个，比要求人手工配一张表省事，也不会悄悄用错。
+            async def probe(off,page_probe,rows_on_page):
+                tp=page_probe+off
+                if tp<1: return 0,0
+                await pg.evaluate("""async(n)=>{if(!boxes[n])return;
+                    while(tasks.has(n)){await tasks.get(n).promise.catch(()=>{})}
+                    delete boxes[n].dataset.done; visible.add(n); await renderPage(n);}""",tp)
+                try:
+                    await pg.wait_for_function("(n)=>boxes[n]&&boxes[n].dataset.done&&cvs[n]&&cvs[n].width>0",
+                                               arg=tp,timeout=60000)
+                except Exception: return 0,0
+                h=t=0
+                for ny,marks in sorted(rows_on_page):
+                    gt=[m["nx"] for m in marks]; r=await pg.evaluate(RUN,[tp,ny,gt[0]])
+                    if r is None or r.get("err"): t+=len(gt)-1; continue
+                    det=sorted(r["used"]); used=set()
+                    for g in gt[1:]:
+                        best=None;bd=TOL
+                        for i,x in enumerate(det):
+                            if i in used: continue
+                            if abs(x-g)<bd: bd=abs(x-g);best=i
+                        if best is not None: used.add(best);h+=1
+                    t+=len(gt)-1
+                return h,t
+            probe_pages=sorted(bypage)[:2]        # 两页，别只看一页
+            sc={}
+            for off in (0,-1,1,-2,2):
+                h=t=0
+                for pp in probe_pages:
+                    a,b2=await probe(off,pp,bypage[pp]); h+=a; t+=b2
+                if t: sc[off]=h/t
+            # **必须"明显更好"才换。** 小节线是准等距的，错误页码上也能撞出一批对齐，
+            # 只看第一页时 CQ_传奇 就被误判成 -1（93% → 8.2%）。要求同时满足：
+            # 非零平移要够高（≥60%）、而且是原地（0）的三倍以上 —— 真差一页封面时是
+            # 95% vs 15%（六倍），够得着；本来就没差页的谱子够不着。
+            OFF=0
+            if sc.get(0,0)<0.6:
+                for off,v in sc.items():
+                    if off and v>=0.6 and v>=3*sc.get(0,0): OFF=off; break
+            PER[T["name"]]["off"]=OFF
             for page in sorted(bypage):
+                tp=page+OFF                       # 平移到这份 PDF 的页码
+                if tp<1: continue
                 async def draw():
                     await pg.evaluate("""async(n)=>{if(!boxes[n])return;
                         while(tasks.has(n)){await tasks.get(n).promise.catch(()=>{})}
-                        delete boxes[n].dataset.done; visible.add(n); await renderPage(n);}""",page)
+                        delete boxes[n].dataset.done; visible.add(n); await renderPage(n);}""",tp)
                     await pg.wait_for_function("(n)=>boxes[n]&&boxes[n].dataset.done&&cvs[n]&&cvs[n].width>0",
-                                               arg=page,timeout=60000)
+                                               arg=tp,timeout=60000)
                 # 这一页正常画完时该有几个谱表。**画布脏了（渲染没真正画完就被读走）时 staves()
                 # 会给出不一样的一套**，systemAt/detectRowBars 跟着算错 —— 表现是同一页上「组」
                 # 大小在 6/5/4 之间跳，或者整行检不出。用这个数当可信度尺子。
@@ -70,7 +115,7 @@ async def main():
                 base_nst=0
                 for _ in range(3):
                     await draw()
-                    base_nst=await pg.evaluate("(n)=>(staves(n)||[]).length",page)
+                    base_nst=await pg.evaluate("(n)=>(staves(n)||[]).length",tp)
                     if base_nst: break
                 if not base_nst:                     # 三次都画不出来：是测量环境的问题，不是检测的问题
                     for ny,marks in sorted(bypage[page]):
@@ -80,10 +125,10 @@ async def main():
                 for ny,marks in sorted(bypage[page]):
                     gt=[m["nx"] for m in marks]
                     head,rest=gt[0],gt[1:]
-                    r=await pg.evaluate(RUN,[page,ny,head])
+                    r=await pg.evaluate(RUN,[tp,ny,head])
                     if r is None or r.get("err") or r.get("nst")!=base_nst or not r.get("used"):
                         await draw()
-                        r2=await pg.evaluate(RUN,[page,ny,head])
+                        r2=await pg.evaluate(RUN,[tp,ny,head])
                         if r2 and not r2.get("err") and r2.get("nst")==base_nst:
                             r=r2
                         elif r is None or r.get("err"):
@@ -103,14 +148,14 @@ async def main():
                                 ("empty",1 if not det else 0)]:
                         PER[T["name"]][k]+=v; G[k]+=v
             await b.close()
-    print("═"*74)
-    print(f'{"谱子":24} {"内部小节线":>12} {"召回":>7} {"多补的":>7} {"一条没补的行":>12} {"没量到":>7}')
-    print("─"*82)
+    print("═"*89)
+    print(f'{"谱子":24} {"内部小节线":>12} {"召回":>7} {"多补的":>7} {"一条没补的行":>12} {"没量到":>7} {"平移":>5}')
+    print("─"*89)
     for n,d in PER.items():
         tot=d["rest"]+d["fail"]
         rec=d["hit"]/tot*100 if tot else 0
-        print(f'{n:24} {str(d["hit"])+"/"+str(tot):>12} {rec:6.1f}% {d["extra"]:7} {str(d["empty"])+"/"+str(d["rows"]):>12} {d["undrawn"]:7}')
-    print("─"*82)
+        print(f'{n:24} {str(d["hit"])+"/"+str(tot):>12} {rec:6.1f}% {d["extra"]:7} {str(d["empty"])+"/"+str(d["rows"]):>12} {d["undrawn"]:7} {d["off"]:>5}')
+    print("─"*89)
     tot=G["rest"]+G["fail"]
     rec=G["hit"]/tot*100 if tot else 0
     print(f'{"总计":24} {str(G["hit"])+"/"+str(tot):>12} {rec:6.1f}% {G["extra"]:7} {str(G["empty"])+"/"+str(G["rows"]):>12} {G["undrawn"]:7}')
