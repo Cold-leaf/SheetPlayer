@@ -2,6 +2,15 @@
 # eval_autobar / eval_autobar2 注入的是脚本自带的扫描函数，只能测到 staves()；
 # 这一个直接调 systemAt() + detectRowBars()，测的是「整行补齐」点下去实际发生的事。
 # 口径同 eval_autobar2：行首起点在谱号/调号之后、没有印刷线，只能推导，单列不算漏。
+#
+# ⚠ **这个脚本把缩放钉在 1.6，而应用打开谱子时自动整页适配选的是 0.83（桌面 1600x1000）
+#   或 0.91（1920x1080）。检测质量对渲染尺度极敏感，两者差很多：**
+#     CQ_传奇   1.6 → 93.4%   0.83 → 49.2%
+#     BJ_北京喜讯 1.6 → 93.5%   0.83 → 58.7%
+#   所以这里报的是**上界**，不是用户实际遇到的。要测真实体验，就别动 zoom，
+#   让自动适配自己选（见 /tmp/real9.py 那套做法：加载后等 1.2s 再读 zoom）。
+#   2026-09-22 之前的「同一份文件两次测出不同召回」也是这个原因：设了 1.6 但自动适配
+#   有时把它盖回 0.83 —— 低的那次才是真实的。
 import asyncio, json, hashlib, glob, os, http.server, socketserver, threading, functools
 from collections import defaultdict
 from playwright.async_api import async_playwright
