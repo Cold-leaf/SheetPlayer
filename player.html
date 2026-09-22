@@ -2170,7 +2170,14 @@ function detectRowBars(page,sys,rightOfNx){
   const hgt=ye-ys+1,cum=new Uint16Array(W*(hgt+1));   // 计数上限就是 hgt，画布高远不到 65535
   for(let ix=0;ix<W;ix++){
     let n=0;const base=ix*(hgt+1);
-    for(let y=0;y<hgt;y++){if(dark(ix,ys+y))n++;cum[base+y+1]=n}
+    // 纵向也给 ±1 的容差，和 dark() 里横向那 ±1（吸收抗锯齿）对称。
+    // 影印件的竖线常有细断口：低分辨率时抗锯齿把它糊平了，高分辨率下露出来，
+    // 填充率就掉到阈值以下 —— 实测十送红军同一行里一半小节线因此过不了跨声部校验
+    //（画布 604 时 95/105，画布 1158 时 70/105，分辨率越高反而越差）。
+    for(let y=0;y<hgt;y++){
+      if(dark(ix,ys+y)||dark(ix,ys+y-1)||dark(ix,ys+y+1))n++;
+      cum[base+y+1]=n;
+    }
   }
   const seg=(ix,a,b)=>{                        // a,b 是相对 ys 的行号
     if(a<0||b>=hgt||b<a)return -1;
