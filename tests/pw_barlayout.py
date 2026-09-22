@@ -86,8 +86,9 @@ async def main():
         await pg2.wait_for_timeout(250)
         pn=await rects(pg2,"#panel")
         print(ok(pn["top"]>=bar["bottom"]), f"[移动] 底部抽屉不顶到工具栏: 抽屉顶 {pn['top']:.0f} ≥ 工具栏底 {bar['bottom']:.0f}")
-        # 窄屏行内容超宽时应可横向滚动到最左（safe center 退回左对齐）
-        sl=await pg2.evaluate("""()=>{const r=document.querySelector('.row');
+        # 窄屏行内容超宽时应可横向滚动到最左（safe center 退回左对齐）。
+        # 演奏行的滚动容器是内容区 .rowScroll（行尾 sysBox 不参与），所以量它
+        sl=await pg2.evaluate("""()=>{const r=document.querySelector('#rowPlay .rowScroll');
             r.scrollLeft=0;return {sw:r.scrollWidth,cw:r.clientWidth,sl:r.scrollLeft}}""")
         print(ok(sl["sl"]==0), f"[移动] 行可滚到最左: scrollLeft={sl['sl']} (内容 {sl['sw']} / 可视 {sl['cw']})")
 

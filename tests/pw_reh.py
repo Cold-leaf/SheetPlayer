@@ -89,12 +89,15 @@ async def main():
         gt=await pgt.evaluate(GEO)
         print(ok(gt["hidden"] and gt["pbot"]<=gt["rehTop"]),
               f"[834×1194 平板竖屏] 收起 + 整页在胶囊之上: 页底 {gt['pbot']}px ≤ 胶囊顶 {gt['rehTop']}px")
-        # 收起后可用高比展开时更大（胶囊 1 行 < 工具栏），所以谱面应该更大
+        # 收起后可用高比展开时更大（胶囊 1 行 < 工具栏），所以谱面应该更大。
+        # 但这条前提只在**编辑态**成立：演奏态工具栏只剩一行（~60px），比胶囊占的还矮，
+        # 展开反而多让出十几像素——那是演奏态的实情，不是记账错了（pw_perf 覆盖那边）。
+        # 所以这里先解锁回编辑态，让「胶囊 < 工具栏」这个前提重新成立再比
         before=(gt["pw"],gt["ph"])
-        await pgt.evaluate("setBarHidden(false)"); await pgt.wait_for_timeout(800)
+        await pgt.evaluate("setPerf(false);setBarHidden(false)"); await pgt.wait_for_timeout(800)
         gs=await pgt.evaluate(GEO)
         print(ok(gt["ph"]>gs["ph"]),
-              f"[834×1194] 收起时谱面比展开时大: 页高 {gt['ph']}px（收起）> {gs['ph']}px（展开）")
+              f"[834×1194] 收起时谱面比展开时大: 页高 {gt['ph']}px（收起）> {gs['ph']}px（展开，编辑态）")
         await pgt.close()
 
         # --- 桌面（无触摸）：工具栏该留着 ---

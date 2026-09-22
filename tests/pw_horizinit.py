@@ -79,14 +79,23 @@ async def main():
         g2=await pgm.evaluate(GEO)
         print(ok(g2["on"] and g2["cls"] and g2["txt"]=="横向铺开" and g2["dx"]>0),
               f"[390] 点菜单里的按钮切到横向、文案变 «{g2['txt']}»（第2页右移 {g2['dx']}px）")
-        # 「☰ 菜单」是手机上通往一切设置的入口，方向按钮又住在里面——它被挤掉就什么都改不了
-        await pgm.evaluate("$('bLib').style.display=''"); await asyncio.sleep(0.2)
-        mb=await pgm.evaluate("""()=>{const m=$('bMenu').getBoundingClientRect();
-            return {l:Math.round(m.left),r:Math.round(m.right),vw:innerWidth,
-                    lib:getComputedStyle($('bLib')).display!=='none'}}""")
-        print(ok(mb["lib"] and mb["l"]>=0 and mb["r"]<=mb["vw"]+1),
-              f"[390] 「曲目库」在场时「☰ 菜单」仍完整可见: [{mb['l']},{mb['r']}] ⊆ 视口 0–{mb['vw']}"
-              f"（工具栏右侧给固定定位的「▲」留了 44px，量的是真实余量）")
+        # 「☰ 菜单」是手机上通往一切设置的入口，方向按钮又住在里面——它被挤掉就什么都改不了。
+        # 它和「演奏/编辑」锁包在 #sysBox 里，而 sysBox 在 .rowScroll **外面**：
+        # 行内容（390px 下 ~800px）在 rowScroll 里横滑，sysBox 占着行尾的真实布局位置，
+        # 不需要 sticky（sticky 会盖住滑过的控件偷点击，被 pw_touch_targets 抓到过）。
+        # 要断的是「内容确实溢出得滑」和「不管滑不滑，bMenu 都在视口里」
+        mb=await pgm.evaluate("""()=>{const scr=$('rowPlay').querySelector('.rowScroll');
+            const rc=()=>{const m=$('bMenu').getBoundingClientRect();
+                          return {l:Math.round(m.left),r:Math.round(m.right)}};
+            scr.scrollLeft=0; const at0=rc();
+            scr.scrollLeft=9999; const atEnd=rc();
+            return {at0,atEnd,vw:innerWidth,sw:scr.scrollWidth,cw:scr.clientWidth}}""")
+        print(ok(mb["sw"]>mb["cw"]),
+              f"[390] 前提：演奏行内容 {mb['sw']}px 确实超出可视 {mb['cw']}px（横滑容器）")
+        print(ok(mb["at0"]["l"]>=0 and mb["at0"]["r"]<=mb["vw"]+1),
+              f"[390] 不滚动时「☰ 菜单」完整可见: [{mb['at0']['l']},{mb['at0']['r']}] ⊆ 0–{mb['vw']}")
+        print(ok(mb["atEnd"]["l"]>=0 and mb["atEnd"]["r"]<=mb["vw"]+1),
+              f"[390] 内容滚到最右它仍钉在行尾: [{mb['atEnd']['l']},{mb['atEnd']['r']}] ⊆ 0–{mb['vw']}")
         await pgm.close()
 
         # --- 平板竖屏 834（触摸）：宽过 700 但比自己高 → 纵向堆叠，且整页装得下 ---

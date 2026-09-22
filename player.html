@@ -107,6 +107,10 @@ button:active{opacity:.65}
 @media (max-width:700px),(pointer:coarse){
   .row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .row::-webkit-scrollbar{display:none}
+  /* 「▲」是 fixed 钉在右上角 right:10px、触屏下宽 44px，要吃掉右缘 54px；
+     padding 只留 44px 的话行内容（现在行末是常驻的 sysBox）会被它压住左边 10px——
+     pw_touch_targets 的「命中区不许交叠」抓到过 bMenu↔bBar 10×42 */
+  #bar{padding-right:calc(54px + env(safe-area-inset-right))}
 }
 @media (max-width:700px){
   #aud{flex:none}
@@ -115,6 +119,20 @@ button:active{opacity:.65}
   #trackSel,#audSel{max-width:38vw;text-overflow:ellipsis}
 }
 .sep{width:1px;height:20px;background:var(--border)}
+/* 演奏行的内容区：桌面/宽屏是普通 flex 容器（内容 safe center 居中，wrap 折行），
+   触屏/窄屏变成横滑容器（下面那条媒体查询，跟 .row 同条件、且必须排在这条基础规则之后——
+   同特异性靠源码顺序取胜，放前面会静默失效）。
+   basis 必须是 0 不能是 auto：auto 会拿内容 max-content 参与**父行**的折行判定，
+   内容一宽就把 sysBox 挤到下一行（900px 实测 sysBox 独占一行居中，工具栏反而更高）；
+   basis 0 时它只吃 grow 分到的宽度，sysBox 永远跟它同一行。min-width:0 让它能缩、
+   溢出时在**自己内部**滚/折，右端的 sysBox 因而不需要 sticky 就一直在视口里 */
+.rowScroll{display:flex;gap:6px;align-items:center;justify-content:safe center;
+  flex:1 1 0%;min-width:0;flex-wrap:wrap}
+#sysBox{display:inline-flex;gap:6px;align-items:center;flex:none}
+@media (max-width:700px),(pointer:coarse){
+  .rowScroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .rowScroll::-webkit-scrollbar{display:none}
+}
 /* flex:none + nowrap：窄屏 .row 是 nowrap 横滑的，不锁死会被挤成 1 字宽逐字竖排 */
 #stat{color:var(--info);white-space:nowrap;flex:none}
 /* 消息改成浮动 toast：定位在工具栏下方、悬浮在谱面上，不占布局，工具栏不会跳 */
@@ -127,11 +145,16 @@ button:active{opacity:.65}
 #msg.err{color:var(--danger)}
 
 #nowBox{color:var(--accent);font-weight:600;flex:none;min-width:112px}
-#chipWrap{display:none;flex:1;min-width:0;align-items:center;gap:8px}
+/* chipWrap 是演奏行里唯一能缩能折的块，用 flex:0 1 auto 而不是 flex:1：
+   flex:1 时它是行里唯一的「贪心块」——窗口宽，它把空闲全吞在 chips 和「循环」之间撑出一个大洞；
+   窗口窄，它又被压成行尾一绺，chips 在自己内部竖着摞、和折下来的控件交错穿插（1250px 实测
+   挤成一坨）。flex:0 1 auto 时它按内容宽站，放不下就**整个**折到下一行（单独一行时能拿到整行
+   宽度，chips 再在自己内部横着折），行里其它控件始终排在一起、各自居中，两边留白对称 */
+#chipWrap{display:none;flex:0 1 auto;min-width:0;align-items:center;gap:8px}
 /* 段落 chips 换行铺开，不挤进横向滚动条——段落是「一键跳段」的快捷钮，看得全比省地方重要 */
 #chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0}
-/* 跟着 .row 一起横滑，不能 wrap：.row 是 nowrap 滚动容器，flex:1 的 chipWrap
-   会被压成 0 宽，里面再 wrap 就变成每个 chip 一行、还溢出到「练习循环」上叠成一坨。
+/* 跟着 .row 一起横滑，不能 wrap：.row 是 nowrap 滚动容器，flex 不锁死的 chipWrap
+   会被压成 0 宽，里面再 wrap 就变成每个 chip 一行、还溢出到「循环」上叠成一坨。
    条件必须跟上面那条 .row 一字不差（max-width:700px 或 pointer:coarse），
    且放在基础规则之后——同特异性下靠源码顺序取胜，改动一处就会失效 */
 @media (max-width:700px),(pointer:coarse){
@@ -590,6 +613,11 @@ body.hidebar #reh{display:flex}
       编辑才用得上的东西一律去第 2 行——不是收纳洁癖，是为了让「锁上就真的没有编辑入口」
       在结构上成立，而不是靠逐个 display:none 去补（那种做法漏一个就是数据被改） -->
  <div class="row" id="rowPlay">
+  <!-- 行里的内容全在 .rowScroll 里：触屏/窄屏下**它**是横滑容器（不是整行），
+       所以右端的 sysBox 永远占着真实布局位置、不用 sticky 也不会被顶进滚动区深处——
+       sticky 会盖住滑过的控件偷走点击（pw_touch_targets 抓到过 bLoopMore↔bPerf 38×44）。
+       桌面上它就是普通 flex 容器，内容居中、sysBox 靠右缘，经典工具栏两端布局 -->
+  <div class="rowScroll">
   <input type="file" id="fAud" hidden accept="audio/*">
   <label title="直接切到曲目库里的另一首">曲目<select id="trackSel"></select></label>
   <!-- 音频版本下拉：**不**跟着「只有一个版本」收起来（跟 #modeSel 那条不一样）。
@@ -626,11 +654,15 @@ body.hidebar #reh{display:flex}
    <button id="bLoop" title="开/关 A–B 练习循环">循环</button>
    <button id="bLoopMore" title="设置循环区间：起点 / 终点 / 清除">▾</button>
   </span>
-  <span class="sep"></span>
-  <!-- 演奏 / 编辑 锁。文案显示**当前**状态（跟菜单里那个方向按钮同一套说法，见 bHoriz）。
-       不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认 -->
-  <button id="bPerf" title="当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）">编辑</button>
-  <button id="bMenu" title="更多设置与数据">☰ 菜单</button>
+  </div>
+  <!-- sysBox：演奏·编辑 锁 + 菜单入口。在 .rowScroll 之外，所以行内容怎么滑它都在。
+       这俩丢不起：菜单是通往一切设置的入口，「演奏」是解锁编辑的唯一途径 -->
+  <span id="sysBox">
+   <!-- 演奏 / 编辑 锁。文案显示**当前**状态（跟菜单里那个方向按钮同一套说法，见 bHoriz）。
+        不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认 -->
+   <button id="bPerf" title="当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）">编辑</button>
+   <button id="bMenu" title="更多设置与数据">☰ 菜单</button>
+  </span>
   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
  <!-- ============ 第 2 行：编辑行 ============

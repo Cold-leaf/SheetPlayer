@@ -72,16 +72,16 @@ async def main():
               "窄屏 380 点菜单里的按钮真的切得动方向")
         await pg2.click("#bHoriz"); await asyncio.sleep(0.3)
         await pg2.evaluate("$('menu').style.display='none'")
-        # 窄屏横滑：第 1 行精简之后（PDF 收进菜单，方向键没再加回工具栏），
-        # 380px 下已经放得下、不再溢出——该断言的是"每行都是横滑容器"，而不是"第一行一定溢出"
-        rows2=await pg2.evaluate("""()=>[...document.querySelectorAll('#bar .row')].map(r=>
+        # 窄屏横滑：演奏行的滚动发生在**内容区** .rowScroll 上（行尾的 sysBox 不参与滚动），
+        # 编辑行/状态行还是整行 .row 滚——所以横滑容器要数 .row 和 .rowScroll 两种
+        rows2=await pg2.evaluate("""()=>[...document.querySelectorAll('#bar .row,#bar .rowScroll')].map(r=>
             ({ox:getComputedStyle(r).overflowX, sw:r.scrollWidth, cw:r.clientWidth}))""")
         print(ok(all(r["ox"]=="auto" for r in rows2)), f"窄屏每行都是横滑容器: {[r['ox'] for r in rows2]}")
         over=[r for r in rows2 if r["sw"]>r["cw"]]
-        print(ok(len(over)>0), f"内容放不下的行确实溢出（{len(over)}/{len(rows2)} 行）")
-        sc=await pg2.evaluate("""()=>{const r=[...document.querySelectorAll('#bar .row')]
+        print(ok(len(over)>0), f"内容放不下的容器确实溢出（{len(over)}/{len(rows2)} 个）")
+        sc=await pg2.evaluate("""()=>{const r=[...document.querySelectorAll('#bar .row,#bar .rowScroll')]
               .find(r=>r.scrollWidth>r.clientWidth);if(!r)return -1;r.scrollLeft=9999;return r.scrollLeft}""")
-        print(ok(sc>0), f"溢出的行真的能横滑: scrollLeft={sc}")
+        print(ok(sc>0), f"溢出的容器真的能横滑: scrollLeft={sc}")
 
         print("\npage errors:",errs or "(none)")
         await b.close()

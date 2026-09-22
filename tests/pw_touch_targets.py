@@ -83,6 +83,27 @@ window.__scan=root=>{
   });
   return out;
 };
+// 滚动容器（overflow auto/scroll/hidden）会裁掉溢出部分，被裁掉的区域不响应点击。
+// 量交叠得按「裁剪后」的命中区算——否则滚动区里还没滑出来的控件会跟容器外的东西
+// 假性交叠：bLoopMore 在 .rowScroll 里静止时只露 2px，getBoundingClientRect 却报全宽，
+// 跟行尾的 bPerf 算出 34×44 的假交叠（裁剪后两者根本不相交）。
+// 注意只用于交叠判定：尺寸判定（≥44）不能用裁剪后的值——滑出来的空间是用户的，
+// 滚一下就有完整 44px，按裁剪值量会把所有半露的控件都误判成不达标
+window.__clip=(h,el)=>{
+  let {l,t,r:rr,b}=h;
+  for(let a=el.parentElement;a;a=a.parentElement){
+    const cs=getComputedStyle(a),r=a.getBoundingClientRect();
+    if(/^(auto|scroll|hidden|clip)$/.test(cs.overflowX)){
+      const bl=parseFloat(cs.borderLeftWidth)||0,br=parseFloat(cs.borderRightWidth)||0;
+      l=Math.max(l,r.left+bl);rr=Math.min(rr,r.right-br);
+    }
+    if(/^(auto|scroll|hidden|clip)$/.test(cs.overflowY)){
+      const bt=parseFloat(cs.borderTopWidth)||0,bb=parseFloat(cs.borderBottomWidth)||0;
+      t=Math.max(t,r.top+bt);b=Math.min(b,r.bottom-bb);
+    }
+  }
+  return {l,t,r:rr,b};
+};
 // 相邻命中区不能交叠：交叠会让 DOM 靠后的那个偷走点击。
 // 祖先/后代不算（label 套 select、label 套 checkbox），同一个 label 收进来的也不算
 window.__overlaps=root=>{
@@ -95,7 +116,7 @@ window.__overlaps=root=>{
     if(A.contains(B)||B.contains(A))continue;
     const a=window.__target(A).el,b=window.__target(B).el;
     if(a===b||a.contains(b)||b.contains(a))continue;
-    const x=window.__hit(a),y=window.__hit(b);
+    const x=window.__clip(window.__hit(a),a),y=window.__clip(window.__hit(b),b);
     const ox=Math.min(x.r,y.r)-Math.max(x.l,y.l), oy=Math.min(x.b,y.b)-Math.max(x.t,y.t);
     if(ox>1&&oy>1)bad.push({a:A.tagName+(A.id?'#'+A.id:'.'+String(A.className).split(' ')[0]),
                             b:B.tagName+(B.id?'#'+B.id:'.'+String(B.className).split(' ')[0]),
