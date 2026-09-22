@@ -2841,8 +2841,15 @@ function follow(el,force){
       dx=r.left-(wr.left+8);
   }else{                                            // 纵向：上下跟随
     const r=el.getBoundingClientRect();
-    if(r.top<wr.top+wr.height*0.2||r.bottom>wr.top+wr.height*0.8)
-      dy=r.top-(wr.top+wr.height*0.35);
+    // 死区和落点都按「工具栏下沿 → 胶囊上沿」这截真正露着谱子的区域算，不按 wr.height：
+    // 工具栏是 fixed 浮层、胶囊盖着底边，两者都在 wrap 里但不露谱子。按整个 wrap 算，
+    // 百分比就是从屏幕顶量起的，0.10 这种小值会直接藏进工具栏底下（实测工具栏 121px）。
+    // 落点 0.15 指的是**竖线顶边**，不是小节中心：合唱总谱一根竖线有 0.27 屏高，
+    // 顶边停在 0.35 时系统中心正好落在 0.49，看着就像被推到视口正中。
+    // 系统与系统之间的位移由排版的行距决定，这两条线只管它停在哪
+    const vt=wr.top+barHpx(),vh=Math.max(1,wr.height-barHpx()-rehHpx());
+    if(r.top<vt+vh*0.08||r.bottom>vt+vh*0.55)
+      dy=r.top-(vt+vh*0.15);
     // 放大到页面比视口宽时，当前小节也会横向跑出视野——纵向模式原来只管上下，
     // 于是"跟随"看着像失灵了。页面装不下时同样横向跟一下。
     // 判的必须是**页面**宽不宽，不能判 wrap.scrollWidth>clientWidth：#pages 有
