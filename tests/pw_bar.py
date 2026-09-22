@@ -32,6 +32,11 @@ async def main():
               f"竖线: 命中带{geo['w']}px + 可见线{geo['bw']}px 高{geo['h']}px, 编号'{geo['lab']}'")
 
         # --- 拖中段挪位置 ---
+        # 这一条测的是「抓中段 = 纯平移」，所以必须先把吸附关掉：两条吸附开关默认都是开的，
+        # 松手时会执行 applySnaps，落点离印刷小节线 12px 以内就被拉过去，位移就不再等于鼠标位移。
+        # 原来没关也能过，只是因为它落的那个位置恰好离任何小节线都超过 12px——那是几何巧合，
+        # 换个缩放（比如工具栏变矮导致自动适配变大 ~3%）就会翻。吸附本身由 pw_dragsnap 专门测。
+        await pg.evaluate("$('chkSnapX').checked=false;$('chkAlignY').checked=false")
         await pg.select_option("#mode","mark")
         m0=await pg.evaluate("({nx:M[0].nx,ny:M[0].ny,h:M[0].h})")
         el=await pg.query_selector('.mk[data-m="1"]'); r=await el.bounding_box()

@@ -30,7 +30,12 @@ async def main():
 
         n=await pg.eval_on_selector_all(".chip","els=>els.map(e=>e.textContent)")
         print(ok(len(n)==2), "段落条:", n)
-        print(ok("2 段" in await pg.inner_text("#stat")), "状态栏:", await pg.inner_text("#stat"))
+        # 累计统计（段数/小节数/时间点数）早就从工具栏搬进菜单的 #statMenu 了，
+        # 工具栏的 #stat 只剩「打时间时的目标」这一件事。原来这两条断言看的是 #stat，
+        # 从搬家那天起就一直是红的（不是这一段改坏的）
+        sm=await pg.inner_text("#statMenu")
+        print(ok("2 段" in sm), "菜单统计里的段数:", sm)
+        print(ok(await pg.inner_text("#stat")==""), "工具栏状态栏平时是空的:", repr(await pg.inner_text("#stat")))
 
         async def tap(m, times=1, gap=0.05):
             el=await pg.query_selector(f'.mk[data-m="{m}"]'); r=await el.bounding_box()
@@ -70,15 +75,25 @@ async def main():
         t=await tap(6); print(ok(t==22.0), f"跳②段后点小节6 -> {t}s (期望 22.0)")
 
         # --- A-B 循环 ---
+        # 起点/终点/清除/区间文字收进了「循环 ▾」弹层（行上只留循环开关）。
+        # 待命时 armAB 会自己把弹层关掉——因为接下来要点的那个小节在谱面上，弹层挡着
+        async def open_loop():
+            if await pg.evaluate("$('loopPop').style.display==='none'"):
+                await pg.click("#bLoopMore"); await asyncio.sleep(0.15)
+        await open_loop()
         await pg.click("#bA"); armed=await pg.get_attribute("#bA","class")
         print(ok("arm" in armed), f'按「设A」进入待命: class="{armed}"')
+        print(ok(await pg.evaluate("getComputedStyle($('loopPop')).display==='none'")),
+              "待命后弹层自动收起（免得挡住要点的那个小节）")
         before=round(await pg.evaluate("aud.currentTime"),2)
         await tap(4)                                  # 待命中点小节：只设 A，不该跳转
         after=round(await pg.evaluate("aud.currentTime"),2)
         print(ok(before==after), f"待命中点小节不跳转: {before} -> {after}")
+        await open_loop()
         await pg.click("#bB"); await tap(6)
         print(ok(not await pg.get_attribute("#bA","class") or "arm" not in (await pg.get_attribute("#bA","class") or "")),
               "设完自动解除待命")
+        await open_loop()
         txt=await pg.inner_text("#loopTxt")
         R=await pg.evaluate("loopRange()")
         print(ok(R["m0"]==4 and R["m1"]==6 and abs(R["t1"]-24)<0.01), f"A-B 范围: {txt} | {R} (t1 应=小节7起点 24)")
@@ -93,13 +108,14 @@ async def main():
         pos=round(await pg.evaluate("aud.currentTime"),2)
         print(ok(jumped), f"播到终点自动弹回起点: {jumped}, 现在 {pos}s (区间 {R['t0']}–{R['t1']})")
         await pg.evaluate("aud.pause()")
+        await open_loop()
         await pg.click("#bLoopClr")
         print(ok(await pg.inner_text("#loopTxt")=="未设区间"), "清除循环区间:", await pg.inner_text("#loopTxt"))
 
         # --- 待命时自动切到播放模式 ---
-        await pg.select_option("#mode","time"); await pg.click("#bA")
+        await pg.select_option("#mode","time"); await open_loop(); await pg.click("#bA")
         print(ok(await pg.input_value("#mode")=="play"), "待命自动切到播放模式:", await pg.input_value("#mode"))
-        await pg.click("#bA")
+        await open_loop(); await pg.click("#bA")
         await pg.select_option("#mode","mark")
         print(ok(await pg.evaluate("arm")is None), "切模式会清掉待命")
 

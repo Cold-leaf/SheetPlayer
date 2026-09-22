@@ -72,6 +72,9 @@ async def main():
         # 这里量的是工具栏**展开时**的行数/换行版式，先展开；不展开的话
         # #bar 是 display:none，量到的全是 0，断言会假绿
         await pg2.evaluate("setBarHidden(false)")
+        # 触屏开机同时进演奏态（编辑行整行收掉）。这条量的是工具栏**完整展开**时
+        # 菜单/抽屉跟它的关系，所以要解锁——否则工具栏矮一截，量到的是演奏态那个
+        await pg2.evaluate("setPerf(false)")
         await pg2.set_input_files("#fPdf",PDF)
         await pg2.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
         await pg2.wait_for_timeout(300)

@@ -148,13 +148,18 @@ button:active{opacity:.65}
 .chip small{opacity:.65;margin-left:7px}
 #loopBox{display:flex;gap:4px;align-items:center;flex:none}
 #loopTxt{color:var(--info);min-width:130px}
-#bar #loopBox button.arm{background:var(--accent);color:#1a1408}
 #bar #loopBox button.on{background:var(--accent);color:#1a1408}
 #bar #bSpec.on{background:var(--accent);color:#1a1408}
 #bar button:disabled{opacity:.4;cursor:default}
 
 #wrap{flex:1;overflow:auto;background:var(--bg);position:relative;min-height:0;touch-action:pan-x pan-y}
 body.hidebar #bar{display:none}
+/* 演奏态：工具栏只剩演奏行。编辑行和状态行整行收掉——它们承载的工具在演奏时没有任务
+   （编辑行写数据，状态行是打时间的读数）。用整行 display:none 而不是逐个按钮藏，
+   是为了让「演奏态没有编辑入口」这件事由结构保证：往编辑行加控件不需要记得加隐藏规则。
+   菜单里的编辑分区同理，靠 .editOnly 归组（见 setPerf） */
+body.perf #rowEdit,body.perf #rowState{display:none}
+body.perf .editOnly{display:none}
 /* 收缩/展开钉在同一个右上角位置，切换不跳 */
 /* 这两个跟 #bar 一样钉在顶边，安全区要一起跟（否则工具栏缩下去了、它俩还贴着刘海） */
 #bBar{position:fixed;top:calc(6px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:31}
@@ -177,7 +182,9 @@ body.hidebar #bar{display:none}
    max-height:calc(100dvh - var(--barH,96px) - 22px);
    box-shadow:0 6px 20px rgba(0,0,0,.55)}
 #menu .msec{color:var(--info);font-size:12px;font-weight:600;margin:10px 0 4px;border-top:1px solid var(--border);padding-top:10px}
-#menu .msec:first-child{margin-top:0;border-top:0;padding-top:0}
+/* 只对 #menu 的**直接**首个子元素免掉上方分隔线。编辑分区现在包在 .editOnly 里，
+   用后代选择器的话每个分区里的第一个 .msec 也会被误判成 first-child、丢掉自己的分隔线 */
+#menu > .msec:first-child{margin-top:0;border-top:0;padding-top:0}
 #menu label{display:flex;gap:6px;align-items:center;margin:4px 0;white-space:nowrap;cursor:pointer}
 /* 窄屏：菜单从右边收缩 + min-width:240px + label 又 nowrap → 长行会往左伸出屏幕。
    必须排在上面两条之后（同特异性靠源码顺序取胜），否则 min-width 和 white-space 都会被压回去 */
@@ -493,6 +500,18 @@ body.hidebar #bar{display:none}
 #plPopHd label{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
 #plPopList .plRow{cursor:pointer}
 #plPopList .plRow:hover{background:var(--surface-2)}
+/* A–B 循环设置弹层：跟 #plPop 同一套锚定（钉在工具栏下方），但贴右边——入口 ▾ 在工具栏右半区 */
+#loopPop{position:fixed;top:calc(var(--barH,96px) + 6px);right:8px;z-index:36;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:10px 12px;
+  min-width:250px;max-width:min(92vw,380px);max-height:calc(100dvh - var(--barH,96px) - 22px);overflow:auto;
+  box-sizing:border-box;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+#loopPopRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#loopPop button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+/* 待命高亮原来挂在 #bar #loopBox button.arm 上，起点/终点搬进弹层后要在这边补一条，
+   否则「按了起点在等落点」这个状态在弹层里完全看不出来 */
+#loopPop button.arm{background:var(--accent);color:#1a1408;border-color:var(--accent)}
+/* 区间文字原来在行上跟按钮并排（min-width:130px 撑着不跳），进了弹层改成整行铺开 */
+#loopPop #loopTxt{display:block;margin-top:9px;min-width:0;font-size:12px;line-height:1.5}
 
 /* ---------- 排练模式（收起工具栏后的悬浮胶囊） ---------- */
 #reh,#reh *{box-sizing:border-box}
@@ -565,9 +584,59 @@ body.hidebar #reh{display:flex}
 </head>
 <body>
 <div id="bar">
- <div class="row">
+ <!-- ============ 第 1 行：演奏行 ============
+      演奏态（body.perf）下工具栏只剩这一行，见 setPerf()。能留在这一行的判据是
+      「放音时需要、且不写数据」：选曲、选音频版本、走带、速度、跟随、段落跳段、A–B 循环。
+      编辑才用得上的东西一律去第 2 行——不是收纳洁癖，是为了让「锁上就真的没有编辑入口」
+      在结构上成立，而不是靠逐个 display:none 去补（那种做法漏一个就是数据被改） -->
+ <div class="row" id="rowPlay">
   <input type="file" id="fAud" hidden accept="audio/*">
   <label title="直接切到曲目库里的另一首">曲目<select id="trackSel"></select></label>
+  <!-- 音频版本下拉：**不**跟着「只有一个版本」收起来（跟 #modeSel 那条不一样）。
+       它唯一一档也可能是「⚠不在本机」——那是警告不是选项，而警告恰恰只在只有一档时
+       最需要被看到（多档时你还能换个能放的版本）。为省 150px 把警告藏起来不划算 -->
+  <label id="lblAud">音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
+  <!-- 原生控件整个收掉，只留自制精简条：播放键 + 时间。点小节/频谱走带是粗定位，
+       精细定位在排练胶囊那条进度条上（触屏没有 ←/→）；音量 iPad 有实体键、桌面用系统音量，不再重复 -->
+  <audio id="aud" style="display:none"></audio>
+  <span id="transport">
+   <button id="bPlay" class="primary" aria-label="播放" aria-pressed="false" title="播放/暂停">
+    <svg id="icPlay" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    <svg id="icPause" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+   </button>
+   <span id="tTxt">0:00 / 0:00</span>
+  </span>
+  <span id="plBox" style="display:none">
+   <button id="plPrev" title="上一首">⏮</button>
+   <button id="plNow" title="显示/管理播放列表"></button>
+   <button id="plNext" title="下一首">⏭</button>
+   <button id="plStop" title="退出播放列表">✕</button>
+  </span>
+  <span class="sep"></span>
+  <label>速度<select id="rate">
+    <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
+    <option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option>
+  </select></label>
+  <label title="播放时谱面自动跟着当前小节滚动"><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
+  <span class="sep"></span>
+  <span id="chipWrap"><span style="color:#999;flex:none">段落</span><span id="chips"></span></span>
+  <!-- A–B 循环：行内只留「开关 + 设置入口」两个按钮，起点/终点/清除/区间文字收进 #loopPop。
+       原来五件套直接铺在行上，是压成一行最大的障碍；而那四件套是「设一次、之后只用开关」的操作 -->
+  <span id="loopBox">
+   <button id="bLoop" title="开/关 A–B 练习循环">循环</button>
+   <button id="bLoopMore" title="设置循环区间：起点 / 终点 / 清除">▾</button>
+  </span>
+  <span class="sep"></span>
+  <!-- 演奏 / 编辑 锁。文案显示**当前**状态（跟菜单里那个方向按钮同一套说法，见 bHoriz）。
+       不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认 -->
+  <button id="bPerf" title="当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）">编辑</button>
+  <button id="bMenu" title="更多设置与数据">☰ 菜单</button>
+  <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
+ </div>
+ <!-- ============ 第 2 行：编辑行 ============
+      演奏态整行收掉。这里的东西要么写数据（工具 / 撤销 / 自动生成 / 删音频 / 模式），
+      要么决定谱子怎么被看（曲目库 / 缩放）——演奏时都不需要 -->
+ <div class="row" id="rowEdit">
   <label>工具<select id="mode">
     <option value="play" selected>播放</option>
     <option value="mark">标小节</option>
@@ -582,51 +651,18 @@ body.hidebar #reh{display:flex}
   <button id="bUndo">撤销</button>
   <button id="bGen">自动生成</button>
   <button id="bSpec">频谱</button>
-  <button id="bLib">曲目库</button>
-  <button id="bMenu" title="更多设置与数据">☰ 菜单</button>
-  <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
- </div>
- <div class="row">
-  <!-- 原生控件整个收掉，只留自制精简条：播放键 + 时间。点小节/频谱走带是粗定位，
-       精细定位在排练胶囊那条进度条上（触屏没有 ←/→）；音量 iPad 有实体键、桌面用系统音量，不再重复 -->
-  <audio id="aud" style="display:none"></audio>
-  <span id="transport">
-   <button id="bPlay" class="primary" aria-label="播放" aria-pressed="false" title="播放/暂停">
-    <svg id="icPlay" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-    <svg id="icPause" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-   </button>
-   <span id="tTxt">0:00 / 0:00</span>
-  </span>
-  <label>音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
   <button id="bDelAud" title="删除当前选中的音频变体（连同它在本机的文件）">删音频</button>
-  <label title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
-  <label>速度<select id="rate">
-    <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
-    <option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option>
-  </select></label>
-  <label title="播放时谱面自动跟着当前小节滚动"><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
-  <span class="sep"></span>
-  <span id="plBox" style="display:none">
-   <button id="plPrev" title="上一首">⏮</button>
-   <button id="plNow" title="显示/管理播放列表"></button>
-   <button id="plNext" title="下一首">⏭</button>
-   <button id="plStop" title="退出播放列表">✕</button>
-  </span>
+  <!-- 模式下拉：只有一套时间点时由 syncModeSel 收起来。它跟「音频」是一件事的两面
+       （切音频会自动切到它那套时间点），所以演奏行留音频就够，这一个是给编辑时手动分套用的 -->
+  <label id="lblMode" title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
+  <button id="bLib">曲目库</button>
  </div>
- <div class="row">
-  <span id="nowBox">现在 —</span>
+ <!-- ============ 第 3 行：状态行 ============
+      只在编辑态露面：左边是播放到哪，右边是打时间的目标（stat 只在打时间档有内容）。
+      演奏时「现在小节」由谱面上的高亮和胶囊进度条承担，不必再占一行 -->
+ <div class="row" id="rowState">
+  <span id="nowBox" style="display:none">现在 —</span>
   <span id="stat"></span>
-  <span class="sep"></span>
-  <span id="chipWrap"><span style="color:#999;flex:none">段落</span><span id="chips"></span></span>
-  <span class="sep"></span>
-  <span id="loopBox">
-   <span style="color:#999;flex:none">练习循环</span>
-   <button id="bA" title="按下后在谱面上点一个小节，设为循环起点">起点</button>
-   <button id="bB" title="按下后在谱面上点一个小节，设为循环终点（这一小节会唱完）">终点</button>
-   <button id="bLoop">循环</button>
-   <span id="loopTxt">未设区间</span>
-   <button id="bLoopClr" title="清除循环区间">×</button>
-  </span>
  </div>
 </div>
 <div id="msg"></div>
@@ -672,10 +708,16 @@ body.hidebar #reh{display:flex}
  <!-- 原来在工具栏第一行，跟「曲目 / 工具」挤在一起。收进菜单——项目模型下
       日常是「打开已有项目」，随手导一份新谱子是少数时候才做的事。
       按文件名认领/新建的逻辑不变（见 importPdf 的认领链） -->
+ <!-- ===== 演奏态整块收掉的编辑分区（body.perf .editOnly）。
+      分组而不是逐个按钮加 class：菜单里加新控件时只要放进对应的组就自动被锁上，
+      不会出现「新加的按钮忘了加隐藏规则、演奏态里还能点」这种漏网 -->
+ <div class="editOnly">
  <div class="msec">谱子</div>
  <label class="mbtn" id="lblPdf" title="随便导一份谱子：文件名/内容哈希对得上已有项目就挂上去，否则新建项目。想给项目起名就先「＋ 新建项目」，再在那一条上导入谱子">导一份新谱子<input type="file" id="fPdf" hidden accept=".pdf"></label>
+ </div>
  <div class="msec">统计</div>
  <span id="statMenu" style="color:var(--info)"></span>
+ <div class="editOnly">
  <div class="msec">小节</div>
  <div class="mrow">
   <label>下一编号<input type="number" id="nextN" min="1" step="1" value="1"></label>
@@ -688,6 +730,7 @@ body.hidebar #reh{display:flex}
   <label title="补偿人的反应延迟：打点时记录的时间 = 当前时间 − 补偿">补偿ms<input type="number" id="off" step="10" value="0"></label>
   <label title="把所有已打的时间点整体前后移动">平移ms<input type="number" id="shift" step="10" value="0"></label>
   <button id="bShift">应用平移</button>
+ </div>
  </div>
  <div class="msec">视图</div>
  <!-- 方向切换是个**按钮**不是勾选框：勾选框只写得出「横向铺开」这一个词，
@@ -703,6 +746,7 @@ body.hidebar #reh{display:flex}
  <input type="checkbox" id="chkHoriz" hidden checked>
  <label><input type="checkbox" id="chkNum" checked>显示编号</label>
  <label><input type="checkbox" id="chkProg" checked>小节进度</label>
+ <div class="editOnly">
  <div class="msec">音频模式</div>
  <div class="mrow">
   <label>新建<input type="text" id="newMode" placeholder="模式名" style="width:90px"></label>
@@ -730,6 +774,7 @@ body.hidebar #reh{display:flex}
  <div class="msec">生成 / 数据</div>
  <button id="bExp" title="导出当前这一首的标注（含所有模式），文件名用谱名。整库备份 / 跨设备同步请用曲目库里的「导出全部标注」">导出本曲标注</button>
  <label class="mbtn" title="把这份 JSON 套到当前曲目上——会覆盖当前曲目的标注（替换前存了快照，可撤销）。整库合并请用曲目库里的「导入全部标注」">导入本曲标注（覆盖）<input type="file" id="fMap" hidden accept=".json"></label>
+ </div>
 </div>
 <!-- 播放列表弹层：点工具栏「列表 1/3」打开，点歌曲切换、加当前曲目、删、循环/暂停，跟曲目库的面板同一套列表 -->
 <div id="plPop" style="display:none">
@@ -744,6 +789,16 @@ body.hidebar #reh{display:flex}
   <button id="plPopClose" title="关闭">✕</button>
  </div>
  <div id="plPopList"></div>
+</div>
+<!-- A–B 循环设置弹层：点工具栏「循环 ▾」打开。起点/终点设完之后日常只用那个开关，
+     所以四件套收在这里，行上只留开关本身 -->
+<div id="loopPop" style="display:none">
+ <div id="loopPopRow">
+  <button id="bA" title="按下后在谱面上点一个小节，设为循环起点">起点</button>
+  <button id="bB" title="按下后在谱面上点一个小节，设为循环终点（这一小节会唱完）">终点</button>
+  <button id="bLoopClr" title="清除循环区间">清除</button>
+ </div>
+ <span id="loopTxt">未设区间</span>
 </div>
 <div id="wrap"><div id="pages"></div></div>
 <div id="specBox">
@@ -833,6 +888,17 @@ body.hidebar #reh{display:flex}
   所以不用为了滚谱切模式。勾着「整行补齐」时这一击只加点、不给拖——那时是批量加的模式。
  </section>
 
+ <section id="helpPerf" class="hs">
+  <h3>演奏 / 编辑</h3>
+  工具栏上的<b>「演奏 ⇄ 编辑」</b>键决定工具栏长什么样，也决定点谱面算不算数：<br>
+  <b>演奏</b>：工具栏只剩第一行（选曲 / 音频 / 走带 / 速度 / 跟随 / 段落条 / 循环），
+  点谱面只会跳转，不落点、不改标注。手机和平板打开默认就是这一档——那台设备是拿来放音的。<br>
+  <b>编辑</b>：多出「工具 / 撤销 / 自动生成 / 频谱 / 删音频 / 模式 / 曲目库」那一行，
+  点谱面按当前工具干活。桌面默认这一档。<br>
+  切进演奏时会顺手把工具退回「播放」、取消待命的循环起点/终点，所以不会出现「锁上了还在往谱面上落点」。
+  这个状态不记忆，刷新回默认。
+ </section>
+
  <section id="helpMouse" class="hs">
   <h3>鼠标</h3>
   标小节：点没竖线的地方加点 · 压在已有竖线上拖中段挪位置、拖上/下端改长度、单击开面板（可设高度并套用到整行）<br>
@@ -844,7 +910,7 @@ body.hidebar #reh{display:flex}
   <h3>快捷键（焦点不在输入框时生效）</h3>
   <kbd>空格</kbd> 打时间模式：给当前目标小节打点并自动前进；其他模式：播放/暂停<br>
   <kbd>Enter</kbd> 同上（只在打时间模式打点）<br>
-  <kbd>Backspace</kbd> 撤销上一步<br>
+  <kbd>Backspace</kbd> 撤销上一步（演奏模式下不生效）<br>
   <kbd>[</kbd> <kbd>]</kbd> 打点目标 −1 / +1 个小节<br>
   <kbd>←</kbd> <kbd>→</kbd> 后退 / 前进 2 秒（按住 Shift 为 5 秒）<br>
   <kbd>K</kbd> 播放 / 暂停 &nbsp; <kbd>-</kbd> <kbd>=</kbd> 减速 / 加速 &nbsp; <kbd>0</kbd> 速度归 1<br>
@@ -855,7 +921,8 @@ body.hidebar #reh{display:flex}
   <h3>反复 / 练习</h3>
   <b>段落条</b>自动从打点数据切出来（小节号往回跳 = 新的一遍），点一下跳到那一段；<br>
   播放时当前段落会自动高亮，所以点小节默认就落在你正在听的那一遍。<br>
-  <b>练习循环</b>：按「起点」再在谱面点一个小节 = 循环起点，「终点」同理（那一小节会唱完），再按「循环」开关。
+  <b>练习循环</b>：点工具栏上的「循环 ▾」打开设置，「起点」再在谱面点一个小节 = 循环起点，
+  「终点」同理（那一小节会唱完）。设完之后工具栏上那个「循环」键就是开关，不用再进弹层。
  </section>
 
  <section class="hs">
@@ -1061,6 +1128,10 @@ async function syncTrackSel(){
 /* 模式下拉：列出所有模式 + 新建入口 */
 function syncModeSel(){
   const sel=$('modeSel');if(!sel)return;
+  // 只有一套时间点时收起来：那种时候这个下拉里除了「标准」只剩「＋新建模式…」，
+  // 而新建模式在菜单里有正经入口（见菜单「音频模式」）。留着它就是占一个 select 的宽度
+  const many=Object.keys(MODES).length>1;
+  $('lblMode').style.display=many?'':'none';
   sel.innerHTML=Object.keys(MODES).map(n=>
     '<option value="'+esc(n)+'"'+(n===activeMode?' selected':'')+'>'+esc(n)+'</option>').join('')+
     '<option value="__new__">＋ 新建模式…</option>';
@@ -1648,6 +1719,29 @@ function setBarHidden(v){document.body.classList.toggle('hidebar',v);
 $('bBar').onclick=()=>setBarHidden(true);
 $('barShow').onclick=()=>setBarHidden(false);
 
+/* 演奏 / 编辑 两态。演奏态 = 工具栏只剩第 1 行、点谱面只跳转不落点。
+   判的是「这次会话要干什么」，所以开关本身是显式的（工具栏上那个「演奏」键），
+   不跟着 pointer 走；pointer 只决定**开机默认值**——触屏进演奏态、桌面进编辑态，
+   跟 hidebar 的默认同源（那台设备是拿来放音的），那段在文件末尾 boot() 之前。
+   不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认。 */
+function setPerf(v){
+  document.body.classList.toggle('perf',v);
+  $('bPerf').textContent=v?'演奏':'编辑';
+  $('bPerf').title=v?'当前是演奏模式：只放音、不给编辑。点一下切回编辑'
+                   :'当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）';
+  // 锁上就不该停在编辑工具上：留在「标小节」的话，下一次点谱面会落点，
+  // 而用户此刻的意图恰恰是「别动我的标注」
+  if(v&&$('mode').value!=='play'){$('mode').value='play';syncMode()}
+  if(v&&arm){arm=null;updLoop()}                 // 待命中的 A/B 落点也一起取消
+  if(v)closeLoopPop();
+  syncBarH();                                    // 行数变了，--barH 要跟上（菜单/弹层都钉在它下面）
+}
+$('bPerf').onclick=()=>setPerf(!document.body.classList.contains('perf'));
+
+/* A–B 循环设置弹层。行上只留「循环」开关，起点/终点/清除收在这里 */
+function closeLoopPop(){const p=$('loopPop');if(p)p.style.display='none'}
+$('bLoopMore').onclick=()=>{const p=$('loopPop');p.style.display=p.style.display==='none'?'block':'none'};
+
 /* 排练胶囊：收起工具栏后悬浮在谱面下方的极简控制条。各状态变化处调用 syncReh 刷新 */
 function syncReh(){
   const playing=!aud.paused&&!!aud.src;
@@ -1758,6 +1852,13 @@ document.addEventListener('click',e=>{
     $('plPop').style.display='none';
     // #reh 跟 #bar 同理：列表开着时点胶囊上的播放/上一首/下一首/进度条，
     // 列表该关，但**这一下本身要生效**。capture 阶段不 stopPropagation，事件才到得了按钮
+    if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar,#reh'))e.stopPropagation();
+  }
+  // 循环弹层：点外面关掉，这一次点击照旧不落到谱面上。
+  // 但 arm 待命时不能吞——「按起点、再点谱面选小节」的第二下就是落在谱面上的那一下，
+  // 吞掉就变成要点两次（armAB 里其实已经先把弹层关了，这条是兜底）
+  if($('loopPop').style.display!=='none'&&!e.target.closest('#loopPop')&&!arm){
+    closeLoopPop();
     if(!e.target.closest('#gen,#help,#lib,#panel,#bBar,#barShow,#dlg,#dlgMode,#bar,#reh'))e.stopPropagation();
   }
 },{capture:true});
@@ -2634,7 +2735,10 @@ function markChip(){
   $('chips').querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',+c.dataset.k===k));
 }
 function updateNow(o){
-  $('nowBox').textContent='现在 '+(o?((RUNS.length>1?runLabel(o.run)+' ':'')+'小节 '+o.m):'—');
+  // 没播到任何小节时整块收掉，不留「现在 —」。它在状态行里是 flex:none 的定宽块
+  //（#nowBox 的 min-width:112px），没事时占着一片空白，是这一行唯一可以不要的东西
+  $('nowBox').style.display=o?'':'none';
+  if(o)$('nowBox').textContent='现在 '+(RUNS.length>1?runLabel(o.run)+' ':'')+'小节 '+o.m;
 }
 
 /* ---------- A-B 循环：存小节+起始时间，范围每次现算，E 改了也不会指错 ---------- */
@@ -2668,6 +2772,7 @@ function updLoop(){
 function armAB(which){
   arm=arm===which?null:which;
   if(arm&&$('mode').value!=='play'){$('mode').value='play';syncMode()}   // 待命时自动切到播放模式，免得点谱面变成打点
+  if(arm)closeLoopPop();   // 待命后要点的那个小节在谱面上，弹层挡着就得先关它——顺手关掉，省一次点击
   updLoop();
   msg(arm?('点一个小节设为循环'+(arm==='a'?'起点':'终点')+'（再按一次取消）'):'已取消');
 }
@@ -3052,7 +3157,11 @@ window.addEventListener('keydown',e=>{
     e.preventDefault();
     if(timeMode)tap();else if(k===' ')aud.paused?aud.play():aud.pause();
   }
-  else if(k==='Backspace'){e.preventDefault();undo()}
+  // 撤销是唯一一个能从键盘够到的写操作（「撤销」按钮在演奏态已经被整行收掉了）。
+  // 不挡住它的话，「锁上就改不了标注」在键盘上是个窟窿——而且 Backspace 是很容易误按的键
+  else if(k==='Backspace'){e.preventDefault();
+    document.body.classList.contains('perf')
+      ? msg('演奏模式不能撤销——点工具栏的「演奏」切回编辑',1) : undo()}
   else if(k==='['||k===']'){e.preventDefault();
     setTap(tapM==null?firstUntimed():stepM(tapM,k===']'?1:-1))}
   else if(k==='ArrowLeft'){e.preventDefault();aud.currentTime=Math.max(0,aud.currentTime-(e.shiftKey?5:2))}
@@ -5218,6 +5327,10 @@ $('chkHoriz').onchange();                    // 同步 horiz 类与按钮文字
 // 那几条刻意不看 pointer（怕触屏笔记本被当成手机），这条恰恰要看，因为判的是"设备拿来干嘛"。
 // 不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认；想编辑就点 ▼ 或胶囊的 ↑
 if(matchMedia('(pointer:coarse)').matches)setBarHidden(true);
+// 同一台设备顺带进演奏态：收起工具栏和「锁成只放音」讲的是同一件事，只是前者管可见性、
+// 后者管工具栏展开后还剩什么。判据同源（pointer 而非窗口宽），触屏笔记本插鼠标时两者都不触发。
+// 不持久化，刷新即回默认；想编辑点工具栏上的「演奏」键
+if(matchMedia('(pointer:coarse)').matches)setPerf(true);
 boot();
 
 /* ---------- PWA：注册 service worker（https 才生效，file:// 下静默跳过） ---------- */

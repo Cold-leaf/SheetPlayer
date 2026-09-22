@@ -32,6 +32,10 @@ async def probe(b,w,h,touch,errs):
     # 这里有一条断言量的是工具栏里「☰ 菜单」的位置——不展开的话 #bar 是 display:none，
     # 它的 rect 恒为 [0,0]，那条会**假绿**（0 当然落在视口里）
     await pg.evaluate("setBarHidden(false)")
+    # 同一个「假绿」陷阱还多了一层：触屏开机同时进演奏态，编辑行整行 display:none，
+    # 而下面那条「曲目库在场时 ☰ 菜单仍完整可见」量的正是编辑行里的 #bLib——
+    # 不解锁的话它在隐藏行里，rect 恒为 [0,0]，又是 0 落在视口里
+    await pg.evaluate("setPerf(false)")
     await pg.set_input_files("#fPdf",PDF)
     await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
     # 直接写 display 而不是点 #bMenu——菜单按钮事件绑在别处，这里只要它开着

@@ -36,12 +36,18 @@ async def main():
         nx0=await pg.evaluate("M[0].nx*"+str(truth["W"]))
         print(ok(abs(nx0-(tx+8))<1), f"初始：故意偏 8px，未吸（直接塞数据不走吸附）: {nx0}")
 
-        # 编辑模式，抓中段，拖一下再松手
+        # 编辑模式，抓中段，拖一下再松手。
+        # 拖动方向是**朝着**真值挪（−4px），不是背着它挪。原来写的是 (+6,+3)，落点停在
+        # 真值 +14px 处——barWin 是 12px，那已经在吸附窗口之外了，当年能过纯属印刷小节线
+        # 的抗锯齿尾巴多够到 2px（实测把「偏 N px」扫一遍：基线在 +14 还能吸、+16 就不行，
+        # 新版卡在 +12）。也就是说那条断言测的不是吸附，是一个 1px 的巧合——换台机器、
+        # 换个缩放就会翻。挪到窗口内才是在测「松手会吸」这件事本身。
+        # 纵向仍要给够 +4：dragMove 的起手死区是 hypot<3px，只动横向容易卡在死区里。
         await pg.select_option("#mode","mark")
         el=await pg.query_selector('.mk[data-m="1"]'); r=await el.bounding_box()
         mx=r["x"]+r["width"]/2; my=r["y"]+r["height"]/2
         await pg.mouse.move(mx,my); await pg.mouse.down()
-        await pg.mouse.move(mx+6,my+3,steps=5); await pg.mouse.up(); await asyncio.sleep(0.3)
+        await pg.mouse.move(mx-4,my+4,steps=5); await pg.mouse.up(); await asyncio.sleep(0.3)
         got=await pg.evaluate("Math.round(M[0].nx*cvs[1].width)")
         print(ok(abs(got-tx)<=3), f"拖动松手后吸附: 存成 {got} (真值 {tx}±3)")
         print(ok("小节 1" in await pg.inner_text("#msg")), f'提示: "{await pg.inner_text("#msg")}"')

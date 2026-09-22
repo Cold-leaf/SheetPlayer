@@ -132,6 +132,10 @@ async def main():
         # 这个文件量工具栏/菜单/胶囊的触摸目标，按展开态量；不展开的话 #bar 是
         # display:none，量到的全是 0，而且 Playwright 的 click 会一路等到超时
         await pg.evaluate("setBarHidden(false)")
+        # 触屏开机同时进演奏态（只留演奏行、不给编辑）。这个文件要把工具栏里所有控件
+        # 都量一遍触摸目标，所以展开之外还要解锁——否则编辑行整行 display:none，
+        # 那些控件全被跳过，等于没量；后面 select_option("#mode") 也会等到超时
+        await pg.evaluate("setPerf(false)")
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pg.wait_for_timeout(300)
@@ -415,6 +419,10 @@ async def main():
         # 这个文件量工具栏/菜单/胶囊的触摸目标，按展开态量；不展开的话 #bar 是
         # display:none，量到的全是 0，而且 Playwright 的 click 会一路等到超时
         await pgm.evaluate("setBarHidden(false)")
+        # 触屏开机同时进演奏态，菜单里的编辑分区会整块收起。这条的前提是
+        # 「菜单内容远高于可视高度，所以帮助/安装必须放第一屏」——不解锁的话菜单短了一大截，
+        # 前提不成立，断言就成了空跑
+        await pgm.evaluate("setPerf(false)")
         await pgm.set_input_files("#fPdf",PDF)
         await pgm.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pgm.wait_for_timeout(300)

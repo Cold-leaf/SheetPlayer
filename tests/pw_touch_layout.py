@@ -79,6 +79,9 @@ async def main():
             # 手机/平板现在打开就收起工具栏（player.html 里 pointer:coarse 那段）。
             # 这个文件量的是工具栏的换行版式与屏高占比，必须在展开态量
             await pg.evaluate("setBarHidden(false)")
+            # 触屏开机同时进演奏态。这里量的是「工具栏展开、可编辑」时的换行版式与屏高占比，
+            # 所以展开之外还要解锁——否则 #rowEdit 整行收掉，量到的是演奏态那个更矮的工具栏
+            await pg.evaluate("setPerf(false)")
             await pg.set_input_files("#fPdf",PDF)
             await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
             await pg.wait_for_timeout(250)

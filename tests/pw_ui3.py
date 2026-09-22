@@ -40,12 +40,11 @@ async def main():
         print(ok(await pg.evaluate("$('chkHoriz').checked")==False and not await pg.evaluate("pagesEl.classList.contains('horiz')")), "再点一下切回纵向")
         await pg.evaluate("$('menu').style.display='none'")
 
-        # --- stat 单独一行 ---
-        rows=await pg.eval_on_selector_all("#bar .row","e=>e.length")
-        print(ok(rows==4), f"工具栏现在 {rows} 行（多了一行放统计）")
-        statRow=await pg.evaluate("""()=>{const s=document.getElementById('stat');const row=s.closest('.row');
-            return [...row.children].filter(c=>c.id==='stat').length}""")
-        print(ok(statRow==1), "stat 单独占一行")
+        # --- 工具栏按语义分三段（原来是「第 1 行精简 + 单独统计行」那种按历史堆的行） ---
+        rows=await pg.eval_on_selector_all("#bar .row","e=>e.map(r=>r.id)")
+        print(ok(rows==["rowPlay","rowEdit","rowState"]), f"工具栏三段: {rows}")
+        statRow=await pg.evaluate("""()=>{const s=document.getElementById('stat');return s.closest('.row').id}""")
+        print(ok(statRow=="rowState"), f"打点读数落在状态行里: {statRow}")
         # 统计文本横着排（一行内，不换行）
         wrap=await pg.evaluate("""()=>{const s=document.getElementById('stat');return getComputedStyle(s).whiteSpace}""")
         print(ok(wrap=="nowrap" or wrap=="normal"), f"stat 横排 white-space={wrap}")

@@ -21,6 +21,10 @@ async def main():
         # 一是断言里的可用高就该按展开态算；二是 Playwright 的 click/select_option
         # 要求元素可见，工具栏 display:none 时「工具」下拉那些动作会一路等到超时
         await pg.evaluate("setBarHidden(false)")
+        # 触屏开机同时进演奏态（工具栏只剩演奏行，且不给编辑）。这个文件量的是「工具栏
+        # 展开、能编辑」的几何，所以展开之外还要解锁——不然 #rowEdit 整行是 display:none，
+        # 下面 select_option("#mode") 会一路等到超时
+        await pg.evaluate("setPerf(false)")
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>cvs[1]&&document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
 

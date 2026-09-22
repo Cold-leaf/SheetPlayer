@@ -50,9 +50,9 @@ async def main():
         await pg.mouse.click(640, 850); await asyncio.sleep(0.2)
         print(ok(await pg.is_visible("#menu")==False), "点菜单外关闭")
 
-        # 工具栏行数：现在第一行精简，旧控件都进了菜单
-        rows=await pg.eval_on_selector_all("#bar .row","e=>e.length")
-        print(ok(rows==4), f"工具栏 {rows} 行（第一行精简 + 单独统计行）")
+        # 工具栏三段：演奏行 / 编辑行 / 状态行（见 pw_perf.py 的演奏态）
+        rows=await pg.eval_on_selector_all("#bar .row","e=>e.map(r=>r.id)")
+        print(ok(rows==["rowPlay","rowEdit","rowState"]), f"工具栏三段: {rows}")
 
         # 关键工作流仍可用：标小节 + 打时间 + 撤销 + 频谱
         await pg.select_option("#mode","mark")
