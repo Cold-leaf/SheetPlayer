@@ -37,7 +37,7 @@ async def main():
         print(ok(abs(nx0-(tx+8))<1), f"初始：故意偏 8px，未吸（直接塞数据不走吸附）: {nx0}")
 
         # 编辑模式，抓中段，拖一下再松手
-        await pg.select_option("#mode","edit")
+        await pg.select_option("#mode","mark")
         el=await pg.query_selector('.mk[data-m="1"]'); r=await el.bounding_box()
         mx=r["x"]+r["width"]/2; my=r["y"]+r["height"]/2
         await pg.mouse.move(mx,my); await pg.mouse.down()

@@ -22,7 +22,7 @@ async def main():
             {page:1,nx:.15,ny:.60,m:4,h:.05},{page:1,nx:.35,ny:.60,m:5,h:.05}];
           lastH=.05;E=[];syncNext();layout()}""")
         # 打开第 1 行的面板，应用到整行
-        await pg.select_option("#mode","edit")
+        await pg.select_option("#mode","mark")
         el=await pg.query_selector('.mk[data-m="1"]'); r=await el.bounding_box()
         await pg.mouse.click(r["x"]+r["width"]/2, r["y"]+r["height"]/2); await asyncio.sleep(0.3)
         print(ok("应用到整行" in await pg.inner_text("#pHAll")), "按钮文字:", await pg.inner_text("#pHAll"))

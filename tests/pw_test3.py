@@ -21,7 +21,7 @@ async def main():
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
 
         # 导入消息不再被残留消息吞掉
-        await pg.select_option("#mode","edit")   # 故意留下一条模式提示
+        await pg.select_option("#mode","mark")   # 故意留下一条模式提示
         open("/tmp/i1.json","w").write('{"M":[{"page":1,"nx":0.2,"ny":0.25,"m":1},{"page":1,"nx":0.45,"ny":0.25,"m":2}],"E":[{"m":1,"t":1},{"m":2,"t":3}]}')
         await pg.set_input_files("#fMap","/tmp/i1.json"); await asyncio.sleep(0.3)
         m=await pg.inner_text("#msg")

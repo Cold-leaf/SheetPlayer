@@ -69,17 +69,23 @@ async def main():
         dom=await pg.evaluate("""()=>{const d=document.querySelector('.mk');const b=d.querySelector('b');
             return {w:d.clientWidth,bw:b.clientWidth,ta:getComputedStyle(d).touchAction}}""")
         print(ok(dom["w"]==44 and dom["bw"]==3), f"命中带 {dom['w']}px + 可见线 {dom['bw']}px")
-        # 编辑模式下 touch-action:none，非编辑模式恢复
-        await pg.select_option("#mode","edit"); await asyncio.sleep(0.1)
+        # 标小节模式下 touch-action:none（手指压在竖线上起手拖动时不滚屏），其他模式恢复
+        await pg.select_option("#mode","mark"); await asyncio.sleep(0.1)
         ta_e=await pg.evaluate("getComputedStyle(document.querySelector('.mk')).touchAction")
-        print(ok(await pg.evaluate("pagesEl.classList.contains('editing')")), "编辑模式加了 .editing 类")
-        print(ok(ta_e=="none"), f"编辑模式 touch-action={ta_e}")
+        print(ok(await pg.evaluate("pagesEl.classList.contains('dragmk')")), "标小节模式加了 .dragmk 类")
+        print(ok(ta_e=="none"), f"标小节模式 touch-action={ta_e}（压在竖线上不滚屏）")
+        # 但勾上「整行补齐」是批量加，不给拖 → 这一档必须退回可滚
+        await pg.evaluate("$('chkAutoRow').checked=true;$('chkAutoRow').onchange()"); await asyncio.sleep(0.1)
+        ta_a=await pg.evaluate("getComputedStyle(document.querySelector('.mk')).touchAction")
+        print(ok(not await pg.evaluate("pagesEl.classList.contains('dragmk')") and ta_a=="auto"),
+              f"整行补齐 ON → 摘掉 .dragmk，touch-action={ta_a}")
+        await pg.evaluate("$('chkAutoRow').checked=false;$('chkAutoRow').onchange()"); await asyncio.sleep(0.1)
         await pg.select_option("#mode","play"); await asyncio.sleep(0.1)
         ta_p=await pg.evaluate("getComputedStyle(document.querySelector('.mk')).touchAction")
         print(ok(ta_p=="auto"), f"播放模式 touch-action={ta_p}（可正常滚动）")
 
         # --- 鼠标拖（走 pointer 事件）仍然好使 ---
-        await pg.select_option("#mode","edit")
+        await pg.select_option("#mode","mark")
         m0=await pg.evaluate("M[0].nx")
         el=await pg.query_selector('.mk[data-m="1"]'); rr=await el.bounding_box()
         mx=rr["x"]+rr["width"]/2; my=rr["y"]+rr["height"]/2

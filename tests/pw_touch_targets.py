@@ -240,7 +240,7 @@ async def main():
         await scan("频谱头",PANELS[5][1],PANELS[5][2])
         await pg.evaluate("specShow(false)")
 
-        await pg.select_option("#mode","edit"); await pg.wait_for_timeout(200)
+        await pg.select_option("#mode","mark"); await pg.wait_for_timeout(200)
         await pg.evaluate("openPanel(1)"); await pg.wait_for_timeout(300)
         await scan("标记面板",PANELS[7][1],PANELS[7][2])
         await pg.evaluate("$('panel').style.display='none'")

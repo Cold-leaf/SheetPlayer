@@ -223,7 +223,8 @@ body.hidebar #bar{display:none}
 
 .mk{position:absolute;width:44px;background:transparent;transform:translateX(-50%);
     pointer-events:auto;box-sizing:border-box;z-index:1}
-#pages.editing .mk{touch-action:none}              /* 编辑模式下抓竖线拖动，不滚动 */
+/* 能在竖线上起手拖动时才禁掉滚屏：只作用在 .mk 上，页面别处照常滚 */
+#pages.dragmk .mk{touch-action:none}
 .mk>b{position:absolute;left:50%;top:0;width:3px;height:100%;transform:translateX(-50%);
     border-radius:2px;background:#0af;opacity:.85}
 .mk>i{position:absolute;left:50%;top:-13px;transform:translateX(-50%);font-style:normal;
@@ -527,7 +528,6 @@ body.hidebar #reh{display:flex}
     <option value="play" selected>播放</option>
     <option value="mark">标小节</option>
     <option value="time">打时间</option>
-    <option value="edit">编辑点</option>
   </select></label>
   <!-- 半自动只属于「标小节」：它是标小节的疏密档，不是一个独立的工具。
        只在标小节模式下露面（syncMode 控制），别的模式藏起来 -->
@@ -779,15 +779,16 @@ body.hidebar #reh{display:flex}
   两侧的 ⏮/⏭ 切曲目，「⌃」展开工具栏。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
   频谱头上的提示文字窄屏不显示，但手势一样管用。<br>
-  <b>编辑点模式</b>下才能拖竖线：按住中段拖动挪位置，拖上/下端改长度；
-  这个模式下谱面<b>不随手势滚动</b>（免得拖动时页面乱跑），要先切回别的模式才能滚谱。
+  <b>标小节</b>模式下，手指压在竖线上就能拖：按住中段挪位置，拖上/下端改长度。
+  只有<b>压在竖线上起手</b>时谱面才不跟着滚（不然拖到一半页面乱跑）；从空白处起手照常滚屏，
+  所以不用为了滚谱切模式。勾着「整行补齐」时这一击只加点、不给拖——那时是批量加的模式。
  </section>
 
  <section id="helpMouse" class="hs">
   <h3>鼠标</h3>
-  标小节：点谱面加点 · 打时间：点圆点记时间（Shift+点 = 只把目标移过去，不记）<br>
-  播放：点圆点跳到<b>当前段落</b>的那一遍；<b>2 秒内再点同一个点</b>就换到下一遍<br>
-  编辑点：拖竖线中段挪位置，拖上/下端改长度，单击开面板（可设高度并应用到全部）
+  标小节：点没竖线的地方加点 · 压在已有竖线上拖中段挪位置、拖上/下端改长度、单击开面板（可设高度并套用到整行）<br>
+  打时间：点圆点记时间（Shift+点 = 只把目标移过去，不记）<br>
+  播放：点圆点跳到<b>当前段落</b>的那一遍；<b>2 秒内再点同一个点</b>就换到下一遍
  </section>
 
  <section id="helpKeys" class="hs">
@@ -2234,8 +2235,11 @@ function tap(){
 /* ---------- 鼠标 ---------- */
 pagesEl.onclick=e=>{
   if(!pdf)return;
-  const mode=$('mode').value;if(mode==='edit')return;
+  if(dragAte){dragAte=false;return}           // 这一击已判给编辑（拖拽 / 开面板），不再加点
   const g=geo(e);if(!g)return;
+  const mode=$('mode').value;
+  // 标小节模式下压在已有竖线上 = 编辑。正常路径走 pointerdown，这里兜住合成点击
+  if(mode==='mark'&&canEditMk()&&markUnder(g,e))return;
   const best=near(g);
 
   if(mode==='mark'){
@@ -2322,20 +2326,51 @@ function dragEnd(){
   styleMk(mk);save();
   if(hit)msg('小节 '+mk.m+'：'+hit);
 }
+/* 标小节模式下，落点压在已有竖线上 = 编辑它（拖拽 / 开面板），落在空白 = 加一个新点。
+   原来这是两个模式（标小节 / 编辑点），来回切只为了挪一根线；并进来之后一次点击就能定夺。
+   认哪根线用 DOM 命中盒：.mk 本身就是 44px 宽的命中区，浏览器已按 DOM 顺序消解了重叠，
+   比自己拿距离去挑最近的邻居更贴近「你看到的是哪根线」。
+   再叠一道横向范围：**不能超过到同行最近邻的一半**，否则想在既有线旁边补一个新点会被邻居
+   整个抢走（实测相邻小节线最窄 0.069 页宽，zoom 0.8 时才 33px）。有富余时放宽到命中盒的
+   半宽 22px —— 不然触屏得点在 3px 线附近的 8px 内，太难抓。 */
+const TAP_EDIT_MAX=22,TAP_EDIT_MIN=8;
+function canEditMk(){
+  // 整行补齐开着就是「批量加」，优先级最高：这一击只加点，不给编辑，
+  // 否则整行补齐没法在一行已经标过之后重跑（它本来是跳过重复点、把缺的补上）
+  return $('mode').value==='mark'&&!$('chkAutoRow').checked;
+}
+function markUnder(g,e){
+  const el=e.target.closest?e.target.closest('.mk'):null;
+  const mk=el?mkByM.get(+el.dataset.m):null;
+  if(!mk||mk.page!==g.page)return null;
+  const d=Math.abs((mk.nx-g.nx)*g.r.width);
+  const y0=mk.ny,y1=mk.ny+hOf(mk);                   // 同行判据同 lineMates
+  let half=1/0;
+  for(const o of M){
+    if(o===mk||o.page!==g.page)continue;
+    const p0=o.ny,p1=o.ny+hOf(o),ov=Math.min(y1,p1)-Math.max(y0,p0);
+    if(ov<=0||ov<0.5*Math.min(y1-y0,p1-p0))continue;  // 纵向不重叠 = 别的行/别的声部
+    half=Math.min(half,Math.abs(o.nx-mk.nx)*g.r.width/2);
+  }
+  return d<=Math.max(TAP_EDIT_MIN,Math.min(TAP_EDIT_MAX,half))?mk:null;
+}
+let dragAte=false;                        // 这次手势已被判成编辑 → 随后的 click 不再加点
 pagesEl.onpointerdown=e=>{
-  if($('mode').value!=='edit'||!pdf)return;
+  dragAte=false;                          // 上一轮没等到 click 就在这里清掉
+  if(!pdf||!canEditMk())return;
   const g=geo(e);if(!g)return;
-  const mk=near(g);
+  const mk=markUnder(g,e);
   if(!mk)return;
   drag={mk,mode:grabMode(mk,g),r:g.r,x0:e.clientX,y0:e.clientY,
         nx0:mk.nx,ny0:mk.ny,h0:hOf(mk),moved:false,pid:e.pointerId};
+  dragAte=true;
   pagesEl.setPointerCapture(e.pointerId);   // 拖出页面也继续收到 move/up
   e.preventDefault();
 };
 pagesEl.onpointermove=e=>{
   if(drag&&drag.pid===e.pointerId)return dragMove(e);
-  if($('mode').value!=='edit'||!pdf)return;
-  const g=geo(e);const mk=g&&near(g);
+  if(!pdf||!canEditMk()){pagesEl.style.cursor='';return}
+  const g=geo(e);const mk=g&&markUnder(g,e);
   pagesEl.style.cursor=!mk?'':(grabMode(mk,g)==='move'?'move':'ns-resize');
 };
 pagesEl.onpointerup=e=>{if(drag&&drag.pid===e.pointerId)dragEnd()};
@@ -3595,8 +3630,9 @@ async function importAudioFile(f){
   }catch(err){msg('音频加载失败：'+err.message,1)}
 }
 function syncMode(){
-  pagesEl.classList.toggle('editing',$('mode').value==='edit');
   const m=$('mode').value;
+  // 标小节模式下竖线可以直接拖着改（见 canEditMk）；touch-action 只在这一档禁掉
+  pagesEl.classList.toggle('dragmk',m==='mark'&&!$('chkAutoRow').checked);
   $('bUndo').style.display=(m!=='play')?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
   $('bGen').style.display=(m==='time')?'':'none';
   $('bSpec').style.display=(m==='time')?'':'none';
@@ -3607,9 +3643,14 @@ $('mode').onchange=()=>{
   if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
   if($('mode').value!=='play'&&arm){arm=null;updLoop()}
   if($('mode').value==='time'&&!specOn())specShow(true);   // 打时间时把频谱条自动拉出来
-  msg({mark:$('chkAutoRow').checked?'点一下行首，自动补齐整行小节':'点谱面加小节标记',
-       time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍',
-       edit:'拖中段挪位置，拖两端改长度，单击开面板'}[$('mode').value]);
+  msg({mark:$('chkAutoRow').checked?'点一下行首，自动补齐整行小节'
+                                    :'点谱面加小节标记；压在已有竖线上可以拖，单击开面板',
+       time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍'}[$('mode').value]);
+};
+// 勾上/取消「整行补齐」会改变这一击是「加」还是「编辑」，光标和 touch-action 要跟着走
+$('chkAutoRow').onchange=()=>{
+  syncMode();pagesEl.style.cursor='';
+  if($('chkAutoRow').checked)msg('整行补齐：点一下行首自动补齐整行（此时竖线不可拖，避免和加点抢）');
 };
 $('nextN').onchange=()=>{const v=Math.max(1,Math.round(+$('nextN').value||1));nextM=v;$('nextN').value=v};
 $('bSkip').onclick=()=>{

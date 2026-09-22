@@ -32,7 +32,7 @@ async def main():
               f"竖线: 命中带{geo['w']}px + 可见线{geo['bw']}px 高{geo['h']}px, 编号'{geo['lab']}'")
 
         # --- 拖中段挪位置 ---
-        await pg.select_option("#mode","edit")
+        await pg.select_option("#mode","mark")
         m0=await pg.evaluate("({nx:M[0].nx,ny:M[0].ny,h:M[0].h})")
         el=await pg.query_selector('.mk[data-m="1"]'); r=await el.bounding_box()
         midx,midy=r["x"]+r["width"]/2, r["y"]+r["height"]/2
@@ -69,7 +69,7 @@ async def main():
               f"新点沿用上次高度: {await pg.evaluate('M[M.length-1].h')}")
 
         # --- 面板改高度 + 应用到全部 ---
-        await pg.select_option("#mode","edit")
+        await pg.select_option("#mode","mark")
         el=await pg.query_selector('.mk[data-m="2"]'); r=await el.bounding_box()
         await pg.mouse.click(r["x"]+r["width"]/2, r["y"]+r["height"]/2); await asyncio.sleep(0.3)
         print(ok(await pg.is_visible("#pH")), f"面板出现高度输入: {await pg.input_value('#pH')}px")

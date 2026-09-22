@@ -49,7 +49,7 @@ async def main():
             print(ok(gap>=0), f"[桌面] {name}不与工具栏重叠: 顶部在工具栏下沿 +{gap:.0f}px")
             print(ok(r["bottom"]<=900+1), f"       {name}底部不出屏: {r['bottom']:.0f} ≤ 900")
 
-        # 面板也检查（编辑点模式打开）
+        # 面板也检查（标记面板，任何模式下都能开）
         await pg.evaluate("M=[{page:1,nx:.3,ny:.3,m:1,h:.08}];E=[];syncNext();layout();openPanel(1)")
         await pg.wait_for_timeout(200)
         bar,items=await check(pg,"desktop-panel")

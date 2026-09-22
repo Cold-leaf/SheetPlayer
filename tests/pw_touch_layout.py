@@ -96,7 +96,7 @@ async def main():
                 }""",scen)
                 await pg.wait_for_timeout(300)
                 # 打开标记面板，量它真实的锚定方式（底部抽屉 vs 右上角浮层）
-                await pg.select_option("#mode","edit"); await pg.wait_for_timeout(150)
+                await pg.select_option("#mode","mark"); await pg.wait_for_timeout(150)
                 await pg.evaluate("openPanel(1)"); await pg.wait_for_timeout(250)
                 st=await pg.evaluate("()=>({runs:RUNS.length,chips:document.querySelectorAll('#chips .chip').length,"
                                      "cw:$('chipWrap').style.display})")

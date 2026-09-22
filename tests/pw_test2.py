@@ -80,13 +80,16 @@ async def main():
         print(ok(near==20.0), f"普通点击跳最近一遍 (t=19 时点小节1): {near}s (期望 20.0)")
 
         # --- 撤销覆盖拖动 ---
-        await pg.select_option("#mode","edit")
+        await pg.select_option("#mode","mark")
         mk = await pg.query_selector('.mk[data-m="2"]'); r = await mk.bounding_box()
         p0 = await pg.evaluate("M.find(x=>x.m===2).nx")
-        # 竖线上下两端是改长度的手柄，挪位置要抓中段
+        # 竖线上下两端是改长度的手柄，挪位置要抓中段。
+        # 横向也要落在竖线附近：命中盒有 44px 宽，但「压在竖线上」才判编辑（8px 内），
+        # 抓盒子的左边缘离真线 21px，会被当成「点空白」而不是拖 —— 那正是加点。
         cy0=r["y"]+r["height"]/2
-        await pg.mouse.move(r["x"]+1, cy0); await pg.mouse.down()
-        await pg.mouse.move(r["x"]+201, cy0+60, steps=8); await pg.mouse.up()
+        cx0=r["x"]+r["width"]/2
+        await pg.mouse.move(cx0, cy0); await pg.mouse.down()
+        await pg.mouse.move(cx0+200, cy0+60, steps=8); await pg.mouse.up()
         p1 = await pg.evaluate("M.find(x=>x.m===2).nx")
         await pg.evaluate("undo()")
         p2 = await pg.evaluate("M.find(x=>x.m===2).nx")
