@@ -14,9 +14,11 @@ socketserver.TCPServer.allow_reuse_address=True
 srv=socketserver.TCPServer(("127.0.0.1",8891),H); threading.Thread(target=srv.serve_forever,daemon=True).start()
 def ok(c): return "OK   " if c else "FAIL "
 
-SONG="SH_松花江上[线][SATB+T+Pn]标注"      # 曲线名 + 两个方括号标记
+SONG="SH_松花江上[线][SATB+T+Pn]标注"      # 库里的项目名（带上前缀和两个方括号标记）
 SL="四海"                                   # 不合命名约定：没有前缀、没有方括号
 CQ="CQ_传奇[线][SATB+Pn]标注"
+# 卡片上只显示曲名，所以按卡片定位时用的是这个（不是项目名）
+T_SONG,T_SL,T_CQ="松花江上","四海","传奇"
 
 async def main():
     errs=[]
@@ -34,22 +36,37 @@ async def main():
             await pg.wait_for_function("()=>$('dlg').style.display==='none'",timeout=8000)
             await pg.wait_for_timeout(150)          # 拉开相邻项目的时间戳，排序断言才有意义
 
-        async def importPdf(nm):
-            card=pg.locator(".libCard",has_text=nm).first
+        async def enterScore():
+            # 先等 loadPdfBlob 走到 showLib(false)，再等第一页渲染完。
+            # 只等 data-done 不行：那是"这一页渲染过了"的记号，上一首曲子就已经是 true，
+            # 会立刻返回——等于没等，后面 backToLib 就跟还没读完的那次导入抢上了
+            await pg.wait_for_function("()=>$('lib').style.display==='none'",timeout=40000)
+            await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
+
+        async def importPdf(title):
+            card=pg.locator(".libCard",has_text=title).first
             async with pg.expect_file_chooser() as fc:
                 await card.locator("button.open").click()
             await (await fc.value).set_files(PDF)
-            await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
+            await enterScore()
 
-        async def backToLib():
+        async def open(title,expect):
+            await pg.click(f".libCard:has-text('{title}') button.open")
+            await enterScore()
+            await pg.wait_for_function(f"()=>document.querySelectorAll('.mk').length==={expect}",timeout=20000)
+
+        async def backToLib(n):
             await pg.evaluate("$('bLib').onclick()")
-            await pg.wait_for_timeout(500)
+            await pg.wait_for_function("()=>$('lib').style.display==='flex'",timeout=10000)
+            await pg.wait_for_function(f"()=>document.querySelectorAll('.libCard').length==={n}",timeout=10000)
+            await pg.wait_for_timeout(200)
 
-        async def mark(n):
+        async def mark(n,expect):
             await pg.select_option("#mode","mark")
             bb=await (await pg.query_selector('.page[data-page="1"]')).bounding_box()
             for i in range(n):
                 await pg.mouse.click(bb["x"]+bb["width"]*(0.3+0.15*i),bb["y"]+bb["height"]*0.4)
+            await pg.wait_for_function(f"()=>document.querySelectorAll('.mk').length==={expect}",timeout=15000)
             await asyncio.sleep(1.0)                # > save() 的 400ms 防抖，让 marks.ts 真的落库
 
         async def titles():
@@ -64,9 +81,9 @@ async def main():
                                           .split(' ').filter(Boolean).length""")
 
         # --- 0. 建 3 个项目。顺序很讲究：A 先拿谱子（updatedAt 最旧），B、C 依次更晚 ---
-        await newProject(SONG); await importPdf(SONG); await backToLib()
-        await newProject(SL);   await importPdf(SL);   await backToLib()
-        await newProject(CQ);   await importPdf(CQ);   await backToLib()
+        await newProject(SONG); await importPdf(T_SONG); await backToLib(1)
+        await newProject(SL);   await importPdf(T_SL);   await backToLib(2)
+        await newProject(CQ);   await importPdf(T_CQ);   await backToLib(3)
         print(ok(await ncards()==3), f"库里 {await ncards()} 张卡片")
 
         # --- 1. 曲名拆开显示：曲名在 .nm .t 里、方括号标记收进 .nm .tags 一行小字 ---
@@ -95,16 +112,17 @@ async def main():
                     n:btns.length,rows:new Set(btns).size}}""")
         print(ok(bands["nm"] is not None and bands["nm"]<bands["meta"]<bands["acts"]),
               f"名字 → 元信息 → 操作 自上而下（{bands['nm']} < {bands['meta']} < {bands['acts']}）")
-        print(ok(bands["n"]==5), f"5 个按钮一个没少（{bands['n']} 个，占 {bands['rows']} 行）")
+        # 一行放得下是设计意图（卡片高度才不失控），所以连行数一起断言
+        print(ok(bands["n"]==5 and bands["rows"]==1),
+              f"5 个按钮一个没少、且排在一行（{bands['n']} 个，占 {bands['rows']} 行）")
 
         # --- 3. 排序：标注过的排到最前（updatedAt 最旧也算最近动过）---
         t0=await titles()
         print(ok(t0==["传奇","四海","松花江上"]),
               f"初始按 updatedAt 倒序（最后建的在最前）: {t0}")
-        await pg.click(".libCard:has-text('松花江上') button.open")
-        await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===1",timeout=30000)
-        await mark(1)
-        await backToLib()
+        await open(T_SONG,0)
+        await mark(1,1)
+        await backToLib(3)
         t1=await titles()
         print(ok(t1[0]=="松花江上"),
               f"刚标注过的《松花江上》冒到最前（它的 updatedAt 反而最旧）: {t1}")
@@ -141,7 +159,8 @@ async def main():
         await search("")
         print(ok(await ncards()==3), f"清空搜索后 {await ncards()} 张卡片全回来")
 
-        # --- 6. 网格列数随宽度变：一列 300px 是算出来的（5 个按钮在触屏 44px 下要一行放得下）---
+        # --- 6. 网格列数随宽度变。300px 的下限是照着「5 个按钮排一行」定的（桌面 288px、
+        #        触屏 44px 下 298px），所以顺带钉住每列不窄于 300、手机上一列也不横向溢出 ---
         w=await pg.evaluate("()=>Math.round(document.querySelector('.libCard').getBoundingClientRect().width)")
         print(ok(await cols()==3 and w>=300), f"1500px：{await cols()} 列，卡片 {w}px 宽")
         await pg.set_viewport_size({"width":834,"height":1194}); await pg.wait_for_timeout(300)

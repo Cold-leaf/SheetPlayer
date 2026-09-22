@@ -138,10 +138,13 @@ button:active{opacity:.65}
   #chipWrap{flex:none;min-width:auto}
   #chips{flex-wrap:nowrap}
 }
-.chip{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:15px;padding:5px 13px;
+/* .schip（曲目库的排序档）跟 .chip 同款外观，但**故意不共用一个类名**：
+   探针里有几处直接数 document.querySelectorAll('.chip') 段落条
+   （pw_gen / pw_fix / pw_test4），合并成一个类名会把排序 chip 也数进去 */
+.chip,.schip{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:15px;padding:5px 13px;
       cursor:pointer;white-space:nowrap;font-size:13px;flex:none;user-select:none}
-.chip:hover{background:var(--surface-2)}
-.chip.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.chip:hover,.schip:hover{background:var(--surface-2)}
+.chip.on,.schip.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
 .chip small{opacity:.65;margin-left:7px}
 #loopBox{display:flex;gap:4px;align-items:center;flex:none}
 #loopTxt{color:var(--info);min-width:130px}
@@ -402,7 +405,7 @@ body.hidebar #bar{display:none}
 /* ---------- 曲目库 ---------- */
 #lib{position:fixed;inset:0;background:var(--bg);z-index:40;display:none;flex-direction:column;color:var(--text);
   overflow:auto}
-/* 滚动条挂在整幅 #lib 上，不是挂在居中的 880px 内容栏上——否则宽屏下滚动条会停在
+/* 滚动条挂在整幅 #lib 上，不是挂在居中的内容栏上——否则宽屏下滚动条会停在
    离屏幕右边几百 px 的地方，看上去像浮在页面中间。#libBox 只管「限宽 + 居中」。
    min-height:100% 保证内容少时也铺满（短列表的悬停高亮不会只到半截） */
 /* 1100 而不是 880：库里一行一首改成网格后，880 只放得下两列，宽屏上第三列正好被挤掉 */
@@ -428,8 +431,8 @@ body.hidebar #bar{display:none}
 #libQ::placeholder{color:var(--text-dim)}
 /* 一行一首 → 网格。auto-fill 而不是加断点：项目只承认 max-width:700px 那一个版式断点，
    不引入第二个魔数（宽度自己会选：1500px 三列 / iPad 竖屏 834 两列 / 手机一列）。
-   300px 是算出来的：5 个按钮在触屏 44px 下横排要 ~284px（含 4×8px gap），
-   再窄按钮就换行、卡片高度失控 */
+   300px 这个下限是照着「5 个按钮排一行」定的：按钮连 gap 实测要 288px（「加入列表」
+   4 个字 72 + 其余 4 个各 46 + 4×8px gap），所以卡片宽过 ~320px 就一行放得下 */
 #libList{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
 /* 卡片三段：名字 / 元信息 / 操作。原来 10 个元素等重摊在一行里，扫视时没有落点 */
 .libCard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;
@@ -441,10 +444,18 @@ body.hidebar #bar{display:none}
 .libCard .nm .t{font-size:16px;font-weight:600;word-break:break-all}
 .libCard .nm .tags{font-size:11px;color:var(--text-dim);word-break:break-all}
 .libCard .nm small{color:var(--accent);font-weight:400;font-size:12px}
-/* 数字用等宽数字：12 行并排时长度不一也不会左右抖（#tTxt / #zoomVal / .sz 同款） */
-.libCard .meta{color:var(--text-dim);font-size:12px;font-variant-numeric:tabular-nums;word-break:break-all}
+/* 数字用等宽数字：12 行并排时长度不一也不会左右抖（#tTxt / #zoomVal / .sz 同款）。
+   换行用 anywhere 而不是 break-all：break-all 会把「更新 9/22」断成「更」/「新 9/22」，
+   anywhere 是先找空格、实在放不下才断字（模式名可能是长英文，不能不给断） */
+.libCard .meta{color:var(--text-dim);font-size:12px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+/* 光有 anywhere 还不够：「更新 9/22」还是会从中间断开（贪婪换行会挑最后那个机会，
+   哪怕那是在「更」和「新」之间）。日期这一小截锁成整体，让它整体挪到下一行 */
+.libCard .meta .upd{white-space:nowrap}
 .libCard .acts{display:flex;flex-wrap:wrap;gap:8px}
-.libCard button{background:var(--surface-2);color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:13px}
+/* 横向 padding 收到 10px（原来 14px）：一行 5 个按钮才排得下——14px 时总宽 328px，
+   而三列网格里卡片内宽只有 319px，「加入列表」就被挤到第二行、卡片白白高一截。
+   触屏那 44px 的下限由 min-width 兜着，收到 10px 也够点（最窄的「打开」46px） */
+.libCard button{background:var(--surface-2);color:var(--text);border:1px solid var(--border);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px}
 .libCard button.open{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600}
 .libCard button.del{background:transparent;color:var(--danger);border-color:transparent}
 .libEmpty{color:var(--text-dim);text-align:center;padding:46px 0;line-height:2.2;font-size:14px}
@@ -782,8 +793,8 @@ body.hidebar #reh{display:flex}
   </div>
   <div id="libTools">
    <input id="libQ" type="search" placeholder="搜曲名 / 别名" autocomplete="off" aria-label="搜曲名或别名">
-   <button class="chip on" data-sort="recent" title="按最近动过排——标注也算，刚标完的曲子会冒到最前">最近</button>
-   <button class="chip" data-sort="name" title="按曲名的拼音顺序排">曲名</button>
+   <button class="schip on" data-sort="recent" title="按最近动过排——标注也算，刚标完的曲子会冒到最前">最近</button>
+   <button class="schip" data-sort="name" title="按曲名的拼音顺序排">曲名</button>
   </div>
   <div id="plPanel">
    <div id="plHd">
@@ -4360,10 +4371,24 @@ addEventListener('popstate',e=>{
 });
 function showLib(v){
   $('lib').style.display=v?'flex':'none';
-  if(v)drawLib();
+  if(v){
+    drawLib();
+    // 桌面上一进库就能直接敲字过滤。触屏不抢焦点：一进库就弹软键盘，列表被顶掉半屏
+    const q=$('libQ');
+    if(q&&matchMedia('(pointer:fine)').matches)q.focus();
+  }
   syncView(v?'lib':'score');
 }
 $('libClose').onclick=()=>showLib(false);
+/* 搜索 + 排序：只重画 #libList，不重读 IndexedDB（drawLib 就是为这个才拆开的）。
+   输入框即时回显、重渲染防抖——照 #zoom 滑杆那处的写法，停顿 120ms 再动 DOM */
+let libQT=null;
+$('libQ').oninput=()=>{clearTimeout(libQT);libQT=setTimeout(()=>renderLib(libRows),120)};
+document.querySelectorAll('#libTools button').forEach(b=>b.onclick=()=>{
+  libSort=b.dataset.sort;
+  document.querySelectorAll('#libTools button').forEach(x=>x.classList.toggle('on',x===b));
+  renderLib(libRows);
+});
 // 工具栏的「PDF」和「＋ 导入谱子」都是"随便导一份"：清掉可能残留的待挂载项目，
 // 否则用户上次点「打开」却没选文件的话，这一次会莫名其妙挂到那个项目上
 // 只认点在 label 上的：程序化的 fPdf.click() 也会冒泡到这里，而那正是 openTrack /
@@ -4399,31 +4424,66 @@ $('bLib').onclick=()=>{
   if(!idb)return msg('曲目库这会儿打不开（IndexedDB 不可用）——先关掉本应用的其它标签页再刷新',1);
   showLib(true);       // 音频继续放，进曲库只是盖一层，不打断
 };
-async function drawLib(){
-  const list=$('libList');if(!idb)return;
+/* 曲目库拆成「读」和「画」两半：搜索和排序只该重画 #libList，不该重读一遍 IndexedDB。
+   读的那半顺手改成并发——原来是 12 个项目串行 12 个来回。 */
+let libRows=[],libSort='recent';   // libRows 留着，搜索/切换排序在它上面重画
+async function loadLibRows(){
   const ps=await idbAll(idb,'projects');
-  ps.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-  const rows=[];
-  for(const p of ps){
-    const a=await idbGet(idb,'marks',p.id),d=a?a.data:null;
-    rows.push({p,d});
+  return Promise.all(ps.map(async p=>{
+    const a=await idbGet(idb,'marks',p.id);
+    return {p,d:a?a.data:null};
+  }));
+}
+// 「最近动过」= 结构变更（updatedAt）与标注落盘（marks.ts）里更晚的那个。
+// updatedAt 只在导入谱子/换谱/改名/加音频时写，标注走 marks 表根本不碰它——
+// 所以只看 updatedAt 的话，刚标完两小时的曲子根本不会冒头。
+const effTs=(p,d)=>Math.max((p&&p.updatedAt)||0,(d&&d.ts)||0);
+// 卡片上显示的必须是排序用的那个值，否则列表看着像没排序（排在头一个、却写着上周）
+function tsShort(ts){
+  if(!ts)return{short:'—',full:''};
+  const t=new Date(ts);
+  return {short:(t.getMonth()+1)+'/'+t.getDate(),full:t.toLocaleString()};
+}
+// 搜索范围 = 匹配键（原名/别名/去尾缀显示名）+ 卡片上真正显示的那两行。
+// 后两者不能省：曲名是「删掉标记后剩下的」，未必是原串的子串
+//（SH_松花江[线]上 的曲名是「松花江上」），标记更是被括在方括号里
+function libHay(p){
+  const nm=splitName(dispName(p.name));
+  // 各键之间用 U+0001 粘起来再查：直接拼的话，上一个键的尾巴接上下一个键的开头也算命中
+  return nameKeys(p).concat([nm.title],nm.tags).join('\u0001').toLowerCase();
+}
+const sortName=p=>{const n=splitName(dispName(p.name));return n.title||dispName(p.name)};
+function renderLib(rows){
+  const list=$('libList');if(!list)return;
+  const raw=($('libQ')?$('libQ').value:'').trim(),q=raw.toLowerCase();
+  const arr=(rows||[]).filter(x=>!q||libHay(x.p).includes(q));
+  if(libSort==='name')arr.sort((a,b)=>sortName(a.p).localeCompare(sortName(b.p),'zh'));
+  else arr.sort((a,b)=>effTs(b.p,b.d)-effTs(a.p,a.d));
+  if(!arr.length){
+    // 「一首都没有」和「搜没了」是两件事：前者要引导怎么建项目，后者只要提示换个词
+    list.innerHTML=(rows&&rows.length)
+      ? '<div class="libEmpty">没有匹配「'+esc(raw)+'」的曲目。<br>换个词试试，或者把搜索框清空。</div>'
+      : '<div class="libEmpty">还没有项目。<br>点上面的「＋ 新建项目」起个名字，<br>再在它那一行点「＋ 导入谱子」选一份谱子。</div>';
+    return;
   }
-  if(!rows.length){
-    list.innerHTML='<div class="libEmpty">还没有项目。<br>点上面的「＋ 新建项目」起个名字，<br>再在它那一行点「＋ 导入谱子」选一份谱子。</div>';
-  }else{
-    list.innerHTML=rows.map(({p,d})=>{
-      const nb=d&&d.M?d.M.length:0;
-      // v6 起时间点在 modes 里分套；老数据（v5）才在顶层 E。多套时按模式分别显示。
-      const ms=d&&d.modes?Object.entries(d.modes).map(([n,v])=>[n,(v&&v.E||[]).length])
-                         :(d&&d.E?[['',d.E.length]]:[]);
-      const total=ms.reduce((a,x)=>a+x[1],0);
-      const neTxt=ms.length>1?ms.map(([n,c])=>esc(n)+' '+c).join(' / '):String(total);
-      return '<div class="libCard'+(p.pdf?'':' legacy')+'">'+
-        '<span class="nm" title="'+esc(p.name)+'">'+esc(dispName(p.name))+
-          (p.pdf?'':'<small>等待导入谱子</small>')+'</span>'+
-        '<span class="mi">已标 '+nb+' 小节</span><span class="mi">已打 '+neTxt+' 时间点</span>'+
-        '<span class="mi">音频 '+(p.audios?p.audios.length:0)+'</span>'+
-        '<span class="st">更新 '+(p.updatedAt?new Date(p.updatedAt).toLocaleString():'—')+'</span>'+
+  list.innerHTML=arr.map(({p,d})=>{
+    const nb=d&&d.M?d.M.length:0;
+    // v6 起时间点在 modes 里分套；老数据（v5）才在顶层 E。多套时按模式分别显示。
+    const ms=d&&d.modes?Object.entries(d.modes).map(([n,v])=>[n,(v&&v.E||[]).length])
+                       :(d&&d.E?[['',d.E.length]]:[]);
+    const total=ms.reduce((a,x)=>a+x[1],0);
+    const neTxt=ms.length>1?ms.map(([n,c])=>esc(n)+' '+c).join(' / '):String(total);
+    const nm=splitName(dispName(p.name)),ts=tsShort(effTs(p,d));
+    return '<div class="libCard'+(p.pdf?'':' legacy')+(p.id===pid?' cur':'')+'">'+
+      // 完整名字留在 title 和匹配键里，卡片上只铺「曲名 + 一行标记」
+      '<div class="nm" title="'+esc(p.name)+'">'+
+        '<span class="t">'+esc(nm.title)+'</span>'+
+        (nm.tags.length?'<span class="tags">'+esc(nm.tags.join(' · '))+'</span>':'')+
+        (p.pdf?'':'<small>等待导入谱子</small>')+
+      '</div>'+
+      '<div class="meta">已标 '+nb+' 小节 · 已打 '+neTxt+' 时间点 · 音频 '+(p.audios?p.audios.length:0)+
+        ' · <span class="upd" title="'+esc(ts.full)+'">更新 '+ts.short+'</span></div>'+
+      '<div class="acts">'+
         // 还没有谱子的项目，这一格就是它的导入入口——两件事本来就是同一次点击
         //（openTrack 对没有 pdf 的项目就是「选一次文件挂到本项目」）
         '<button class="open" data-h="'+esc(p.id)+'"'+(p.pdf?'':' title="给这个项目选一份谱子（挂到本项目上，不靠文件名猜）"')+'>'+
@@ -4431,14 +4491,19 @@ async function drawLib(){
         '<button class="pladd" data-h="'+esc(p.id)+'">加入列表</button>'+
         (p.pdf?'<button class="repl" data-h="'+esc(p.id)+'" title="换一份谱子（比如加完笔记重新导出的那份）。标注原样保留，旧谱子进历史">换谱</button>':'')+
         '<button class="ren" data-h="'+esc(p.id)+'">改名</button>'+
-        '<button class="del" data-h="'+esc(p.id)+'">删除</button></div>';
-    }).join('');
-    list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
-    list.querySelectorAll('.pladd').forEach(b=>b.onclick=()=>plAdd(b.dataset.h));
-    list.querySelectorAll('.repl').forEach(b=>b.onclick=()=>{pendPid=b.dataset.h;$('fPdf').click()});
-    list.querySelectorAll('.ren').forEach(b=>b.onclick=()=>renTrack(b.dataset.h));
-    list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
-  }
+        '<button class="del" data-h="'+esc(p.id)+'">删除</button>'+
+      '</div></div>';
+  }).join('');
+  list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
+  list.querySelectorAll('.pladd').forEach(b=>b.onclick=()=>plAdd(b.dataset.h));
+  list.querySelectorAll('.repl').forEach(b=>b.onclick=()=>{pendPid=b.dataset.h;$('fPdf').click()});
+  list.querySelectorAll('.ren').forEach(b=>b.onclick=()=>renTrack(b.dataset.h));
+  list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
+}
+async function drawLib(){
+  if(!idb)return;
+  libRows=await loadLibRows();
+  renderLib(libRows);
   try{                                            // 存储占用（拿不到就不显示，纯装饰）
     const est=await navigator.storage.estimate();
     $('libInfo').textContent=est.usage!=null?('占用 '+(est.usage/1048576).toFixed(1)+' MB'+

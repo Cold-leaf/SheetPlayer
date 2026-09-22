@@ -7,7 +7,7 @@ const src=fs.readFileSync(path.join(__dirname,'..','player.html'),'utf-8');
 const m=src.match(/\/\*PURE-START\*\/([\s\S]*?)\/\*PURE-END\*\//);
 if(!m)throw new Error('player.html 里找不到 PURE 块');
 const P=new Function(m[1]+'; return {sha256Js,hexOf,sha256Hex,legacyKey,lsNameOf,'+
-  'newId,dispName,nameKeysOf,nameKeys,findByNameIn,nameTaken};')();
+  'newId,dispName,splitName,nameKeysOf,nameKeys,findByNameIn,nameTaken};')();
 
 function eq(l,a,b){const A=JSON.stringify(a),B=JSON.stringify(b);
   console.log((A===B?'PASS  ':'FAIL  ')+l+(A===B?'':'\n   got '+A+'\n   exp '+B))}
@@ -64,6 +64,35 @@ eq('dispName 去下载器尾缀',P.dispName('传奇_0_1787155482878.pdf'),'传�
 eq('dispName 不误伤 _2024_08',P.dispName('传奇_2024_08.pdf'),'传奇_2024_08');
 eq('dispName 音频',P.dispName('现场.mp3'),'现场');
 eq('dispName 空',P.dispName(''),'');
+
+// --- 曲名拆分：卡片上曲名放大、[线][SATB+T+Pn] 这类标记收成一行小字 ---
+eq('splitName 带方括号',P.splitName('SH_松花江上[线][SATB+T+Pn]标注'),{title:'松花江上',tags:['线','SATB+T+Pn']});
+eq('splitName 不带标记',P.splitName('四海'),{title:'四海',tags:[]});
+eq('splitName 多段标记（最后一段是人名）',P.splitName('ZS_在水一方[线][SATB+NA+Pn][金巍]'),
+  {title:'在水一方',tags:['线','SATB+NA+Pn','金巍']});
+eq('splitName 方括号在中间',P.splitName('SK_[线]斯卡布罗集市'),{title:'斯卡布罗集市',tags:['线']});
+eq('splitName 尾缀「校对」同样去掉',P.splitName('CQ_传奇[线]校对'),{title:'传奇',tags:['线']});
+eq('splitName 只有标记、没剩曲名时退回整串',P.splitName('标注'),{title:'标注',tags:[]});
+eq('splitName 空方括号不算标记',P.splitName('BJ_北京喜讯[]'),{title:'北京喜讯',tags:[]});
+eq('splitName 不动名字中间的「标注」',P.splitName('标注说明[线]'),{title:'标注说明',tags:['线']});
+eq('splitName 空',P.splitName(''),{title:'',tags:[]});
+eq('splitName 入参已去扩展名',P.splitName(P.dispName('WH_我和我的祖国[线][SATB+NA+Pn]标注.pdf')),
+  {title:'我和我的祖国',tags:['线','SATB+NA+Pn']});
+
+// 库里真实存在的 12 个名字（annotations.json）跑一遍：曲名里不该再剩方括号、XX_ 前缀、扩展名。
+// 后两条——「四海」「十送红军」不按这套约定命名——正是"拆不出来就整串当曲名"要保护的
+const realNames=['SH_松花江上[线][SATB+T+Pn]标注.pdf','MT_明天会更好[线][SATB+S+Pn].pdf','四海',
+  'BJ_北京喜讯到边寨[线][SATB+ST+Pn].pdf','AD_Anotherdayofsun[线][SATB+NA+Pn].pdf',
+  'ZS_在水一方[线][SATB+NA+Pn][金巍].pdf','CQ_传奇[线][SATB+NA+Pn]标注.pdf',
+  'SK_斯卡布罗集市[线][TTBB+NA+WO]标注','AL_AslongasIhavemusic[线][SATB+NA+Pn]标注.pdf',
+  'WH_我和我的祖国[线][SATB+NA+Pn]标注.pdf','十送红军','DN_当那一天来临[线][SATB+ST+Pn].pdf'];
+const split=realNames.map(n=>{const r=P.splitName(P.dispName(n));return {...r,raw:n}});
+eq('12 个真实曲名全部拆干净（没剩方括号/前缀/扩展名）',
+  split.filter(r=>/[\[\]]/.test(r.title)||/^[A-Z]{2}_/.test(r.title)||/\./.test(r.title)).map(r=>r.raw),[]);
+eq('真实数据：带标记的曲名',split.filter(r=>r.tags.length).map(r=>r.title),
+  ['松花江上','明天会更好','北京喜讯到边寨','Anotherdayofsun','在水一方','传奇','斯卡布罗集市',
+   'AslongasIhavemusic','我和我的祖国','当那一天来临']);
+eq('真实数据：不带标记的整串当曲名',split.filter(r=>!r.tags.length).map(r=>r.title),['四海','十送红军']);
 
 // --- 名字匹配键：原名 + 去后缀的显示名，annotations.json 里两种都出现过 ---
 eq('nameKeysOf 带后缀',P.nameKeysOf('CQ_传奇[线].pdf'),['CQ_传奇[线].pdf','CQ_传奇[线]']);

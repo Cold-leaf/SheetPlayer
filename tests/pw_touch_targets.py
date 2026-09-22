@@ -23,7 +23,7 @@ PANELS=[
   ("工具栏",   "#bar",     "button,label,select,input[type=checkbox]"),
   ("菜单",     "#menu",    "button,.mbtn,input,select,label"),
   ("播放列表", "#plPop",   "#plPopHd button,#plPopHd label,.plRow button,.plRow select"),
-  ("曲目库",   "#lib",     "#libHd button,#libHd label.libBtn,.libCard button,#plHd button,.plRow button,.plRow select"),
+  ("曲目库",   "#lib",     "#libHd button,#libHd label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,.plRow button,.plRow select"),
   ("生成面板", "#gen",     "button,input,select,label"),
   ("频谱头",   "#specHdr", "button,input,select,label"),
   ("ownCloud", "#davPop",  "#davHd button,#davCfgBox button,#davCfgBox input,#davCfgBox select"),
