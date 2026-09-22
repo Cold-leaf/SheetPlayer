@@ -48,7 +48,7 @@ def load_truth():
         local[hashlib.sha256(open(p,'rb').read(1<<20)).hexdigest()]=p
     out=[]
     for it in d["items"]:
-        pdf=local.get(it["pdfHash"])
+        pdf=local.get(it.get("pdf") or it.get("pdfHash"))   # 导出格式 v2 起字段从 pdfHash 改名成 pdf
         if not pdf: continue
         rows=defaultdict(list)
         for m in it["data"].get("M",[]): rows[(m["page"],round(m["ny"],3))].append(m)
