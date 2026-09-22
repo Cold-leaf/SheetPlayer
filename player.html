@@ -226,14 +226,23 @@ body.hidebar #bar{display:none}
 /* 能在竖线上起手拖动时才禁掉滚屏：只作用在 .mk 上，页面别处照常滚 */
 #pages.dragmk .mk{touch-action:none}
 .mk>b{position:absolute;left:50%;top:0;width:3px;height:100%;transform:translateX(-50%);
-    border-radius:2px;background:#0af;opacity:.85}
+    border-radius:2px;background:#0af;opacity:1}      /* 实测点：实心亮蓝，和推算的虚线紫拉开 */
 .mk>i{position:absolute;left:50%;top:-13px;transform:translateX(-50%);font-style:normal;
     font:600 10px/1 system-ui;color:#0af;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff;
     pointer-events:none}
 .mk.noT>b{background:#6b6b6b}                       /* 完全没有时间 */
 .mk.noT>i{color:#666}
-.mk.calc>b{background:rgba(0,170,255,.5)}           /* 推算出来的时间 */
+/* 推算出来的时间（插值补的 / 自动生成补的）。原来是同一色相降透明度（.85 → .5），
+   在白谱面上几乎分不出来。改成换色 + 虚线：虚线不依赖色觉也能一眼认出「这条是推的，
+   不是量的」，紫色又和实测的亮蓝拉开足够距离。
+   .cur（正在唱的那小节）在后面，它的 background 简写会把虚线一起清掉 —— 正在唱时
+   以「现在在哪」为准，位置另由进度带和扫描线表达。 */
+.mk.calc>b{width:2px;
+    background:repeating-linear-gradient(180deg,#c084fc 0,#c084fc 4px,transparent 4px,transparent 7px)}
+.mk.calc>i{color:#b06bff}
 .mk.cur>b{background:#f80;opacity:1;width:4px;box-shadow:0 0 7px rgba(255,136,0,.9)}
+/* 正在唱 + 推算：颜色让位给「现在在哪」，虚线留着，两个信号都别丢 */
+.mk.cur.calc>b{background:repeating-linear-gradient(180deg,#f80 0,#f80 4px,transparent 4px,transparent 7px)}
 .mk.cur{z-index:2}
 .mk.cur>i{color:#f60}
 .mk.tap>b{box-shadow:0 0 0 2px #0f8,0 0 8px #0f8}
@@ -2862,6 +2871,22 @@ function hideProg(){
   if(bandEl)bandEl.style.display='none';
   if(sweepEl)sweepEl.style.display='none';
 }
+/* 覆盖竖线总共该走多久（秒）—— 只在拿不到「下一根的时间」时用（见 updateProg）。
+   优先取附近【同段内】实测间隔的中位数：它跟的是实际演奏速度，连渐慢都跟着。不够用
+   （比如这一遍刚开头）才退回速度表算的理论值，再不行 2 秒一小节兜底。 */
+function estMeasDur(o,i,mk){
+  const span=spanOf(mk),g=[];
+  for(let k=i;k>0&&g.length<4;k--){
+    if(OCC[k].run!==o.run||OCC[k-1].run!==o.run)break;   // 只数同段内的，别把上一遍的间隔算进来
+    const dm=OCC[k].m-OCC[k-1].m;
+    if(dm>0)g.push((OCC[k].t-OCC[k-1].t)/dm);            // 多小节休止时按每小节摊
+  }
+  g.sort((a,b)=>a-b);
+  const per=g.length?g[g.length>>1]:0;
+  if(per>0)return per*span;
+  let s=0;for(let k=0;k<span;k++)s+=measDur(mk.m+k);
+  return s>0?s:2*span;
+}
 function updateProg(t,i,o){
   if(!$('chkProg').checked||i<0||!o)return hideProg();
   const mk=o.cover,box=mk&&boxes[mk.page];
@@ -2879,7 +2904,13 @@ function updateProg(t,i,o){
   }
   const x0=mk.nx;
   // 扫描线：从覆盖竖线的时间走到下一根的时间，跨多小节休止时平滑走完全程，而不是每小节重置
-  const t0=occTimeNear(mk.m,i,-1),t1=nk?occTimeNear(nk.m,i,1):null;
+  const t0=occTimeNear(mk.m,i,-1);
+  let t1=nk?occTimeNear(nk.m,i,1):null;
+  // 但「下一根印刷竖线的时间」在两处不成立：收尾那一小节根本没有下一根（t1=null）；
+  // 反复段末尾（播放顺序写成 1-57, 19-67 时的第 57 小节）的下一根是第 58 小节，可它是【下一遍】
+  // 才唱的 —— 往后找会跳到 19-67 那一遍里去，t1 远在天边。两种都会让扫描线冻在行的左端。
+  // 判据用「下一根的时间得和当前这一遍同段」，不成立就退回「这一小节该走多久」。
+  if(t0!=null&&(t1==null||t1<=t0||runAt(t1)!==o.run))t1=t0+estMeasDur(o,i,mk);
   const p=(t0!=null&&t1!=null&&t1>t0)?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;
   const top=mk.ny*100,hh=hOf(mk)*100;
   bandEl.style.cssText='display:block;left:'+(x0*100)+'%;width:'+((x1-x0)*100)+
