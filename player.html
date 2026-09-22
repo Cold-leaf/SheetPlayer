@@ -1874,17 +1874,30 @@ function staves(page){
   const W=c.width,H=c.height;
   let d;
   try{d=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,W,H).data}catch(err){return null}
-  // 每行的暗像素占比（lum 为亮度阈值，扫描件的谱线是灰的，要放宽才看得见）
-  const profile=lum=>{
-    const pr=new Array(H);
+  // 每行的平均亮度 → 按【本页自己的黑白对比】归一化成「暗度」0~1。
+  // 原来数的是「亮度低于某个固定阈值的像素占比」，两个毛病：
+  //   ① 画布小的时候（桌面整页适配选 0.83，画布宽约 600）谱线抗锯齿后行平均亮度落在
+  //      184~210，而阈值是 175 —— 二值化时整条被当成"白"，五线模板拿不到 5 条线，
+  //      整页只认得出 1 个谱表（应该 12 个），整行补齐遂全线失效。
+  //   ② 固定阈值也没法同时伺候墨黑的正版谱和发灰的影印件。
+  // 连续量没这个崖：同一条线在 0.83 下得 0.24、1.6 下得 0.52，都远在阈值之上。
+  const rowsL=(()=>{
+    const mL=new Array(H);
     for(let y=0;y<H;y++){
-      let n=0,tot=0;
+      let s=0,tot=0;
       for(let x=0;x<W;x+=2){tot++;const p=(y*W+x)*4;
-        if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<lum)n++}
-      pr[y]=n/tot;
+        s+=d[p]*.299+d[p+1]*.587+d[p+2]*.114}
+      mL[y]=s/tot;
     }
-    return pr;
-  };
+    return mL;
+  })();
+  const sortL=[...rowsL].sort((a,b)=>a-b);
+  const bgL=Math.max(1,sortL[Math.floor(sortL.length*0.75)]);   // 背景（纸面）亮度
+  const inkL=sortL[Math.floor(sortL.length*0.03)];              // 最暗那一小撮
+  const profile=()=>rowsL.map(v=>Math.max(0,1-v/bgL));
+  // 影印/扫描件：纸面不白、墨不黑，对比度低。用连续量算，跟渲染尺度无关。
+  // （原来是「严格档认出的不到兜底档一半」当判据，可低缩放下正版谱也会那样，会误报。）
+  const lowContrast=(bgL-inkL)<110;
   // 本页的谱线间距：逐列数黑/白游程，黑众数 = 线粗、白众数 = 线间空白，相加就是线距。
   // 不能拿「候选行之间的间距」去猜：影印件上一条谱线常糊成挨着的两个峰，猜出来会小一半。
   const lineGap=()=>{
@@ -1948,17 +1961,14 @@ function staves(page){
     return best.filter(o=>o.v>=med*0.55).sort((a,b)=>a.t-b.t)
                .map(o=>({top:o.t/H,bot:o.b/H}));
   };
-  // ① 严格：整行 35% 以上纯黑 —— 数字排版的谱子（多数）走这条，久经验证
-  let out=findStaves(profile(140),0.35);
-  // ② 兜底：影印/扫描件的谱线发灰又断续，同一谱表 5 条线的占比能差 3 倍（实测 0.19~0.69），
-  //    固定阈值凑不齐 5 条 → 改用相对阈值重来。以前是「严格法一个都没认出来」才兜底，可严格法
-  //    在影印件上常常刚好凑出一两个（实测整页 15 个谱表只认出 1 个），兜底就被整个跳过，剩下的
-  //    行点下去 systemAt 直接返回 null。改成两条都跑、谁认得多用谁。
-  const pr2=profile(175);
-  let mx=0;for(let y=0;y<H;y++)if(pr2[y]>mx)mx=pr2[y];
-  const alt=findStaves(pr2,Math.max(0.12,mx*0.18));
+  // 两档都建立在同一条连续暗度曲线上，只是线要够黑的程度不同：
+  //   严格档 0.25 —— 墨够黑的正版谱在 0.83 下谱线是 0.24、1.6 下 0.52，够得着；
+  //   兜底档 0.10 —— 影印件谱线发灰又断续，同一谱表 5 条线能差几倍，放到最低也认。
+  // 以前是两条不同亮度阈值的 profile，低缩放下两条都够不着（见上面 rowsL 的注释）。
+  let out=findStaves(profile(),0.25);
+  const alt=findStaves(profile(),0.10);
   if(alt.length>out.length){
-    const scanned=out.length*2<=alt.length;         // 严格法连一半都没认出来 → 大概率是扫描/影印件
+    const scanned=lowContrast;                      // 判据换成「对比度低」，不再拿两档之差当代理
     if(scanned)scanPages.add(page);
     out=alt;
     if(scanned)out.scan=true;                       // 给下游用：影印件才允许放宽判定
