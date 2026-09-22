@@ -2216,12 +2216,12 @@ function detectRowBars(page,sys,rightOfNx){
     if(bb-a+1<6)return null;
     bands.push({a,bb,t:tiltOf(a,bb)});
   }
-  const scan=fill=>{
+  const scan=(fill,tiltOn)=>{
     const cols=[];
     for(let ix=1;ix<iw-1;ix++){
       let hit=0;
       for(const bd2 of bands){
-        const off=Math.round(bd2.t.k*ix+bd2.t.b);
+        const off=tiltOn?Math.round(bd2.t.k*ix+bd2.t.b):0;
         if(seg(ix,bd2.a+off,bd2.bb+off)>=fill)hit++;
       }
       if(hit>=need)cols.push(ix);
@@ -2242,8 +2242,19 @@ function detectRowBars(page,sys,rightOfNx){
   // 这里不加 sys.scan 门控：本函数是「两档各扫一遍、谁找得多用谁」，严格法在真正影印的那几页
   // 之外也常有单行凑不齐 4 条的情况，门控会连真线一起挡掉（实测召回 95.8%→83.1%）。加门槛的
   // 必要性在 snapBarX 那边 —— 它是在小窗口里就近取一条，没有「谁多」这个相互制约。
-  let out=scan(0.9);
-  if(out.length<4){const w=scan(0.72);if(w.length>out.length)out=w}
+  const twoTier=tiltOn=>{
+    let o=scan(0.9,tiltOn);
+    if(o.length<4){const w=scan(0.72,tiltOn);if(w.length>o.length)o=w}
+    return o;
+  };
+  let out=twoTier(true);
+  // **倾斜补偿得自己证明有用。** 它是给倾斜的影印件写的（四海第 3 页那几行，没有它整行一条
+  // 都补不出来），但那个估计（在左右两段里找"最黑"的偏移）经常估歪——估歪了就把判定带
+  // 整条推出谱表，实测 CQ_传奇 整行返回空、十送红军一行只中 1/6。九份真值上它是净负面的：
+  // 关掉 640/659，开着 613/659。
+  // 所以两边都扫、谁找得多用谁：估歪的那次自然选不上，影印件那次照旧生效。
+  const flat=twoTier(false);
+  if(flat.length>out.length)out=flat;
   return out;
 }
 function applySnaps(mk){
