@@ -236,13 +236,19 @@ body.hidebar #bar{display:none}
    在白谱面上几乎分不出来。改成换色 + 虚线：虚线不依赖色觉也能一眼认出「这条是推的，
    不是量的」，紫色又和实测的亮蓝拉开足够距离。
    .cur（正在唱的那小节）在后面，它的 background 简写会把虚线一起清掉 —— 正在唱时
-   以「现在在哪」为准，位置另由进度带和扫描线表达。 */
-.mk.calc>b{width:2px;
+   以「现在在哪」为准，位置另由进度带和扫描线表达。
+   **只在打时间模式显示**：播放时满屏紫蓝相间太花，而「这条是推的」只在做时间时才有用。
+   其余模式下推算点回落到和实测一样的亮蓝实心，位置交给进度带和扫描线。
+   作用域为什么用 :where(#pages.timemode) 而不是 #pages.timemode —— :where 不贡献特异性，
+   三条的特异性跟原来一字不差，下面 .cur 那两条照旧按源码顺序盖过 .calc；
+   直接加 id 会涨到 (1,2,1)，正在唱的那小节会被这里抢走橙色。
+   类挂在 #pages 上、不在 refresh() 里摘 .calc：pw_gen 按类数推算点，类不能动。 */
+:where(#pages.timemode) .mk.calc>b{width:2px;
     background:repeating-linear-gradient(180deg,#c084fc 0,#c084fc 4px,transparent 4px,transparent 7px)}
-.mk.calc>i{color:#b06bff}
+:where(#pages.timemode) .mk.calc>i{color:#b06bff}
 .mk.cur>b{background:#f80;opacity:1;width:4px;box-shadow:0 0 7px rgba(255,136,0,.9)}
 /* 正在唱 + 推算：颜色让位给「现在在哪」，虚线留着，两个信号都别丢 */
-.mk.cur.calc>b{background:repeating-linear-gradient(180deg,#f80 0,#f80 4px,transparent 4px,transparent 7px)}
+:where(#pages.timemode) .mk.cur.calc>b{background:repeating-linear-gradient(180deg,#f80 0,#f80 4px,transparent 4px,transparent 7px)}
 .mk.cur{z-index:2}
 .mk.cur>i{color:#f60}
 .mk.tap>b{box-shadow:0 0 0 2px #0f8,0 0 8px #0f8}
@@ -3671,6 +3677,8 @@ function syncMode(){
   const m=$('mode').value;
   // 标小节模式下竖线可以直接拖着改（见 canEditMk）；touch-action 只在这一档禁掉
   pagesEl.classList.toggle('dragmk',m==='mark'&&!$('chkAutoRow').checked);
+  // 实测/推算的配色只在打时间模式拉开，播放时太花（见 .mk.calc 那条注释）
+  pagesEl.classList.toggle('timemode',m==='time');
   $('bUndo').style.display=(m!=='play')?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
   $('bGen').style.display=(m==='time')?'':'none';
   $('bSpec').style.display=(m==='time')?'':'none';
