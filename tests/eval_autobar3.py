@@ -52,7 +52,17 @@ async def main():
             await pg.goto("http://127.0.0.1:8778/player.html?direct=1")
             await pg.set_input_files("#fPdf",T["pdf"])
             await pg.wait_for_function("()=>pdf&&boxes.length>1",timeout=60000)
-            await pg.evaluate("io&&io.disconnect();zoom=1.6;$('zoom').value=1.6;setPageSizes()")
+            await pg.evaluate("io&&io.disconnect()")
+            # **缩放必须钉死。** 设完 zoom 之后「进谱面自动整页适配」有时会把它覆盖掉，
+            # 画布就换了个尺度 —— 实测 BJ_北京喜讯到边寨 在同一份文件上时而 1157px 时而
+            # 604px，召回跟着 93.5% ↔ 58.7% 跳。这不是测量噪声，是**检测本身对分辨率敏感**
+            # （见下面 CW），所以不钉死的话根本分不清是算法变了还是画布变了。
+            for _ in range(5):
+                await pg.evaluate("(z)=>{zoom=z;$('zoom').value=z;setPageSizes()}",1.6)
+                await pg.wait_for_timeout(250)
+                w=await pg.evaluate("()=>{for(const k of Object.keys(cvs)){const c=cvs[k];if(c&&c.width)return c.width}return 0}")
+                if w: break
+            CW=w
             bypage=defaultdict(list)
             for (page,ny),marks in T["rows"].items(): bypage[page].append((ny,marks))
             # 页码平移：标注用的那份 PDF 和上传到这里的可能差一页封面（实测「在水一方」
@@ -97,7 +107,7 @@ async def main():
             if sc.get(0,0)<0.6:
                 for off,v in sc.items():
                     if off and v>=0.6 and v>=3*sc.get(0,0): OFF=off; break
-            PER[T["name"]]["off"]=OFF
+            PER[T["name"]]["off"]=OFF; PER[T["name"]]["cw"]=CW
             for page in sorted(bypage):
                 tp=page+OFF                       # 平移到这份 PDF 的页码
                 if tp<1: continue
@@ -114,9 +124,11 @@ async def main():
                 # 「0 == 0」会被判成一致，整页的「没画出来」就冒充成「检测失败」了。
                 base_nst=0
                 for _ in range(3):
+                    await pg.evaluate("(z)=>{if(Math.abs(zoom-z)>1e-6){zoom=z;$('zoom').value=z;setPageSizes()}}",1.6)
                     await draw()
                     base_nst=await pg.evaluate("(n)=>(staves(n)||[]).length",tp)
-                    if base_nst: break
+                    cw=await pg.evaluate("(n)=>cvs[n]?cvs[n].width:0",tp)
+                    if base_nst and cw==CW: break
                 if not base_nst:                     # 三次都画不出来：是测量环境的问题，不是检测的问题
                     for ny,marks in sorted(bypage[page]):
                         UNDRAWN.append((T["name"],page,ny,len(marks)-1))
@@ -149,12 +161,12 @@ async def main():
                         PER[T["name"]][k]+=v; G[k]+=v
             await b.close()
     print("═"*89)
-    print(f'{"谱子":24} {"内部小节线":>12} {"召回":>7} {"多补的":>7} {"一条没补的行":>12} {"没量到":>7} {"平移":>5}')
+    print(f'{"谱子":24} {"内部小节线":>12} {"召回":>7} {"多补的":>7} {"一条没补的行":>12} {"没量到":>7} {"平移":>5} {"画布":>6}')
     print("─"*89)
     for n,d in PER.items():
         tot=d["rest"]+d["fail"]
         rec=d["hit"]/tot*100 if tot else 0
-        print(f'{n:24} {str(d["hit"])+"/"+str(tot):>12} {rec:6.1f}% {d["extra"]:7} {str(d["empty"])+"/"+str(d["rows"]):>12} {d["undrawn"]:7} {d["off"]:>5}')
+        print(f'{n:24} {str(d["hit"])+"/"+str(tot):>12} {rec:6.1f}% {d["extra"]:7} {str(d["empty"])+"/"+str(d["rows"]):>12} {d["undrawn"]:7} {d["off"]:>5} {d["cw"]:>6}')
     print("─"*89)
     tot=G["rest"]+G["fail"]
     rec=G["hit"]/tot*100 if tot else 0
