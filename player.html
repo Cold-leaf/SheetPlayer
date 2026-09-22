@@ -2216,6 +2216,12 @@ function detectRowBars(page,sys,rightOfNx){
     if(bb-a+1<6)return null;
     bands.push({a,bb,t:tiltOf(a,bb)});
   }
+  // 符干紧贴小节线时也会通到底：去掉间距过近的（比最小小节窄得多）——保留靠左那条（真小节线）
+  const thin=xs=>{
+    const res=[];
+    for(const x of xs){if(!res.length||x-res[res.length-1]>=0.025)res.push(x)}
+    return res;
+  };
   const scan=(fill,tiltOn)=>{
     const cols=[];
     for(let ix=1;ix<iw-1;ix++){
@@ -2229,33 +2235,42 @@ function detectRowBars(page,sys,rightOfNx){
     const runs=[];
     for(const x of cols){const r=runs[runs.length-1];
       if(r&&x-r[1]<=3)r[1]=x;else runs.push([x,x])}
-    const lines=runs.map(([a,b])=>(a+b)/2/W).filter(x=>x>rightOfNx+0.002).sort((a,b)=>a-b);
-    // 符干紧贴小节线时也会通到底：去掉间距过近的（比最小小节窄得多）——保留靠左那条（真小节线）
-    const res=[];
-    for(const x of lines){if(!res.length||x-res[res.length-1]>=0.025)res.push(x)}
-    return res;
+    const xs=runs.map(([a,b])=>(a+b)/2/W).sort((a,b)=>a-b);
+    // whole = 【整行】的条数（不裁到点击位置右边），只用来判「要不要放宽到第二档」；
+    // lines = 裁到点击位置右边的，才是这一行要补的那些。
+    return {whole:thin(xs).length, lines:thin(xs.filter(x=>x>rightOfNx+0.002))};
   };
   // 两档阈值。印刷清晰的谱子上，真小节线的填充率实测 0.97、符干最多 0.83，0.9 这道坎正好；
   // 可影印件上真小节线会掉到 0.74（同一条线在各声部里 0.74~1.00），同一道坎一条都留不下。
   // 所以先按严格的扫，只有条数明显不够（一行怎么也不止两三个小节）才放宽重扫 ——
   // 清晰的谱子根本走不到第二档，精度不受影响。
-  // 这里不加 sys.scan 门控：本函数是「两档各扫一遍、谁找得多用谁」，严格法在真正影印的那几页
-  // 之外也常有单行凑不齐 4 条的情况，门控会连真线一起挡掉（实测召回 95.8%→83.1%）。加门槛的
-  // 必要性在 snapBarX 那边 —— 它是在小窗口里就近取一条，没有「谁多」这个相互制约。
-  const twoTier=tiltOn=>{
-    let o=scan(0.9,tiltOn);
-    if(o.length<4){const w=scan(0.72,tiltOn);if(w.length>o.length)o=w}
-    return o;
-  };
-  let out=twoTier(true);
+  // 这里不加 sys.scan 门控：严格法在真正影印的那几页之外也常有单行凑不齐 4 条的情况，
+  // 门控会连真线一起挡掉（实测召回 95.8%→83.1%）。加门槛的必要性在 snapBarX 那边 ——
+  // 它是在小窗口里就近取一条，没有「谁多」这个相互制约。
+  //（清晰页仍是「两档各扫一遍、谁找得多用谁」；影印页改成四份取并集，见下。）
   // **倾斜补偿得自己证明有用。** 它是给倾斜的影印件写的（四海第 3 页那几行，没有它整行一条
   // 都补不出来），但那个估计（在左右两段里找"最黑"的偏移）经常估歪——估歪了就把判定带
   // 整条推出谱表，实测 CQ_传奇 整行返回空、十送红军一行只中 1/6。九份真值上它是净负面的：
   // 关掉 640/659，开着 613/659。
-  // 所以两边都扫、谁找得多用谁：估歪的那次自然选不上，影印件那次照旧生效。
-  const flat=twoTier(false);
-  if(flat.length>out.length)out=flat;
-  return out;
+  // 所以两边都扫，谁找得多用谁：估歪的那次自然选不上，影印件那次照旧生效。
+  const sT=scan(0.9,true), sF=scan(0.9,false);
+  if(!sys.scan){
+    // 清晰谱：严格档为主，只在【整行】凑不齐 4 条时才退宽松档，两倾斜取多的那份。
+    // 「整行」这三个字是要紧的：原来数的是裁到点击位置右边的条数，于是同一行点得越靠右，
+    // 越容易误判成"这份是影印件"而切到宽松档，整行检出集合跟着换一套（实测四海同一行
+    // head=0.05 给 8 条、head=0.50 给完全另一套 7 条，两份互不嵌套）。影印页有并集兜着，
+    // 清晰页就靠这一句保持前后一致。
+    const pick=(lo,st)=>lo.lines.length>st.lines.length?lo:st;
+    const A=sT.whole<4?pick(scan(0.72,true),sT):sT;
+    const B=sF.whole<4?pick(scan(0.72,false),sF):sF;
+    return B.lines.length>A.lines.length?B.lines:A.lines;
+  }
+  // 影印页：严格档和宽松档**各只覆盖一部分真线**（实测四海同一行，严格档中左三条
+  // 0.493/0.560/0.626、宽松档中右三条 0.723/0.786/0.851，互补）。原来的「谁找得多用谁」
+  // 等于稳定地丢掉另一半。所以这里两档 × 两倾斜四份取并集。清晰谱不开这一档：那边宽松档
+  // 只有噪声（实测 MT 上宽松档单独命中 0%），并集白添乱。
+  const lT=scan(0.72,true), lF=scan(0.72,false);
+  return thin([...new Set([...sT.lines,...sF.lines,...lT.lines,...lF.lines])].sort((a,b)=>a-b));
 }
 function applySnaps(mk){
   let hit='';

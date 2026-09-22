@@ -105,8 +105,14 @@ async def main():
                     t+=len(gt)-1
                 return h,t
             probe_pages=sorted(bypage)[:2]        # 两页，别只看一页
+            npg=await pg.evaluate("()=>boxes.length-1")   # 这份 PDF 实际有几页（boxes 从 1 开始）
+            # **平移必须让【每一页】标注都落在 PDF 页数以内。** 这是硬约束，比"哪档分高"可靠：
+            # 四海换谱加了封面后标注变成第 2/3/4 页，而 SheetPlayerTests 里那份只有 3 页 ——
+            # 只有 -1 成立。光看前两页的分数，错误的 0 也能撞到 60% 以上（小节线准等距）。
+            def in_range(off): return all(1<=p+off<=npg for p in bypage)
             sc={}
             for off in (0,-1,1,-2,2):
+                if not in_range(off): continue
                 h=t=0
                 for pp in probe_pages:
                     a,b2=await probe(off,pp,bypage[pp]); h+=a; t+=b2
@@ -122,13 +128,26 @@ async def main():
             PER[T["name"]]["off"]=OFF; PER[T["name"]]["cw"]=CW; PER[T["name"]]["how"]=T.get("how","?")
             for page in sorted(bypage):
                 tp=page+OFF                       # 平移到这份 PDF 的页码
-                if tp<1: continue
-                async def draw():
-                    await pg.evaluate("""async(n)=>{if(!boxes[n])return;
-                        while(tasks.has(n)){await tasks.get(n).promise.catch(()=>{})}
-                        delete boxes[n].dataset.done; visible.add(n); await renderPage(n);}""",tp)
-                    await pg.wait_for_function("(n)=>boxes[n]&&boxes[n].dataset.done&&cvs[n]&&cvs[n].width>0",
-                                               arg=tp,timeout=60000)
+                if tp<1 or tp>npg:
+                    # 页码对不上**不是**「没量到」，别混进测量误差里 —— 得直接喊出来，
+                    # 否则「标注绑的是另一份 PDF」会被伪装成「页面渲染不出来」。
+                    print(f'  ** {T["name"]}: 标注第{page}页 → PDF第{tp}页，'
+                          f'但这份 PDF 只有 {npg} 页（平移 {OFF:+d}）—— 页码没对上，这页跳过')
+                    continue
+                async def draw(soft=False):
+                    # soft=True：这一页画不出来就认了（算「没量到」），别把整轮跑了一小时的评测
+                    # 全赔进去。渲染超时是测量环境的问题，不是检测的锅 —— 和下面 base_nst==0
+                    # 那条分支同一个口径。soft=False 时（复检那一次）照旧抛错，别把真错吞了。
+                    try:
+                        await pg.evaluate("""async(n)=>{if(!boxes[n])return;
+                            while(tasks.has(n)){await tasks.get(n).promise.catch(()=>{})}
+                            delete boxes[n].dataset.done; visible.add(n); await renderPage(n);}""",tp)
+                        await pg.wait_for_function("(n)=>boxes[n]&&boxes[n].dataset.done&&cvs[n]&&cvs[n].width>0",
+                                                   arg=tp,timeout=60000)
+                    except Exception:
+                        if not soft: raise
+                        return False
+                    return True
                 # 这一页正常画完时该有几个谱表。**画布脏了（渲染没真正画完就被读走）时 staves()
                 # 会给出不一样的一套**，systemAt/detectRowBars 跟着算错 —— 表现是同一页上「组」
                 # 大小在 6/5/4 之间跳，或者整行检不出。用这个数当可信度尺子。
@@ -136,10 +155,10 @@ async def main():
                 # 「0 == 0」会被判成一致，整页的「没画出来」就冒充成「检测失败」了。
                 base_nst=0
                 for _ in range(3):
-                    await draw()
+                    if not await draw(soft=True): break     # 画都画不出来就别再等三次
                     base_nst=await pg.evaluate("(n)=>(staves(n)||[]).length",tp)
                     if base_nst: break
-                if not base_nst:                     # 三次都画不出来：是测量环境的问题，不是检测的问题
+                if not base_nst:                     # 画不出来：是测量环境的问题，不是检测的问题
                     for ny,marks in sorted(bypage[page]):
                         UNDRAWN.append((T["name"],page,ny,len(marks)-1))
                     PER[T["name"]]["undrawn"]+=sum(len(m)-1 for _,m in bypage[page]); G["undrawn"]+=sum(len(m)-1 for _,m in bypage[page])
@@ -149,7 +168,9 @@ async def main():
                     head,rest=gt[0],gt[1:]
                     r=await pg.evaluate(RUN,[tp,ny,head])
                     if r is None or r.get("err") or r.get("nst")!=base_nst or not r.get("used"):
-                        await draw()
+                        if not await draw(soft=True):       # 连重画都画不出来 → 没量到，不是检测失败
+                            UNDRAWN.append((T["name"],page,ny,len(rest)))
+                            PER[T["name"]]["undrawn"]+=len(rest); G["undrawn"]+=len(rest); continue
                         r2=await pg.evaluate(RUN,[tp,ny,head])
                         if r2 and not r2.get("err") and r2.get("nst")==base_nst:
                             r=r2
