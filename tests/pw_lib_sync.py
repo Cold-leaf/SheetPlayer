@@ -61,13 +61,38 @@ async def main():
         await pg.wait_for_function("()=>document.querySelector('.libCard')?.innerText.includes('已标 3 小节')",timeout=10000)
         print(ok("已标 3 小节" in await pg.inner_text(".libCard")), "时间戳较新 → 覆盖（3 小节）")
 
-        # 较旧数据 → 跳过
+        # 较旧数据 → 不再静默跳过，而是先问一句「本机较新，要不要用对方那份覆盖」
         state["body"]=payload(500,1)
         await pg.click("#bSync")
-        await pg.wait_for_timeout(800)
-        print(ok("已标 3 小节" in await pg.inner_text(".libCard")), "时间戳较旧 → 不覆盖（仍是 3 小节）")
+        await pg.wait_for_selector("#dlgPick",state="visible",timeout=8000)
+        pm=await pg.inner_text("#dlgPickMsg")
+        btns=await pg.eval_on_selector_all("#dlgPickBtns button","e=>e.map(b=>b.textContent)")
+        print(ok("1 个项目本机的标注更新" in pm and "测试曲目" in pm and "500" not in pm),
+              "本机较新时先问一句、并列出项目名: "+pm.replace("\n"," | ")[:70])
+        print(ok(btns==["覆盖本机","保留本机"]), f"两个出路（默认保留本机）: {btns}")
+        await pg.click("#dlgPickBtns button:has-text('保留本机')")
+        await pg.wait_for_timeout(700)
+        print(ok("已标 3 小节" in await pg.inner_text(".libCard")), "选「保留本机」→ 不覆盖（仍是 3 小节）")
         print(ok("跳过 1 个" in await pg.inner_text("#msg")), "跳过提示: "+await pg.inner_text("#msg"))
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "老格式来回同步不会多建项目")
+
+        # 同一个弹窗里选「覆盖本机」→ 真的用旧版盖掉（2026-09-23 加的口子：
+        # 有时候就是要覆盖，光按时间戳替用户决定不够）
+        state["body"]=payload(400,1)
+        await pg.click("#bSync")
+        await pg.wait_for_selector("#dlgPick",state="visible",timeout=8000)
+        await pg.click("#dlgPickBtns button:has-text('覆盖本机')")
+        await pg.wait_for_function("()=>document.querySelector('.libCard')?.innerText.includes('已标 1 小节')",timeout=10000)
+        print(ok("已标 1 小节" in await pg.inner_text(".libCard")), "选「覆盖本机」→ 用仓库版盖掉（1 小节）")
+        print(ok("导入 1 个项目" in await pg.inner_text("#msg")), "覆盖那次不算跳过: "+await pg.inner_text("#msg"))
+        # 覆盖之后两边一样新，再同步一次不该再弹（没有冲突就别打扰）
+        await pg.click("#bSync"); await pg.wait_for_timeout(800)
+        print(ok(await pg.is_hidden("#dlgPick")), "没有冲突时不再弹窗")
+        # 把本机改回 3 小节那份，后面的用例还按 3 小节往下走
+        state["body"]=payload(2000,3)
+        await pg.click("#bSync")
+        await pg.wait_for_function("()=>document.querySelector('.libCard')?.innerText.includes('已标 3 小节')",timeout=10000)
+        print(ok("已标 3 小节" in await pg.inner_text(".libCard")), "换回较新的那份（3 小节），继续后面的用例")
 
         # v2 格式：换台设备改了名（对端报的是新名字 + 老名字在 aka 里）→ 按名字/别名认领，不新建
         old=await pg.evaluate("(async()=>{const P=(await %s).P;return P[0].id})()"%DB)

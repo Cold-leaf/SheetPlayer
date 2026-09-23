@@ -70,7 +70,7 @@ button:active{opacity:.65}
   #libHd button,#libHd label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,
   .plRow button,.plRow select,#plPopHd button,#plPopHd label,
   #menu button,#menu .mbtn,#menu input,#menu select,#menu label,
-  #dlg button,#dlg input,#dlgMode button,#dlgMode input,#dlgMode select,
+  #dlg button,#dlg input,#dlgMode button,#dlgMode input,#dlgMode select,#dlgPick button,
   #gen button,#gen input,#gen select,#gen label,
   #davHd button,#davCfgBox button,#davCfgBox input,#davCfgBox select,
   #panel button,#panel input,#help button,#instPop button,
@@ -360,9 +360,12 @@ body.perf .editOnly{display:none}
 
 /* 对话框永远盖在最上层（高于曲目库 40、ownCloud 面板 45、toast 50）——否则从面板里
    发起下载时，弹出的选模式对话框会被面板挡住点不到 */
-#dlg,#dlgMode{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:60;align-items:center;justify-content:center}
-#dlg>div,#dlgMode>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;width:320px;max-width:90vw}
-#dlg button,#dlgMode button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer}
+#dlg,#dlgMode,#dlgPick{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:60;align-items:center;justify-content:center}
+#dlg>div,#dlgMode>div,#dlgPick>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;width:320px;max-width:90vw}
+#dlg button,#dlgMode button,#dlgPick button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer}
+/* pre-line：消息里用 \n 分行（列项目名一列一行），不用 innerHTML——名字来自同步文件，不能当 HTML 插 */
+#dlgPickMsg{font-size:14px;line-height:1.65;white-space:pre-line;margin-bottom:14px}
+#dlgPickBtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 #dlgMode select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:15px;width:100%}
 #dlgMode input{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:15px;width:100%;box-sizing:border-box;margin-top:8px}
 /* ownCloud（WebDAV）只读浏览器：盖在曲目库之上，z-index 要高于 #lib(40) */
@@ -870,6 +873,12 @@ body.hidebar #reh{display:flex}
  <input type="text" id="dlgModeNew" autocomplete="off" placeholder="新模式的名称" style="display:none">
  <div style="margin-top:12px;text-align:right"><button id="dlgModeCancel">取消</button><button id="dlgModeOk" style="background:#0a6;color:#fff;margin-left:8px">确定</button></div>
 </div></div>
+<!-- 多选一确认框（askPick）。用在「本机较新，要不要用对方那份覆盖」这种需要三个出路的地方——
+     原生 confirm 只有两个按钮，「覆盖 / 保留 / 取消」表达不了。按钮由 JS 现生成 -->
+<div id="dlgPick" style="display:none"><div>
+ <div id="dlgPickMsg"></div>
+ <div id="dlgPickBtns"></div>
+</div></div>
 <div id="lib">
  <div id="libBox">
   <div id="libHd">
@@ -879,8 +888,8 @@ body.hidebar #reh{display:flex}
    <button id="libNew" title="先给项目起个名字，然后在它那一行点「导入谱子」选文件。项目才是身份，谱子只是挂在它下面的附件">＋ 新建项目</button>
    <button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读">☁ ownCloud</button>
    <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button>
-   <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来（按时间戳保留较新的）">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
-   <button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来（按时间戳保留较新的）">从 GitHub 同步</button>
+   <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
+   <button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用仓库那份覆盖">从 GitHub 同步</button>
    <button id="libGcHist" title="把换谱时留下的历史谱子文件删掉（只删文件，不删项目）。删完就换不回更早的谱子了">清理历史谱子</button>
    <button id="libClose" title="回到谱面">✕</button>
   </div>
@@ -1211,6 +1220,28 @@ function askText(msg,def){
     $('dlg').onclick=e=>{if(e.target===$('dlg'))cancel()};
     $('dlgInp').onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
     $('dlgInp').focus();$('dlgInp').select();
+  });
+}
+// 多选一确认框：options=[{v,label,primary?,danger?}]，resolve 成选中的 v；点遮罩 → null。
+// 跟 askText/askMode 共用 dlgCancel（同一时刻只开一个）。消息用 textContent + pre-line 排版，
+// 因为里面要塞从同步文件来的项目名——那条路径绝不能当 HTML 插
+function askPick(msg,options){
+  return new Promise(res=>{
+    $('dlgPickMsg').textContent=msg;
+    const box=$('dlgPickBtns');box.innerHTML='';
+    const done=v=>{$('dlgPick').style.display='none';dlgCancel=null;res(v)};
+    for(const o of options){
+      const b=document.createElement('button');
+      b.textContent=o.label;
+      const c=o.danger?'var(--danger)':o.primary?'var(--accent)':null;
+      if(c)b.style.cssText='background:'+c+';border-color:'+c+';color:#1a1408;font-weight:600';
+      b.onclick=()=>done(o.v);
+      box.appendChild(b);
+    }
+    $('dlgPick').style.display='flex';
+    dlgCancel=()=>done(null);
+    // 点遮罩关掉（跟 #dlg/#dlgMode 一致）。平板上没有 Esc，只能靠这个和按钮本身
+    $('dlgPick').onclick=e=>{if(e.target===$('dlgPick'))done(null)};
   });
 }
 // 选模式：下拉选已有，选「新建」才出现输入框。resolve 成模式名，或 'new:名字'，或 null 取消
@@ -5227,10 +5258,12 @@ $('libImpAll').onchange=async e=>{
   try{
     const j=JSON.parse(await f.text());
     if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('不是 SheetPlayer 批量标注文件');
-    if(!confirm('导入 '+j.items.length+' 个项目的标注？按时间戳保留较新的版本。'))return;
-    const r=await importAnns(j.items);
+    // 默认按时间戳保留较新的；有「本机较新」的时候才问一句要不要反过来覆盖
+    const how=await askSyncConflict(j.items);
+    if(how===null)return;
+    const r=await importAnns(j.items,{force:how==='force'});
     drawLib();
-    msg('已导入 '+r.imported+' 个项目'+(r.skipped?'，跳过 '+r.skipped+' 个（本地较新）':''));
+    msg('已导入 '+r.imported+' 个项目'+(r.skipped?'，跳过 '+r.skipped+' 个（本机较新）':''));
   }catch(err){msg('导入失败：'+err.message,1)}
   finally{e.target.value=''}
 };
@@ -5241,8 +5274,10 @@ const normHist=h=>(h||[]).map(x=>typeof x==='string'?{hash:x,name:''}:x).filter(
 // 命中但 id 不同的（对端各自生成的 id 本来就不一样），合并进本地项目、把对端名字并进 aka，
 // 绝不新建——否则会撞自己定的重名硬拦规则。注意新模型下两个项目可以合法地共用同一份谱子，
 // 所以按哈希收口会把两份标注合成一份，这是新引入的失败模式，认了。
-async function importAnns(items){
-  let imported=0,skipped=0;
+// force=true：本机较新也照样用对端那份盖掉（调用方问过用户了）
+// dry=true ：只认领、只统计「本机较新会被跳过」的那些，一个字节都不写——用来在覆盖前问一句
+async function importAnns(items,{force=false,dry=false}={}){
+  let imported=0,skipped=0;const newer=[];
   for(const it of items){
     if(!it||!it.data)continue;
     const projs=await idbAll(idb,'projects');
@@ -5278,17 +5313,33 @@ async function importAnns(items){
       (p.pdfHistory=p.pdfHistory||[]).push(h);ch=true;
     }
     const ex=await idbGet(idb,'marks',p.id);
-    if(ex&&(+((ex.data||{}).ts)||0)>(+it.data.ts||0)){
+    if(ex&&(+((ex.data||{}).ts)||0)>(+it.data.ts||0)&&!force){
+      // 干跑：上面那些 ch 只改在内存的 p 上，没落库；这里也不写，纯粹攒一份名单
+      if(dry){newer.push({name:p.name,local:+((ex.data||{}).ts)||0,remote:+it.data.ts||0});continue}
       if(ch)await idbPut(idb,'projects',p);        // 标注较旧不覆盖，但名字/别名照收
       skipped++;continue;
     }
+    if(dry)continue;                               // 干跑到此为止：后面的 marks/projects 写入全跳过
     await idbPut(idb,'marks',{pid:p.id,data:it.data});
     if(+it.data.ts>(p.updatedAt||0)){p.updatedAt=+it.data.ts;ch=true}
     if(ch||!ex)await idbPut(idb,'projects',p);
     if(track&&track.id===p.id)applyAnn(it.data);
     imported++;
   }
-  return {imported,skipped};
+  return dry?{newer}:{imported,skipped};
+}
+/* 同步 / 导入前先干跑一遍，算出「本机较新、默认会被跳过」的有哪些，摆给用户选。
+   返回 'force'（用对端覆盖）/ 'keep'（保留本机，对端这些不导入）/ null（取消）。
+   没有冲突就直接 'keep' 且一个字都不问——日常同步绝大多数时候没有，别给常态加一步 */
+async function askSyncConflict(items){
+  const {newer}=await importAnns(items,{dry:true});
+  if(!newer.length)return 'keep';
+  const names=newer.slice(0,8).map(x=>x.name||'(无名)').join('\n');
+  const more=newer.length>8?('\n…共 '+newer.length+' 个'):'';
+  return askPick('有 '+newer.length+' 个项目本机的标注更新，对方那份是旧版：\n'+names+more+
+    '\n\n默认保留本机（对方这几个不导入）。要用对方那份盖掉本机，选「覆盖本机」——'+
+    '本机这些改动会丢。',
+    [{v:'force',label:'覆盖本机',danger:true},{v:'keep',label:'保留本机',primary:true}]);
 }
 // 从 GitHub 仓库拉取 annotations.json（公开 raw 地址，免鉴权可读；写靠桌面导出后人工提交）
 const SYNC_URL='https://raw.githubusercontent.com/Cold-leaf/SheetPlayer/main/annotations.json';
@@ -5300,9 +5351,11 @@ $('bSync').onclick=async()=>{
     if(!r.ok)throw new Error(r.status===404?'仓库里还没有 annotations.json（先在桌面导出并提交一次）':'HTTP '+r.status);
     const j=await r.json();
     if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('annotations.json 格式不对');
-    const res=await importAnns(j.items);
+    const how=await askSyncConflict(j.items);
+    if(how===null)return msg('已取消同步');
+    const res=await importAnns(j.items,{force:how==='force'});
     drawLib();
-    msg('同步完成：导入 '+res.imported+' 个项目'+(res.skipped?'，跳过 '+res.skipped+' 个（本地较新）':''));
+    msg('同步完成：导入 '+res.imported+' 个项目'+(res.skipped?'，跳过 '+res.skipped+' 个（本机较新）':''));
   }catch(err){msg('同步失败：'+err.message,1)}
 };
 function applyAnn(s){

@@ -68,7 +68,8 @@ async def main():
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==0), "清库后是空的")
 
         with open('/tmp/aka_ann.json','w') as f: json.dump(j,f,ensure_ascii=False)
-        pg.once("dialog",lambda d:asyncio.create_task(d.accept()))
+        # 导入不再走原生 confirm（只在「本机较新」时弹 #dlgPick，这里没有冲突）；
+        # 注册了反而会残留下来去接后面的对话框，见 pw_lib2 里同一条注释
         await pg.set_input_files("#libImpAll","/tmp/aka_ann.json")
         await pg.wait_for_timeout(900)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "导入后重建 1 个项目（名字跟随导出里的新名）")
@@ -85,7 +86,6 @@ async def main():
         old["items"][0]["aka"]=[]
         old["items"][0]["data"]["ts"]=int(old["items"][0]["data"]["ts"])+999999   # 对端的更新
         with open('/tmp/aka_ann2.json','w') as f: json.dump(old,f,ensure_ascii=False)
-        pg.once("dialog",lambda d:asyncio.create_task(d.accept()))
         await pg.set_input_files("#libImpAll","/tmp/aka_ann2.json")
         await pg.wait_for_timeout(900)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "对端的老名字按 aka 认领：仍然只有 1 个项目")

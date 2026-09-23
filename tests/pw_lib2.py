@@ -55,7 +55,8 @@ async def main():
         await pg.wait_for_timeout(400)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==0), "清库后列表为空")
         with open('/tmp/batch_ann.json','w') as f: json.dump(j,f)
-        pg.once("dialog",lambda d:asyncio.create_task(d.accept()))
+        # 导入不再走原生 confirm（改成「本机较新才弹 #dlgPick」），这里没有冲突所以一个弹窗都不会有。
+        # 别再注册 pg.once("dialog")——残留的处理器会把后面「删除项目」那个 confirm 接两次
         await pg.set_input_files("#libImpAll","/tmp/batch_ann.json")
         await pg.wait_for_timeout(800)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "批量导入重建曲目")
