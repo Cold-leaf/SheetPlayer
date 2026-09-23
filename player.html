@@ -590,14 +590,20 @@ body.hidebar #reh{display:flex}
 #reh select.rate:hover{background-color:var(--surface)}
 #reh select.rate:active{background-color:var(--surface-2)}
 #reh .rateWrap{position:relative;display:inline-flex;align-items:center}
-/* 窄屏：两组竖叠成两行 —— 第 1 行按键+进度条吃满宽，第 2 行曲名+速度+展开键。
-   靠结构分组，不用 flex-wrap（那会让「展开」键按内容宽度乱折到单独一行）。
+/* 窄屏（手机）：一行，跟桌面同一套结构。
+   原来是竖叠成两行（按键+进度条 / 曲名+速度+展开），实测 390px 下胶囊 118px 高，
+   而一行只要 62px——屏高在手机上是最紧的资源，56px 值得抢。
+   让位的是整块进度条（含它里面的时间读数）：一行里固定项要吃掉 220px（⏮▶⏭+倍速+展开）
+   加间隙内边距 ~48px，只剩 106px 给「曲名 + 进度条」两个人分——两条路都试过，
+   给进度条留 48px 的话时间文字会和曲名叠字（0:000:00），给曲名让位进度条就没法拖。
+   进度条在手机上的活（定位）由「点谱面上的小节线跳过去」接管：play 模式下点小节线
+   就是跳到那一小节的时间（44px 内命中），这条路径本来就在，且更贴谱。
    按钮保持 44px 不缩：这是全 App 最触摸导向的 UI，窄屏恰恰是最需要手指点准的场合 */
 @media (max-width:700px){
-  #reh{flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px;
-       width:calc(100vw - 16px);border-radius:20px}
-  #reh .rehMain,#reh .rehFoot{gap:8px}
-  #reh .prog{min-width:0;max-width:none}
+  #reh{gap:8px;padding:8px 10px;width:calc(100vw - 16px);border-radius:999px}
+  #reh .rehMain{gap:4px}
+  #reh .rehFoot{flex:1 1 auto;gap:6px}   /* 曲名靠它吃掉剩下的宽 */
+  #reh .prog{display:none}
   #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
   /* 只动字号——padding 交给上面的圆规则，这里再写一次就会把圆撑成椭圆 */
   #reh select.rate{font-size:13px}
@@ -913,6 +919,9 @@ body.hidebar #reh{display:flex}
   <code>[⏮][▶][⏭] ──进度── 曲名 [倍速] [⌃]</code>；
   进度条<b>按住可以拖动走带</b>——触屏没有 ←/→ 键，这是唯一的精细定位手段；
   两侧的 ⏮/⏭ 切曲目，「⌃」展开工具栏。<br>
+  <b>手机上（窄屏）胶囊只有一行、没有进度条</b>：一行里放不下它和曲名两个，
+  而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
+  （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
   频谱头上的提示文字窄屏不显示，但手势一样管用。<br>
   <b>标小节</b>模式下，手指压在竖线上就能拖：按住中段挪位置，拖上/下端改长度。
