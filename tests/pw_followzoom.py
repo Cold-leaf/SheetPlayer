@@ -40,8 +40,12 @@ async def main():
 
         await pg.evaluate("$('chkHoriz').checked=false;$('chkHoriz').onchange()"); await pg.wait_for_timeout(200)   # 测纵向分支，先切回纵向
 
-        # 放大到页面明显比视口宽，一行里放 4 个小节（横跨整页宽度）
-        await pg.evaluate("""()=>{zoom=3;$('zoom').value=3;applyZoom();
+        # 放大到页面明显比视口宽，一行里放 4 个小节（横跨整页宽度）。
+        # autofit=false 必须跟着一起交出去：这里是**直接写 zoom** 绕过滑杆，而滑杆那句
+        # `autofit=false` 才是「用户自己要这个大小」的声明。不交的话工具栏在这之后长出一行
+        # （段落条/状态行）会触发 scheduleFit → applyFit(false) 把 zoom 拉回适配值，
+        # 于是"跟随到最右"变成在一个整页都装得下的页面上跟——断言假绿。
+        await pg.evaluate("""()=>{zoom=3;$('zoom').value=3;autofit=false;applyZoom();
           M=[{page:1,nx:.10,ny:.30,m:1,h:.06},{page:1,nx:.40,ny:.30,m:2,h:.06},
              {page:1,nx:.70,ny:.30,m:3,h:.06},{page:1,nx:.95,ny:.30,m:4,h:.06}];
           E=[{m:1,t:0,src:'tap'},{m:2,t:2,src:'tap'},{m:3,t:4,src:'tap'},{m:4,t:6,src:'tap'}];
@@ -75,8 +79,8 @@ async def main():
         print(ok(await pg.evaluate("wrap.scrollLeft")==0, ), f"关掉跟随后不滚: scrollLeft={await pg.evaluate('wrap.scrollLeft')}")
         await pg.evaluate("document.getElementById('chkFollow').checked=true")
 
-        # 未放大时（页面窄于视口）不应产生横向滚动
-        await pg.evaluate("""()=>{zoom=.5;$('zoom').value=.5;applyZoom();wrap.scrollLeft=0;userScrollUntil=0}""")
+        # 未放大时（页面窄于视口）不应产生横向滚动（同样手动交出 autofit，理由见上面那条）
+        await pg.evaluate("""()=>{zoom=.5;$('zoom').value=.5;autofit=false;applyZoom();wrap.scrollLeft=0;userScrollUntil=0}""")
         await pg.wait_for_timeout(300)
         await pg.evaluate("follow((byM.get(4)||[])[0])")
         await pg.wait_for_timeout(400)

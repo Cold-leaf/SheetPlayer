@@ -221,7 +221,10 @@ body.perf .editOnly{display:none}
    margin:3px 5px 3px 0;display:inline-block}     /* 文件选择的 label 也做成按钮样子，跟导出本曲标注一致 */
 /* 带上 type=text：新建/重命名模式那两个输入框原来没样式，暗色主题里露出白色系统外观 */
 #menu input[type=number],#menu input[type=text]{width:58px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px}
-#pages.horiz{display:flex;flex-direction:row;align-items:flex-start;width:max-content}
+/* safe center：一行宽得装不下时退回 start（跟随翻页要的是"整页贴左"，居中会让第一页
+   滚不到）；只有一行比视口还窄时才居中——单页谱子横向铺开就是这种几何 */
+#pages.horiz{display:flex;flex-direction:row;align-items:flex-start;width:max-content;
+  justify-content:safe center}
 #pages.horiz .page{margin:10px;flex:none}
 
 #specBox{display:none;flex-direction:column;background:#0b0d11;border-top:1px solid var(--border);flex:none}
@@ -248,9 +251,13 @@ body.perf .editOnly{display:none}
    留白固定不跟 --barH 走：工具栏是盖在上面的浮层，收展不改变 PDF 布局 */
 /* width:max-content 是必须的：默认 block 宽度=容器宽，padding 超过容器宽时内容盒被压成 0、
    子元素溢出把右侧 padding 吃掉——右侧就没法拖了（滚动容器不会把「不产生溢出的 padding」算进可滚区域）。
-   撑成 max-content 后左右 padding 才是对等的可拖动余量。.page 的 margin:auto 在 max-content
-   父盒里对最宽的那页解析成 0、窄页仍居中，所以居中不受影响 */
-#pages{padding:calc(90dvh - 20px) calc(90vw - 20px);width:max-content}
+   撑成 max-content 后左右 padding 才是对等的可拖动余量。
+   min-width:100% 是**横向居中**那半条：max-content 只按最宽的那页撑盒，盒本身在 wrap 里是
+   左对齐的（scrollHome 把 scrollLeft 落在 paddingLeft 上＝盒左边贴视口左边），于是
+   「页比视口窄」时——高度决定缩放（平板竖屏/横屏）、影印件里页宽参差、手机上那 24px 余量——
+   谱面全贴在左边、右边空一截。把盒至少撑到视口宽，.page 的 margin:auto 才有余量可居中。
+   页比视口宽时（手动放大）max-content 赢，这半条不起作用，左对齐照旧 */
+#pages{padding:calc(90dvh - 20px) calc(90vw - 20px);width:max-content;min-width:100%}
 .page{position:relative;margin:10px auto;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.4)}
 .page canvas{position:absolute;inset:0;width:100%;height:100%}
 
@@ -1554,8 +1561,13 @@ async function buildPages(){
     box.className='page';box.dataset.page=n;
     boxes[n]=box;pagesEl.appendChild(box);
   }
-  // 进谱面先整页装进视口；用户此前手动缩放过就不插手，按他留下的 zoom 铺
-  if(autofit)applyFit(true);else{syncZoomUI();applyZoom()}
+  /* 进谱面＝重新整页适配。这里原来是「用户手动缩放过就不插手，按他留下的 zoom 铺」，
+     但 zoom 是**绝对数**，它是「上一张纸的尺寸 × 可用区」算出来的：手机上 595×842 的线谱
+     fit≈0.61，2180×3090 的影印件 fit≈0.17。照搬到另一份谱子上就是一张 300px 宽、贴在左边的纸
+     （视口 390，右侧空 90px），反向则是一张 2000px 宽的巨幅。手动缩放的粘性留给**同一份谱子**
+     的窗口变化（窗口缩放/转屏/收展工具栏/段落条，见 scheduleFit），换谱子重新适配——
+     跟帮助里「进谱面会自动适配」一致，要回正也还是那个「适应屏幕」 */
+  autofit=true;applyFit(true);
   layout();observe();
   scrollHome();                                 // 初始位置：谱面顶落在工具栏下方，而不是空白留白区
 }
