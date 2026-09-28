@@ -241,42 +241,34 @@
 
 **登录**：点「☁ ownCloud」后面板里就有登录区（没登录过会自动展开；之后随时点「⚙ 登录」改）：
 
-| 方式 | 服务器填 | 「用户」填 | 「密码」填 |
-|---|---|---|---|
-| **代理（Worker）**（推荐·最安全） | Worker 地址 `https://xxx.workers.dev` | 不用填 | 访问令牌（可选，见下） |
-| **公开分享** | `https://服务器/owncloud` | 分享令牌 | 分享密码（没有就留空） |
-| **账号** | `https://服务器/owncloud` | 你的用户名 | **应用密码**（不要用主密码，可随时吊销） |
+| 服务器填 | 「用户」填 | 「密码」填 |
+|---|---|---|
+| `https://服务器/owncloud` | 你的用户名 | **应用密码**（不要用主密码，可随时吊销） |
 
-> ⚠️ **有些服务器用不了「账号」和「公开分享」两种方式**：ownCloud 的 WebDAV 响应不带 CORS 头
-> （只有 OPTIONS 预检带），浏览器会拦成 "Failed to fetch"。这不是密码问题——把地址粘到浏览器
-> 地址栏能直接列出文件就说明凭据没问题。这种情况用下面的 **Worker 代理**。
+「方式」下拉里是两个 DAV 端点，**填法完全一样、效果也一样**，随便选哪个都行：
 
-公开分享令牌的拿法：在 ownCloud 里对该文件夹「创建公开链接」得到的令牌串。点「保存并登录」会直接列目录，成功与否一眼可见。
+- **账号（remote.php/webdav）** —— 旧式端点，ownCloud 设置页给你的就是这一串
+- **账号（remote.php/dav/files/用户名）** —— 新式端点
 
-### 用 Worker 代理（服务器不支持跨域时的正解）
+> ⚠️ **服务器得允许跨域，否则用不了**：ownCloud 的 WebDAV 响应默认不带 CORS 头（只有 OPTIONS
+> 预检带），浏览器会把结果拦成 "Failed to fetch"。**这不是密码问题**——把地址粘到浏览器地址栏
+> 能直接列出文件就说明凭据没问题，缺的是服务器端的响应头。需要管理员在 Web 服务器配置里为
+> WebDAV 路径加上 `Header always set Access-Control-Allow-Origin "https://cold-leaf.github.io"`。
 
-仓库里的 `dav-proxy-worker.js` 是一个 Cloudflare Worker（免费版够用），它站在中间转发请求、
-补齐 CORS 头，**并且把账号密码存在 Worker 的加密密钥里——密码根本不下发到设备**。
-
-部署（网页操作，不用装工具）：
-
-1. dash.cloudflare.com → Workers & Pages → Create → Worker，把 `dav-proxy-worker.js` 内容整个粘进去，Deploy。
-2. 该 Worker → Settings → Variables and Secrets，添加 **Secret**：
-   `DAV_URL`（ownCloud 设置页给的那串 WebDAV 地址）、`DAV_USER`、`DAV_PASS`（应用密码）、
-   `ALLOW_ORIGIN`（`https://cold-leaf.github.io`）、`TOKEN`（可选，设了要在 App 的「密码」框填同样的值）。
-3. App 的 ownCloud 面板里，方式选「**代理（Worker）**」，服务器填 `https://<名字>.<账号>.workers.dev`。
-
-好处：① 绕开 CORS；② 密码不在设备上，换设备/丢设备都不怕；③ 服务器地址和账号对客户端完全不可见。
-Worker 只实现了 `PROPFIND` + `GET`（只读），写方法一律拒绝。
-
-> **凭据存在哪**：直接连 WebDAV 时存在**你这台设备的 IndexedDB**里；用 Worker 时密码只存在 Worker 端，设备上只有 Worker 地址。
-> 说明：GitHub Pages 是纯静态托管，没有服务端运行时，所以做不到 Actions secret 那种「存在服务器上、运行时注入」——但「不进仓库 + 别人看不到」这两个效果是等价的。注意 IndexedDB 按源隔离，源是 `cold-leaf.github.io`：如果你在这个域名下还有别的项目页面，理论上它也能读到；介意就用公开分享令牌（可随时吊销）。
+> **凭据存在哪**：存在**你这台设备的 IndexedDB** 里（不进代码、不进仓库）。注意 IndexedDB 按源
+> 隔离，源是 `cold-leaf.github.io`：如果你在这个域名下还有别的项目页面，理论上它也能读到这个应用
+> 密码。它可随时在 ownCloud「设置 → 安全 → 设备与会话」里吊销——这是它比主密码好的地方。
+> （GitHub Pages 是纯静态托管，没有服务端运行时，所以做不到 Actions secret 那种「存在服务器上、
+> 运行时注入」；但「不进仓库 + 别人看不到」这两个效果是等价的。）
 
 **用法**：点文件夹进目录，点文件名即下载并导入——
 
 - **PDF** → 走本机导入同一条路径：哈希去重、同名自动接回已有标注（时间点/竖线照旧），面板自动关闭并打开该谱。
 - **音频** → 挂到**当前打开的曲目**上（会先问挂哪个模式）。所以下载音频前要先打开对应曲目。
-- 其他格式会被拦下。
+
+**列表只显示 PDF 和音频**（外加目录，不然没法往下走）。共享盘上常常还堆着 `.sib` / `.mscz` /
+`.mp4` / `.pptx` 这类用不上的东西，全铺出来会把要找的谱子淹掉——所以它们被过滤掉了，目录末尾会
+写明「已隐藏 N 个非 PDF / 音频文件」免得你以为文件没了。**要下这些走 ownCloud 网页版。**
 
 下载有进度显示（音频文件大，慢服务器上能看到百分比）。文件下载后存在本机 IndexedDB，排练现场**没网也能用**。
 

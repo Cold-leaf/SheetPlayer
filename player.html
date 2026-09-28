@@ -1021,10 +1021,8 @@ body.hidebar #reh{display:flex}
   <div class="dRow2">
    <label>方式
     <select id="davKind">
-     <option value="public">公开分享链接（推荐·不用自己的账号）</option>
      <option value="webdav">账号（remote.php/webdav）</option>
      <option value="account">账号（remote.php/dav/files/用户名）</option>
-     <option value="worker">代理（Cloudflare Worker·推荐）</option>
     </select></label>
    <span class="ginfo" id="davKindTip"></span>
   </div>
@@ -1032,8 +1030,8 @@ body.hidebar #reh{display:flex}
    <label>服务器<input type="text" id="davBase" placeholder="https://服务器地址/owncloud"></label>
   </div>
   <div class="dRow2">
-   <label id="davUserLab">用户<input type="text" id="davUser" placeholder="账号或分享令牌"></label>
-   <label>密码<input type="password" id="davPass" placeholder="应用密码 / 分享密码"></label>
+   <label id="davUserLab">用户<input type="text" id="davUser" placeholder="账号名"></label>
+   <label>密码<input type="password" id="davPass" placeholder="应用密码"></label>
   </div>
   <div class="dRow2">
    <button id="davSave" class="open">保存并登录</button>
@@ -4769,8 +4767,10 @@ function savePL(){if(idb)idbPut(idb,'meta',{hash:'playlist',v:PL})}
 
 /* ================= ownCloud（WebDAV）只读曲库 =================
    只用 PROPFIND 列目录 + GET 下载，绝不 PUT/DELETE——服务器是公用的，只读免得出事。
-   凭证只存本机 IndexedDB，不进代码/仓库。 */
-let DAV={base:'',kind:'public',user:'',pass:''},davCwd='',davBusy=false;   // 默认「公开分享」：不用自己的账号
+   凭证只存本机 IndexedDB，不进代码/仓库。
+   两种方式只是端点不同（旧式 remote.php/webdav / 新式 remote.php/dav/files/<用户>），
+   填法一样：服务器 …/owncloud + 账号名 + 应用密码。 */
+let DAV={base:'',kind:'webdav',user:'',pass:''},davCwd='',davBusy=false;
 async function loadDAV(){
   if(!idb)return;
   const r=await idbGet(idb,'meta','dav');
@@ -4778,22 +4778,23 @@ async function loadDAV(){
     // 老版本没有地址清洗，存进来的可能是完整 DAV 地址——加载时先洗一遍，
     // 否则输入框里显示的是脏值、请求时又拼一次，变成双份路径
     const n=davNormBase(r.v.base||'');
-    DAV={base:n.base,kind:n.kind||r.v.kind||'public',
-         user:(r.v.user||'')||n.user,pass:r.v.pass||''};
-    if(DAV.base!==(r.v.base||''))idbPut(idb,'meta',{hash:'dav',v:DAV});   // 顺手把洗好的写回去
+    // 「公开分享」「Worker 代理」两种方式已移除（见 README）。老配置这样降级：
+    // 两者的凭据（分享令牌 / Worker 令牌）对账号方式都不适用，清掉让用户重填——
+    // 留着的话会拿令牌当账号名去试，白挨一个 401。base 只有公开分享那份还能用
+    // （ownCloud 地址）；Worker 存的是 Worker 地址，留着毫无意义。
+    const old=r.v.kind, gone=old==='worker'||old==='public', k=n.kind||old;
+    DAV={base:old==='worker'?'':n.base, kind:k==='account'?'account':'webdav',
+         user:gone?'':((r.v.user||'')||n.user), pass:gone?'':(r.v.pass||'')};
+    // 洗过地址、降级过方式，就把结果写回去——下次加载就不用再算一遍
+    if(DAV.base!==(r.v.base||'')||gone||DAV.kind!==r.v.kind)
+      idbPut(idb,'meta',{hash:'dav',v:DAV});
   }
   $('davBase').value=DAV.base;$('davKind').value=DAV.kind;
   $('davUser').value=DAV.user;$('davPass').value=DAV.pass;
 }
-const davIsWorker=()=>DAV.kind==='worker';
-function davReady(){return !!(DAV.base&&(DAV.kind==='public'||davIsWorker()||DAV.user))}
-// Worker 模式：凭据在 Worker 里，这里只填 Worker 地址（+ 可选令牌）
-function davWorkerUrl(kind,path){
-  const u=DAV.base.replace(/\/+$/,'')+'/'+kind+'?path='+encodeURIComponent(path||'');
-  return DAV.pass?u+'&k='+encodeURIComponent(DAV.pass):u;
-}
+function davReady(){return !!(DAV.base&&DAV.user)}
 // 容错：很多人直接把完整 DAV 地址粘进来（…/remote.php/dav/files/用户名/），
-// 这里自动剥到服务器根，顺带从里面认出用户名 / 公开分享方式
+// 这里自动剥到服务器根，顺带从里面认出用户名和端点种类
 function davNormBase(s){
   s=String(s||'').trim().replace(/\/+$/,'');
   let kind=null,user='';
@@ -4813,6 +4814,14 @@ function davNormBase(s){
 // 把表单读成 DAV（含上面的容错），并把纠正后的值写回输入框让用户看得见
 function davReadForm(){
   const n=davNormBase($('davBase').value);
+  // 「公开分享」方式已移除，但老地址（…/public.php/webdav）可能还留在输入框里。
+  // 清掉用户名让 davReady() 拦下来——不然会拿分享令牌当账号名去试，白挨一个 401
+  if(n.kind==='public'){
+    DAV={base:n.base,kind:'webdav',user:'',pass:''};
+    $('davBase').value=n.base;
+    msg('「公开分享」方式已移除：服务器填 …/owncloud，「用户」填账号名，「密码」填应用密码',1);
+    return DAV;
+  }
   // 地址里带了 /remote.php/dav/files/<用户名>，那就是账号方式——以下拉框为准会把用户名白认出来
   const kind=n.kind||(n.user?'account':$('davKind').value);
   const user=(($('davUser').value||'').trim()||n.user);
@@ -4822,10 +4831,9 @@ function davReadForm(){
   if(!$('davUser').value&&n.user)$('davUser').value=n.user;
   return DAV;
 }
-// 公开分享用 public.php/webdav（令牌当用户名、密码留空或填分享密码），账号用 remote.php/dav/files/<用户>
+// 两种账号方式的端点。旧式：用户名由认证带过去、路径里不写（ownCloud 设置页给的就是它）；
+// 新式：用户名写在路径里。
 function davRoot(){
-  if(DAV.kind==='public')return '/public.php/webdav';
-  // 旧式端点：用户名由认证带过去，路径里不用写（ownCloud 设置页给的就是这个）
   if(DAV.kind==='webdav')return '/remote.php/webdav';
   return '/remote.php/dav/files/'+encodeURIComponent(DAV.user);
 }
@@ -4837,8 +4845,7 @@ function davUrl(p){
   return base+davRoot()+(segs.length?'/'+segs.join('/'):'');
 }
 function davAuth(){
-  const u=DAV.kind==='public'?DAV.user:DAV.user;
-  return 'Basic '+btoa(u+':'+DAV.pass);            // WebDAV 用 Basic，配 ACAO:* 没问题（不带 cookie）
+  return 'Basic '+btoa(DAV.user+':'+DAV.pass);     // WebDAV 用 Basic，配 ACAO:* 没问题（不带 cookie）
 }
 function davHrefPath(href){                        // href → 相对根目录的路径（已解码）
   let s=href;
@@ -4864,14 +4871,6 @@ async function davDiagnose(url){
   }
 }
 async function davList(path){
-  if(davIsWorker()){                              // 代理模式：Worker 已经把 XML 解析成 JSON 了
-    let r;
-    try{ r=await fetch(davWorkerUrl('list',path)) }
-    catch(e){ throw new Error('连不到 Worker（地址写错或网络不通）') }
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(j.error||('Worker 返回 '+r.status));
-    return j.items||[];
-  }
   let r;
   try{
     r=await fetch(davUrl(path),{method:'PROPFIND',headers:{
@@ -4879,7 +4878,7 @@ async function davList(path){
   }catch(err){
     throw new Error(await davDiagnose(davUrl(path))+'；试的地址：'+davUrl(path));
   }
-  if(r.status===401)throw new Error('认证失败：检查用户名/密码（公开分享要把分享令牌填进「用户」）');
+  if(r.status===401)throw new Error('认证失败：检查用户名/密码（密码要用应用密码，不是主密码）');
   if(r.status===403)throw new Error('没有权限（403）——检查这个账号对该目录有没有读权限');
   if(r.status===405)throw new Error('服务器不接受 PROPFIND（405）——地址可能填错了，应该是 …/owncloud 这一级');
   if(r.status===404)throw new Error('路径不存在');
@@ -4906,13 +4905,8 @@ async function davList(path){
 }
 // 带进度下载：音频几十 MB，慢服务器上没反馈会以为卡死
 async function davGet(path,onProgress){
-  const w=davIsWorker();
-  const r=w?await fetch(davWorkerUrl('file',path))
-           :await fetch(davUrl(path),{headers:{Authorization:davAuth()}});
-  if(!r.ok){
-    if(w){const j=await r.json().catch(()=>({}));throw new Error(j.error||('HTTP '+r.status))}
-    throw new Error('HTTP '+r.status);
-  }
+  const r=await fetch(davUrl(path),{headers:{Authorization:davAuth()}});
+  if(!r.ok)throw new Error('HTTP '+r.status);
   const total=+(r.headers.get('content-length')||0);
   let blob;
   if(r.body&&r.body.getReader){                    // 流式读，边下边报进度
@@ -4937,15 +4931,11 @@ function davCfgShow(v){                            // 登录区：没配好时�
   $('davCfgBox').style.display=on?'block':'none';
   $('davCfg').textContent=on?'⚙ 收起':'⚙ 登录';
   if(on){
-    const k=$('davKind').value;
-    const pub=k==='public';
-    $('davUser').placeholder=pub?'分享令牌':'用户名';
-    $('davPass').placeholder=pub?'分享密码（没有就留空）':(k==='worker'?'访问令牌（可选）':'应用密码');
-    $('davKindTip').textContent=
-      k==='worker'?'服务器地址填 Worker 的地址（https://xxx.workers.dev）；账号密码存在 Worker 里，不下发到本机。部署方法见仓库 dav-proxy-worker.js'
-      :(pub?'在 ownCloud 里对该文件夹「创建公开链接」得到的令牌'
-           :'建议用「应用密码」而不是主密码，可随时吊销');
-    $('davUserLab').style.display=k==='worker'?'none':'';    // 代理模式不需要用户名
+    // 两种方式填法完全一样，只有端点不同——提示里点明当前选的是哪个
+    $('davKindTip').textContent='建议用「应用密码」而不是主密码，可随时吊销。'
+      +($('davKind').value==='webdav'
+        ?'旧式端点 remote.php/webdav，ownCloud 设置页给的就是这个。'
+        :'新式端点 remote.php/dav/files/用户名。');
     setTimeout(()=>$(DAV.base?'davUser':'davBase').focus(),50);
   }
 }
@@ -4956,14 +4946,23 @@ async function davRender(){
   davCfgShow(false);
   box.innerHTML='<div class="dEmpty">读取中…</div>';
   try{
-    const items=await davList(davCwd);
-    if(!items.length){box.innerHTML='<div class="dEmpty">这个目录是空的</div>';return}
+    const all=await davList(davCwd);
+    // 只列 PDF 和音频，外加目录（不然没法往下走）。共享盘上还堆着 .sib/.mscz/.mp4/.pptx
+    // 这类用不上的东西，全铺出来会把真正要找的谱子淹掉。隐藏了多少写在末尾——
+    // 不写的话用户会以为文件不见了，而不是被过滤了。
+    const items=all.filter(it=>it.dir||DAV_PDF.test(it.name)||DAV_AUD.test(it.name));
+    const hidden=all.length-items.length;
+    const tail=hidden?'<div class="dEmpty">已隐藏 '+hidden+' 个非 PDF / 音频文件</div>':'';
+    if(!items.length){
+      box.innerHTML='<div class="dEmpty">'+(all.length?'这个目录里没有 PDF 或音频':'这个目录是空的')+'</div>'+tail;
+      return;
+    }
     box.innerHTML=items.map((it,i)=>{
-      const ic=it.dir?'📁':(DAV_PDF.test(it.name)?'📄':(DAV_AUD.test(it.name)?'🎵':'📎'));
+      const ic=it.dir?'📁':(DAV_PDF.test(it.name)?'📄':'🎵');   // 非目录项已过滤，只剩这两种
       return '<div class="dRow" data-i="'+i+'"><span class="ic">'+ic+'</span>'+
         '<span class="nm">'+esc(it.name)+'</span>'+
         '<span class="sz">'+(it.dir?'':fmtSize(it.size))+'</span></div>';
-    }).join('');
+    }).join('')+tail;
     box.querySelectorAll('.dRow').forEach((el,k)=>{
       const it=items[k];
       el.onclick=()=>{
