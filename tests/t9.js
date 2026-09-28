@@ -7,7 +7,7 @@ const src=fs.readFileSync(path.join(__dirname,'..','player.html'),'utf-8');
 const m=src.match(/\/\*PURE-START\*\/([\s\S]*?)\/\*PURE-END\*\//);
 if(!m)throw new Error('player.html 里找不到 PURE 块');
 const P=new Function(m[1]+'; return {sha256Js,hexOf,sha256Hex,legacyKey,lsNameOf,'+
-  'newId,dispName,splitName,nameKeysOf,nameKeys,findByNameIn,nameTaken};')();
+  'newId,dispName,splitName,nameKeysOf,nameKeys,findByNameIn,claimProjFor,nameSim,nameTaken};')();
 
 function eq(l,a,b){const A=JSON.stringify(a),B=JSON.stringify(b);
   console.log((A===B?'PASS  ':'FAIL  ')+l+(A===B?'':'\n   got '+A+'\n   exp '+B))}
@@ -112,6 +112,48 @@ eq('按 aka 找到',P.findByNameIn(projs,'改名前.pdf')?.id,'p2');
 eq('按 aka 的显示名也能找到',P.findByNameIn(projs,'改名前')?.id,'p2');
 eq('对不上就是 null',P.findByNameIn(projs,'完全无关.pdf'),null);
 eq('空名字不匹配任何项目',P.findByNameIn(projs,''),null);
+
+// --- 认领规则：① 内容哈希 → ② 历史谱子 → ③ 名字。
+// 下载弹窗的预选和真导入共用这一份，所以这几条同时钉住两边的行为；
+// why 必须严格是这几个字面量——调用方按它分派（②/③ 的处理不一样）---
+const HA='a'.repeat(64),HB='b'.repeat(64),HC='c'.repeat(64),HX='f'.repeat(64);
+const cps=[
+  {id:'p1',name:'CQ_传奇[线].pdf',aka:[],pdf:{hash:HA},pdfHistory:[]},
+  {id:'p2',name:'SK_斯卡布罗集市[线]标注',aka:[],pdf:{hash:HB},pdfHistory:[{hash:HC,name:'旧的.pdf'}]},
+  {id:'p3',name:'ZG_战歌[线][TTBB]',aka:[],pdf:null,pdfHistory:[]},   // 还没谱子，等着导入
+];
+const claim=(H,n)=>{const r=P.claimProjFor(cps,H,n);return [r.p&&r.p.id,r.why]};
+eq('① 内容哈希命中当前谱子',claim(HA,'完全无关.pdf'),['p1','hash']);
+eq('① 优先于 ③（文件名指向别人也不动）',claim(HA,'ZG_战歌[线][TTBB]'),['p1','hash']);
+eq('② 历史谱子（用过的换回去）',claim(HC,'完全无关.pdf'),['p2','hist']);
+eq('② 优先于 ③',claim(HC,'ZG_战歌[线][TTBB]'),['p2','hist']);
+eq('③ 名字对得上（带不带 .pdf 都行）',claim(HX,'ZG_战歌[线][TTBB].pdf'),['p3','name']);
+eq('③ 认得回还没谱子的项目（「等待导入谱子」那种）',claim(HX,'ZG_战歌[线][TTBB]'),['p3','name']);
+eq('三步都不中就交回 null（调用方走新建）',claim(HX,'从来没见过的谱子.pdf'),[null,'']);
+eq('空项目表 / 空文件名都不炸',[P.claimProjFor([],HA,'x.pdf').p,P.claimProjFor(null,HA,'x.pdf').p,claim(HX,'')],[null,null,[null,'']]);
+
+// --- 名字相似度：只用于弹窗排序（把同一首歌的各个版本排到一起），绝不参与认领。
+// 认领走 nameKeys 精确键——拿相似度去合并会变成"看着像就吞" ---
+const sim=(a,b)=>Math.round(P.nameSim(a,b)*1000)/1000;
+eq('一字不差 = 1',P.nameSim('ZG_战歌[线][TTBB]','ZG_战歌[线][TTBB]'),1);
+eq('同曲不同版本（前缀/标记全不一样）= 1：拆出曲名后就是同一首',
+  P.nameSim('ZG_中国人民志愿军战歌[线][TTBB+NA+Pn]','ZG_中国人民志愿军战歌[简][TB+NA+WO]'),1);
+eq('带不带扩展名不影响',P.nameSim('CQ_传奇[线].pdf','CQ_传奇[线]'),1);
+eq('毫不相干 = 0',P.nameSim('ZG_战歌[线]','十送红军'),0);
+eq('不按约定命名的也不乱配',P.nameSim('四海','十送红军'),0);
+eq('空名字 = 0',[P.nameSim('','战歌'),P.nameSim('战歌',''),P.nameSim('','')],[0,0,0]);
+eq('包含关系按长度打折',sim('战歌','中国人民志愿军战歌'),0.222);
+// 真实曲库跑一遍排序：下载「志愿军战歌[简]」那一版时，[线] 那版必须顶到最前——
+// 这正是现在文件名精确匹配认不上、于是一首曲子分叉成好几个项目的那一步
+const libRank=['MT_明天会更好[线][SATB+S+Pn]','ZG_中国人民志愿军战歌[线][TTBB+NA+Pn]',
+  'SH_松花江上[线][SATB+T+Pn]','十送红军','CQ_传奇[线][SATB+NA+Pn]']
+  .sort((a,b)=>P.nameSim(b,'ZG_中国人民志愿军战歌[简][TB+NA+WO]')-P.nameSim(a,'ZG_中国人民志愿军战歌[简][TB+NA+WO]'));
+eq('排序把同曲的另一版顶到最前',libRank[0],'ZG_中国人民志愿军战歌[线][TTBB+NA+Pn]');
+// 「十送红军」只跟「志愿军」共用一个「军」字，于是拿了 0.111 分排到第二——
+// 只是排序里挪个位置，无伤大雅；要是拿它去认领就成了笑话，这就是两个概念必须分开的原因
+eq('只撞一个字也能拿到一点分（所以只能拿来排序）',sim('十送红军','ZG_中国人民志愿军战歌[简][TB+NA+WO]'),0.111);
+eq('一个共同字都没有的保持原序',libRank.slice(2),
+  ['MT_明天会更好[线][SATB+S+Pn]','SH_松花江上[线][SATB+T+Pn]','CQ_传奇[线][SATB+NA+Pn]']);
 
 // --- 重名硬拦：撞 name 或 aka 都要拦（撞了同步必然分叉）---
 eq('撞 name',P.nameTaken(projs,'CQ_传奇[线].pdf',null)?.id,'p1');

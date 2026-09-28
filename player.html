@@ -71,6 +71,7 @@ button:active{opacity:.65}
   .plRow button,.plRow select,#plPopHd button,#plPopHd label,
   #menu button,#menu .mbtn,#menu input,#menu select,#menu label,
   #dlg button,#dlg input,#dlgMode button,#dlgMode input,#dlgMode select,#dlgPick button,
+  #dlgProj button,#dlgProj input,
   #gen button,#gen input,#gen select,#gen label,
   #davHd button,#davCfgBox button,#davCfgBox input,#davCfgBox select,
   #panel button,#panel input,#help button,#instPop button,
@@ -367,9 +368,33 @@ body.perf .editOnly{display:none}
 
 /* 对话框永远盖在最上层（高于曲目库 40、ownCloud 面板 45、toast 50）——否则从面板里
    发起下载时，弹出的选模式对话框会被面板挡住点不到 */
-#dlg,#dlgMode,#dlgPick{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:60;align-items:center;justify-content:center}
+#dlg,#dlgMode,#dlgPick,#dlgProj{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:60;align-items:center;justify-content:center}
 #dlg>div,#dlgMode>div,#dlgPick>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;width:320px;max-width:90vw}
 #dlg button,#dlgMode button,#dlgPick button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer}
+/* 选项目弹窗比另外几个宽：名字是「ZG_中国人民志愿军战歌[线][TTBB+NA+Pn]」这种长串，
+   320px 下每行都换行、列表看着像一堵墙。宽了才排得下一行一个项目 */
+/* border-box 不能省：默认的 content-box 下 max-width:92vw 只卡内容盒，
+   再加上左右各 22px 内边距就超出视口（390px 的手机上右边直接被切掉，「确定」贴边） */
+#dlgProj>div{background:var(--bg-soft);color:var(--text);padding:18px 22px;border-radius:10px;
+    width:420px;max-width:92vw;box-sizing:border-box}
+#dlgProj button{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer}
+#dlgProj button:disabled{opacity:.4;cursor:default}
+#dlgProj input{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:15px;width:100%;box-sizing:border-box;margin-top:8px}
+#dlgProjList{max-height:46vh;overflow-y:auto;margin-top:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}
+#dlgProjList:empty{display:none}
+/* 行本身就是那个单选控件（点一下改选中项，「确定」才提交）。min-height 给足 44：
+   这是手指点的东西，窄一点也得有整块命中区 */
+#dlgProj .pjRow{display:flex;gap:10px;align-items:center;min-height:44px;padding:6px 12px;cursor:pointer;
+    border-bottom:1px solid var(--border)}
+#dlgProj .pjRow:last-child{border-bottom:0}
+#dlgProj .pjRow.on{background:var(--accent-bg)}
+#dlgProj .pjDot{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--border);box-sizing:border-box}
+#dlgProj .pjRow.on .pjDot{border-color:var(--accent);background:var(--accent);box-shadow:inset 0 0 0 3px var(--surface)}
+#dlgProj .pjTxt{display:flex;flex-direction:column;min-width:0}
+/* 名字可能很长（一段标记就是一串），省略号交给这一行，别把弹窗撑破 */
+#dlgProj .pjName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#dlgProj .pjSub{font-size:12px;color:var(--text-dim);margin-top:2px}
+#dlgProjNone{font-size:13px;color:var(--text-dim);margin-top:10px;text-align:center}
 /* pre-line：消息里用 \n 分行（列项目名一列一行），不用 innerHTML——名字来自同步文件，不能当 HTML 插 */
 #dlgPickMsg{font-size:14px;line-height:1.65;white-space:pre-line;margin-bottom:14px}
 #dlgPickBtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
@@ -880,6 +905,21 @@ body.hidebar #reh{display:flex}
  <input type="text" id="dlgModeNew" autocomplete="off" placeholder="新模式的名称" style="display:none">
  <div style="margin-top:12px;text-align:right"><button id="dlgModeCancel">取消</button><button id="dlgModeOk" style="background:#0a6;color:#fff;margin-left:8px">确定</button></div>
 </div></div>
+<!-- 选项目弹窗（askProj）。ownCloud 下载完之后问「这份文件挂到哪个项目」——
+     面板里点一下就直接落库、挂到哪儿全凭自动认领，一首歌有几个版本时就会分叉成好几个项目。
+     行由 JS 现生成（项目名来自同步文件，只能 textContent 插） -->
+<div id="dlgProj" style="display:none"><div>
+ <div id="dlgProjMsg" style="margin-bottom:2px;font-size:14px"></div>
+ <input type="text" id="dlgProjQ" autocomplete="off" placeholder="搜索项目名…">
+ <div id="dlgProjList"></div>
+ <div id="dlgProjNone" style="display:none"></div>
+ <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+  <button id="dlgProjNew">＋ 新建项目</button>
+  <span style="flex:1"></span>
+  <button id="dlgProjCancel">取消</button>
+  <button id="dlgProjOk" style="background:#0a6;color:#fff">确定</button>
+ </div>
+</div></div>
 <!-- 多选一确认框（askPick）。用在「本机较新，要不要用对方那份覆盖」这种需要三个出路的地方——
      原生 confirm 只有两个按钮，「覆盖 / 保留 / 取消」表达不了。按钮由 JS 现生成 -->
 <div id="dlgPick" style="display:none"><div>
@@ -1277,6 +1317,91 @@ function askMode(msg,def){
     syncNew();
   });
 }
+// 选项目弹窗：ownCloud 下载完之后问「这份文件挂到哪个项目」。
+// resolve 成项目 id、'__new__'（新建）或 null（取消 = 丢弃这次下载，一个字节都不落库）。
+// 列表按名字相似度排序、预选自动认领的结果——预选走的是 claimProjFor，和真导入同一份规则。
+// 名字相似度只用来排序，认领仍是 nameKeys 精确键（拿相似度去认领会变成"看着像就吞"）。
+async function askProj(f,allowNew){
+  const projs=(idb?await idbAll(idb,'projects'):[])||[];
+  const H=await sha256Hex(f);
+  const hit=claimProjFor(projs,H,f.name);
+  // 音频那一侧：哈希永远撞不上某份谱子（① ② 只可能命中 PDF），所以预选退到「当前打开的项目」，
+  // 也就是以前那条路的行为，只是现在能改。没有谱子的项目（pdf===null）照样列出来——
+  // ownCloud 列表那边「已隐藏 N 个」就是这么办的：藏掉用户自己建的东西，他会以为项目没了，
+  // 而不是"这个暂时用不了"。行里写一句「等待导入谱子」说明状态就够了
+  const pool=projs;
+  let cur=(hit.p&&hit.p.id)||(!allowNew&&track?track.id:'');
+  // 项目名来自同步文件（别的设备上编辑过），一律 textContent 插，不当 HTML
+  return new Promise(res=>{
+    const q=$('dlgProjQ'),list=$('dlgProjList'),none=$('dlgProjNone'),okb=$('dlgProjOk');
+    const done=v=>{$('dlgProj').style.display='none';dlgCancel=null;res(v)};
+    let rows=[];
+    const paint=()=>{
+      for(const r of rows){
+        const on=r.p.id===cur;
+        r.el.classList.toggle('on',on);
+        r.el.setAttribute('aria-checked',on?'true':'false');
+      }
+      okb.disabled=!cur;                        // 列表空着时「确定」没得确定
+    };
+    const render=()=>{
+      const kw=(q.value||'').trim().toLowerCase();
+      const hits=pool.map(p=>({p,s:nameSim(p.name,f.name)}))
+        .filter(x=>!kw||[x.p.name,...(x.p.aka||[]),splitName(dispName(x.p.name)).title]
+          .some(s=>String(s||'').toLowerCase().includes(kw)));
+      // 认领命中的那个永远排第一（哈希/历史命中时它跟名字可能毫无相似度，例如换了简谱版），
+      // 其余按相似度降序——同一首歌的各个版本就排到一起了。同分按名字排，顺序才稳定
+      hits.sort((a,b)=>(b.p===hit.p)-(a.p===hit.p)||b.s-a.s||a.p.name.localeCompare(b.p.name));
+      // 高亮的东西必须看得见：搜索把原来的选中项滤掉了就改选第一行，
+      // 否则会出现「确定」提交一个列表里根本没显示的项目
+      if(!hits.some(x=>x.p.id===cur))cur=hits.length?hits[0].p.id:'';
+      list.innerHTML='';rows=[];
+      for(const x of hits){
+        const el=document.createElement('div');
+        el.className='pjRow';el.setAttribute('role','radio');
+        const dot=document.createElement('span');dot.className='pjDot';
+        const bx=document.createElement('span');bx.className='pjTxt';
+        const nm=document.createElement('span');nm.className='pjName';
+        nm.textContent=dispName(x.p.name);
+        bx.appendChild(nm);
+        const sub=[];
+        if(!x.p.pdf)sub.push('等待导入谱子');
+        if(x.p===hit.p)sub.push({hash:'就是这份谱子在用的',hist:'用过的谱子（换回去）',
+                                 name:'文件名对得上'}[hit.why]);
+        if(sub.length){
+          const s=document.createElement('span');s.className='pjSub';
+          s.textContent=sub.join('　');bx.appendChild(s);
+        }
+        el.appendChild(dot);el.appendChild(bx);
+        el.onclick=()=>{cur=x.p.id;paint()};
+        list.appendChild(el);rows.push({p:x.p,el});
+      }
+      // 空态要分开说：音频那边没有「＋ 新建项目」可点，指过去会让人找不存在的按钮
+      none.textContent=hits.length?'':
+        (pool.length?'没有匹配「'+kw+'」的项目'
+          :allowNew?'曲目库还是空的，先「＋ 新建项目」'
+          :'曲目库还是空的，先去导一份谱子再回来挂音频');
+      none.style.display=hits.length?'none':'';
+      paint();
+    };
+    $('dlgProjMsg').textContent=allowNew?'这份谱子要挂到哪个项目？'
+      :'「'+dispName(f.name)+'」要挂到哪个项目？';
+    $('dlgProjNew').style.display=allowNew?'':'none';
+    q.value='';
+    $('dlgProj').style.display='flex';
+    dlgCancel=()=>done(null);
+    render();
+    q.oninput=render;
+    q.onkeydown=e=>{if(e.key==='Enter'&&cur)done(cur);else if(e.key==='Escape')done(null)};
+    okb.onclick=()=>{if(cur)done(cur)};
+    $('dlgProjNew').onclick=()=>done('__new__');
+    $('dlgProjCancel').onclick=()=>done(null);
+    // 点遮罩关掉（跟 #dlg/#dlgMode 一致）。平板上没有 Esc，只能靠这个和按钮本身。
+    // 故意不 focus 搜索框：平板上那会直接弹起软键盘，把下面整个列表盖住
+    //（这个框是"挑一个"用的，#dlg/#dlgMode 那种"要你输入"的才该抢焦点）
+    $('dlgProj').onclick=e=>{if(e.target===$('dlgProj'))done(null)};
+  });
+}
 const audioModeOf=a=>a&&a.mode?a.mode:'标准';      // 老音频没 mode 字段，视为「标准」
 async function promptNewMode(){                 // 两个入口（下拉「新建」/菜单「新建」）共用的弹框
   const name=await askText('新建模式的名字？','');
@@ -1341,8 +1466,10 @@ $('fPdf').onchange=async e=>{
   await attachPdf(f,t);
 };
 // PDF 导入总入口：本机「PDF」按钮 /「＋ 导入谱子」/「打开」没谱子的项目 / ownCloud 下载共用。
-// projId 给定时直接挂到那个项目；否则按 ① 内容哈希 → ② 历史谱子 → ③ 名字 → ④ 新建项目 的顺序认领。
-async function attachPdf(f,projId){
+// projId 给定时直接挂到那个项目；否则按 ① 内容哈希 → ② 历史谱子 → ③ 名字 → ④ 新建项目 的顺序认领
+//（①②③ 就是 claimProjFor 那一份规则）。forceNew 跳过 ①②③ 直接走 ④：
+// ownCloud 下载弹窗里用户选了「新建项目」，就不能再被自动认领挂回某个已有项目——那和他的选择相反。
+async function attachPdf(f,projId,forceNew){
   // 不在开头 resetTrack：每条路径最后都会走 loadPdfBlob / replacePdf，它们自己会清零。
   // 提前清的话，用户在任何一个确认框上点「取消」，或者撞名没改成，当前正看着的谱面就白了。
   try{
@@ -1363,23 +1490,22 @@ async function attachPdf(f,projId){
       }
       return attachToProject(p,rec.blob,f.name,H,'');
     }
+    const hit=forceNew?{p:null,why:''}:claimProjFor(projs,H,f.name);
     // ① 内容哈希就是某个项目的当前谱子 → 就是它。不改名、不新建、不动历史
-    const byHash=projs.find(x=>x.pdf&&x.pdf.hash===H);
-    if(byHash)return attachToProject(byHash,rec.blob,f.name,H,
-      '这份谱子就是《'+byHash.name+'》在用的');
+    if(hit.why==='hash')return attachToProject(hit.p,rec.blob,f.name,H,
+      '这份谱子就是《'+hit.p.name+'》在用的');
     // ② 是某个项目用过的历史谱子 → 直接换回去，别当新项目。
-    //    这里已经问过一次了（还带"取消=当新项目"的出路），replacePdf 不用再问一遍
-    const byHist=projs.find(x=>(x.pdfHistory||[]).some(h=>h.hash===H));
-    if(byHist){
-      if(!byHist.pdf)return attachToProject(byHist,rec.blob,f.name,H,'按用过的谱子认回《'+byHist.name+'》');
-      if(confirm('这份谱子是《'+byHist.name+'》用过的（后来换掉了）。\n用它换回《'+byHist.name+'》现在的谱子？\n（取消 = 当成一个新项目导入）'))
-        return replacePdf(byHist.id,f,true);
+    //    这里已经问过一次了（还带"取消=当新项目"的出路），replacePdf 不用再问一遍。
+    //    取消 = 当成新项目，所以照旧往下走 ③④（跟改之前一样，不是直接掉到新建）
+    if(hit.why==='hist'){
+      if(!hit.p.pdf)return attachToProject(hit.p,rec.blob,f.name,H,'按用过的谱子认回《'+hit.p.name+'》');
+      if(confirm('这份谱子是《'+hit.p.name+'》用过的（后来换掉了）。\n用它换回《'+hit.p.name+'》现在的谱子？\n（取消 = 当成一个新项目导入）'))
+        return replacePdf(hit.p.id,f,true);
     }
     // ③ 名字对得上 → 挂上去。文件名命中不是改名，项目的名字一个字母都不动
-    const byName=findByNameIn(projs,f.name);
-    if(byName)return attachToProject(byName,rec.blob,f.name,H,
-      byName.pdf?'按文件名认回《'+byName.name+'》，旧谱子已存进历史（时间点与竖线照旧）'
-                :'已按文件名认回等待导入谱子的《'+byName.name+'》');
+    if(hit.why==='name')return attachToProject(hit.p,rec.blob,f.name,H,
+      hit.p.pdf?'按文件名认回《'+hit.p.name+'》，旧谱子已存进历史（时间点与竖线照旧）'
+               :'已按文件名认回等待导入谱子的《'+hit.p.name+'》');
     // ④ 全新的：用文件名（去扩展名/尾缀）当项目名。撞名就停下来让用户改——
     //    重名硬拦，不能让同名的两个项目悄悄分叉
     let nm=dispName(f.name)||f.name;
@@ -3919,11 +4045,17 @@ $('fAud').onchange=async e=>{
   e.target.value='';       // 清掉，这样重新导出同名 MP3 后再选一次仍然会触发
   await importAudioFile(f);
 };
-// 音频导入总入口：本机「添加音频」和 ownCloud 下载共用
-async function importAudioFile(f){
+// 音频导入总入口：本机「添加音频」（不带 projId = 挂当前打开的曲目）和 ownCloud 下载共用
+async function importAudioFile(f,projId){
   try{
     let blob=f,H='';
-    if(idb&&track){        // 有项目就挂进去（按哈希去重），没有项目就只当普通音频放
+    // 挂到哪个项目：不传就是当前打开的曲目，传了就是那个（ownCloud 弹窗选的，可能不是当前这个）。
+    // 正好是当前项目时也用 track 本身——idbGet 读回来的是结构化克隆的新对象，
+    // 拿它当 p 会让 track.audios/lastAudio 停在旧值上，selectAudio 就找不到刚加的这个音频了
+    const swap=projId&&(!track||track.id!==projId);
+    const p=swap?(idb?await idbGet(idb,'projects',projId):null):track;
+    if(swap&&!p)return msg('这个项目不在了，请从曲目库重新打开',1);
+    if(idb&&p){        // 有项目就挂进去（按哈希去重），没有项目就只当普通音频放
       // 文件已经选好，此时问模式不会消耗文件选择器所需的用户激活
       //（之前是先 prompt 再开文件选择器，prompt 会把激活耗掉，偶发"File chooser dialog..."）
       const v=await askMode('音频挂到哪个模式？',activeMode);
@@ -3935,10 +4067,14 @@ async function importAudioFile(f){
         await idbPut(idb,'files',{hash:H,kind:'audio',name:f.name,size:f.size,blob:f});
       const rec=await idbGet(idb,'files',H);blob=rec.blob;
       if(!MODES[mode])newMode(mode,true);       // 输入的新名字就新建（结构沿用当前模式）
-      const ex=track.audios.find(a=>a.hash===H);
-      if(ex)ex.mode=mode;else track.audios.push({hash:H,name:f.name,mode});
-      track.lastAudio=H;track.updatedAt=Date.now();
-      await idbPut(idb,'projects',track);
+      const ex=p.audios.find(a=>a.hash===H);
+      if(ex)ex.mode=mode;else p.audios.push({hash:H,name:f.name,mode});
+      p.lastAudio=H;p.updatedAt=Date.now();
+      await idbPut(idb,'projects',p);
+      // 挂到**别的**项目上：落完库说一声就完了，绝不碰当前界面。selectAudio 在下面那个 if
+      // 的外面，直接往下走会换掉当前谱面的音频、还会跟着切模式——ownCloud 面板正开着，
+      // 批量挂十几个分声部时这一换就得重新进目录找下一个文件
+      if(swap){msg('已挂到《'+p.name+'》');return}
     }
     await selectAudio(H,blob);
     syncAudSel();syncModeSel();refreshAudLocal();   // 本机补上文件后，去掉"不在本机"标注
@@ -4211,6 +4347,34 @@ function findByNameIn(projs,name){
   const ks=nameKeysOf(name);if(!ks.length)return null;
   for(const p of (projs||[]))if(nameKeys(p).some(k=>ks.includes(k)))return p;
   return null;
+}
+// 给一份谱子（内容哈希 H + 文件名 name）找出它属于哪个项目。why 说命中哪一步——
+// 三步的后续处理不一样（①③ 直接挂上去、② 可能要先问一句换谱），调用方得分开。
+// 这是认领规则的**唯一**一份：attachPdf 的真导入和下载弹窗的预选都走它，
+// 不会出现「问的时候算一套、真导入时算另一套」。
+function claimProjFor(projs,H,name){
+  const byHash=(projs||[]).find(x=>x.pdf&&x.pdf.hash===H);
+  if(byHash)return {p:byHash,why:'hash'};
+  const byHist=(projs||[]).find(x=>(x.pdfHistory||[]).some(h=>h.hash===H));
+  if(byHist)return {p:byHist,why:'hist'};
+  const byName=findByNameIn(projs,name);
+  if(byName)return {p:byName,why:'name'};
+  return {p:null,why:''};
+}
+// 名字相似度 0..1，只用于弹窗排序（把同一首歌的各个版本排到一起）。
+// 不参与认领——认领走 nameKeys 精确键；拿相似度去合并会变成「看着像就吞」。
+// 排序键是 splitName 拆出来的曲名：ZG_志愿军战歌[线][TTBB] 和 [简][TB+NA+WO] 都归到「志愿军战歌」，
+// 整串比就一个字符都对不上（前缀和方括号里每个字都不一样）。
+function nameSim(a,b){
+  const x=splitName(dispName(a)).title,y=splitName(dispName(b)).title;
+  if(!x||!y)return 0;
+  if(x===y)return 1;                             // 完全同名，别落到子串算法里白算一遍
+  let best=0;                                    // 最长公共子串 / 较长者长度
+  for(let i=0;i<x.length;i++)for(let j=0;j<y.length;j++){
+    let k=0;while(i+k<x.length&&j+k<y.length&&x[i+k]===y[j+k])k++;
+    if(k>best)best=k;
+  }
+  return best/Math.max(x.length,y.length);
 }
 // 重名硬拦：候选名不得与任何其它项目的 name / aka 撞键。
 // 撞了就没法靠名字认领，同步一次必然分叉成两个项目——所以宁可拦下来让用户改名。
@@ -4583,10 +4747,11 @@ function syncView(v){
   else history.replaceState({v:'lib'},'');       // 首次开机：把"库"这层标在当前记录上
 }
 // 返回键要能先关掉最上面那层浮层。用**它们各自的关闭路径**，不是统统 display:none——
-// #dlg/#dlgMode 是 Promise，藏起来等于把 await 它的那半边代码挂死
+// #dlg/#dlgMode/#dlgProj 是 Promise，藏起来等于把 await 它的那半边代码挂死
 function closeTopLayer(){
   if($('dlg').style.display==='flex'&&dlgCancel){dlgCancel();return true}
   if($('dlgMode').style.display==='flex'&&dlgCancel){dlgCancel();return true}
+  if($('dlgProj').style.display==='flex'&&dlgCancel){dlgCancel();return true}
   if($('gen').style.display==='flex'){$('gen').style.display='none';return true}
   if($('davPop').style.display==='flex'){$('davPop').style.display='none';return true}
   if($('instPop').style.display==='flex'){$('instPop').style.display='none';return true}
@@ -4976,24 +5141,30 @@ async function davRender(){
   }
 }
 async function davDownload(it){
-  if(DAV_AUD.test(it.name)&&!track)
-    return msg('音频要挂到曲目上：先打开一首曲目再下载音频',1);
-  if(!DAV_PDF.test(it.name)&&!DAV_AUD.test(it.name))
+  const isPdf=DAV_PDF.test(it.name);
+  if(!isPdf&&!DAV_AUD.test(it.name))
     return msg('只支持 PDF 和音频文件（这个：'+it.name+'）',1);
   davBusy=true;$('davTip').textContent='下载中… '+it.name;
   try{
     const f=await davGet(it.path,(got,total)=>{
       $('davTip').textContent='下载中 '+fmtSize(got)+(total?(' / '+fmtSize(total)+'（'+Math.round(got/total*100)+'%）'):'')+'　'+it.name;
     });
-    $('davTip').textContent='下载完成，导入中…';
-    if(DAV_PDF.test(it.name)){
-      $('davPop').style.display='none';
-      await attachPdf(f);                          // 复用本机导入：哈希去重、按名字/历史谱子认领
+    $('davTip').textContent='下载完成，选项目…';
+    // 弹窗在**下载之后**：预选靠内容哈希和历史谱子，那是认领里最靠得住的两个信号，
+    // 下载前根本算不出来。代价是取消会白下这一次——取消是少数情况，认了
+    const pid=await askProj(f,isPdf);              // null = 取消
+    if(pid===null){msg('已取消，这份没有导入');return}     // 丢弃 blob，不落库，免得留孤儿文件
+    // 关面板放在弹窗之后：取消了得让人留在面板里接着挑下一个文件
+    $('davPop').style.display='none';
+    if(isPdf){
+      // __new__ 要 forceNew：用户明确说了新建，就别再被自动认领挂回某个已有项目——那和他的选择相反
+      if(pid==='__new__')await attachPdf(f,null,true);
+      else await attachPdf(f,pid);
     }else{
-      await importAudioFile(f);                    // 复用本机导入：它自己会问挂到哪个模式
+      await importAudioFile(f,pid);                // 它自己会问挂到哪个模式
     }
   }catch(err){msg('下载失败：'+err.message,1)}
-  finally{davBusy=false;$('davTip').textContent='点文件名下载并导入；PDF 会新建/接回曲目，音频挂到当前打开的曲目上（先打开一首再下音频）。'}
+  finally{davBusy=false;$('davTip').textContent='点文件名下载并导入；下载完会让你选挂到哪个项目（音频不必先打开曲目）。'}
 }
 function davOpen(){
   if(!idb)return;

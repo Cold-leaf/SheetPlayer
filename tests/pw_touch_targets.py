@@ -31,6 +31,7 @@ PANELS=[
   ("对话框",   "#dlg",     "button,input"),
   ("模式对话框","#dlgMode","button,input,select"),
   ("安装卡片", "#instPop", "button"),
+  ("选项目弹窗","#dlgProj","button,input,.pjRow"),
 ]
 
 JS = r"""
@@ -348,6 +349,16 @@ async def main():
         print(ok(dv=="flex"), f"ownCloud 面板打开: display={dv}")
         await pgl.evaluate("$('davCfg').onclick()"); await pgl.wait_for_timeout(300)
         await scan("ownCloud",PANELS[6][1],PANELS[6][2],pgl)
+        # 选项目弹窗（ownCloud 点下载之后那个）。行本身是手指点的东西，跟按钮输入框一样要过 44。
+        # 这里直接把弹窗开出来量，不真去下文件——下载得联网，也会污染这个页面的曲目库。
+        # 箭头函数不带 return：askProj 要等用户点按钮才 resolve，return 出去 evaluate 就挂住了
+        await pgl.evaluate("()=>{askProj(new File(['x'],'ZG_战歌[线][TTBB].pdf'),true)}")
+        await pgl.wait_for_selector("#dlgProj",state="visible")
+        await pgl.wait_for_timeout(250)
+        prows=await pgl.evaluate("document.querySelectorAll('#dlgProj .pjRow').length")
+        print(ok(prows>0), f"选项目弹窗列出了 {prows} 个项目行（有行才有得量）")
+        await scan("选项目弹窗",PANELS[11][1],PANELS[11][2],pgl)
+        await pgl.evaluate("$('dlgProjCancel').onclick()"); await pgl.wait_for_timeout(250)
         await pgl.close()
 
         # --- 6. 已经装成 PWA 时不再显示安装入口 ---
