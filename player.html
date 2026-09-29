@@ -228,7 +228,16 @@ body.perf .editOnly{display:none}
   justify-content:safe center}
 #pages.horiz .page{margin:10px;flex:none}
 
-#specBox{display:none;flex-direction:column;background:#0b0d11;border-top:1px solid var(--border);flex:none}
+/* 频谱条是浮层：position:fixed，不在流里，所以开合它不改变 #wrap 的高度——它因此
+   不参与自动适配（和 #menu / #panel / #help 一样），只影响跟随把当前小节停在哪（见 specHpx）。
+   还留在 body 下、没挪进 #wrap：进去的话频谱上的手势会被谱面接走（#wrap 上的捏合会缩放 PDF、
+   touchmove 会暂停跟随、#pages 会把它当落点）。
+   z-index 必须 ≥4：.mk(1) / .mk.cur(2) / .mk.tap(3) 和 #sweep(2) 都在根层叠上下文里
+   （#wrap / .page 都不产生层叠上下文），低了频谱上的点击会被小节线截走。
+   取 5 是为了让 #panel（9，窄屏是底部抽屉）仍盖在它上面；#bar(20)、各弹层(25+)、#reh(32) 也都在上面。
+   bottom 让开底部的排练胶囊（收起工具栏时才出现），--rehH 由 syncBarH 实时写入 */
+#specBox{display:none;flex-direction:column;background:#0b0d11;border-top:1px solid var(--border);
+  position:fixed;left:0;right:0;bottom:var(--rehH,0px);z-index:5}
 #specBox.on{display:flex}
 #specHdr{display:flex;gap:10px;align-items:center;padding:3px 8px;background:var(--bg-soft);
    font-size:12px;color:var(--text-dim)}
@@ -979,7 +988,9 @@ body.hidebar #reh{display:flex}
   而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
   （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
-  频谱头上的提示文字窄屏不显示，但手势一样管用。<br>
+  频谱头上的提示文字窄屏不显示，但手势一样管用。
+  频谱条是<b>浮层</b>，盖在谱面下沿、不挤谱面——开合它不会让谱子改大小，
+  谱子底部被它盖住的地方往上滚就能看到；跟随会把当前小节停在它上方，不会藏进去。<br>
   <b>标小节</b>模式下，手指压在竖线上就能拖：按住中段挪位置，拖上/下端改长度。
   只有<b>压在竖线上起手</b>时谱面才不跟着滚（不然拖到一半页面乱跑）；从空白处起手照常滚屏，
   所以不用为了滚谱切模式。勾着「整行补齐」也一样：这一击落在空白处就补齐整行，
@@ -1777,6 +1788,10 @@ function rehHpx(){
   const r=$('reh');
   return r&&r.offsetHeight?Math.max(0,innerHeight-r.getBoundingClientRect().top):0;
 }
+// 频谱条是浮层，不占 #wrap 的高度（所以不进 fitZoom/fitBoxKey——它开合不该触发重适配）；
+// 但它盖在谱面下沿，"真正露着的谱面"要把它减掉，否则跟随会把当前小节停到它底下。
+// 它是 position:fixed，offsetHeight 照样有效；关着时 display:none，天然是 0
+function specHpx(){return specOn()?$('specBox').offsetHeight:0}
 
 /* 自动适配：把整页缩放到刚好装进视口。取「按宽度」和「按高度」里**更小**的那个。
    为什么不是只按一条边：只按宽度时，平板竖屏那种「页面比视口还高」的几何会把谱子
@@ -1799,9 +1814,11 @@ let autofit=true;                                // 用户自己动过缩放就�
 // 胶囊高度也要算——曲名换长的、窗口宽度变了都可能让胶囊从一行折成两行
 const fitBoxKey=()=>wrap.clientWidth+'x'+wrap.clientHeight+'x'+barHpx()+'x'+rehHpx();
 let fitBox='';
+// 上次适配时的视口尺寸。只用来分辨"这次的盒子变化是不是切模式自己造成的"（见 absorbFitBox）
+let fitViewBox='';
 function applyFit(home){
   const z=fitZoom();if(z==null)return false;
-  fitBox=fitBoxKey();
+  fitBox=fitBoxKey();fitViewBox=wrap.clientWidth+'x'+wrap.clientHeight;
   if(!home&&Math.abs(z-zoom)<1e-9)return false;  // 算出来一样就别动，省掉一次全量重渲染
   const anchor=home?null:wrap.scrollTop/Math.max(1,wrap.scrollHeight);
   zoom=z;syncZoomUI();applyZoom();
@@ -2041,7 +2058,20 @@ $('rehRate').onchange=()=>setRate(+$('rehRate').value);
 function syncBarH(){
   const h=barHpx();
   document.documentElement.style.setProperty('--barH',h+'px');
+  document.documentElement.style.setProperty('--rehH',rehHpx()+'px');   // 频谱浮层据此让开胶囊
   scheduleFit();
+}
+/* 切模式是"换工具"，不是"窗口变了"。可模式自己的显隐会改工具栏高度（编辑行的按钮增减、
+   状态行「目标 → 小节 N」长出一行），而工具栏高度正是重适配的输入之一 —— 于是切一下模式
+   谱子就重新适配、缩一圈、位置按比例挪，看着像视图被抢走了。把这次变化吸收掉，让 250ms 后
+   那次 scheduleFit 看到"没变"直接跳过。只在这一条路上做：收起工具栏 / 转屏 / 收展段落条
+   是真的该重适配（见 syncBarH） */
+function absorbFitBox(){
+  // 但视口尺寸真变了就不能吞：转屏 / 改窗口大小也走 syncBarH→scheduleFit 这条路，
+  // 它排在 250ms 防抖里。要是"转屏之后马上点了模式下拉"，吞掉就再也不会重适配了
+  const v=wrap.clientWidth+'x'+wrap.clientHeight;
+  if(v!==fitViewBox)return;                      // 视口变了 → 不吸收，让 scheduleFit 照常重算
+  fitBox=fitBoxKey();
 }
 // hidebar 是加在 body 上的 class，ResizeObserver 看不到（#bar 只是 display:none），
 // 而收起按钮的点击可能被"点菜单外关菜单"的 capture 拦截，所以直接盯 class 变化
@@ -2626,7 +2656,10 @@ function firstUntimed(){
   const has=new Set(E.map(e=>e.m)),L=sortedM();
   return L.find(m=>!has.has(m))??L[0]??null;
 }
-function setTap(m){tapM=m;refresh();if(m!=null)follow(byM.get(m)?.[0],true)}
+// jump=false 时只改目标、不动视图。给"切到打时间"这条路用：目标会在 #stat 里写着
+// （refresh→stat 的「目标 → 小节 N」），不必把人从正在看的地方拽走。
+// 其余三处（面板「设为打点目标」、Shift+点、[ / ]）保持强制跟随——那是明确指名要去那儿的动作
+function setTap(m,jump=true){tapM=m;refresh();if(m!=null&&jump)follow(byM.get(m)?.[0],true)}
 function tap(){
   if(!M.length)return msg('还没有标记小节',1);
   if(tapM==null)tapM=firstUntimed();
@@ -3252,7 +3285,9 @@ function follow(el,force){
     // 落点 0.15 指的是**竖线顶边**，不是小节中心：合唱总谱一根竖线有 0.27 屏高，
     // 顶边停在 0.35 时系统中心正好落在 0.49，看着就像被推到视口正中。
     // 系统与系统之间的位移由排版的行距决定，这两条线只管它停在哪
-    const vt=wr.top+barHpx(),vh=Math.max(1,wr.height-barHpx()-rehHpx());
+    // 频谱条浮在谱面下沿、盖着那一截，也要减掉：浮层化之后 #wrap 不再被它挤小，
+    // 不减的话当前小节会被停到频谱底下（原来这条是靠 #wrap 被挤小隐式成立的）
+    const vt=wr.top+barHpx(),vh=Math.max(1,wr.height-barHpx()-rehHpx()-specHpx());
     if(r.top<vt+vh*0.08||r.bottom>vt+vh*0.55)
       dy=r.top-(vt+vh*0.15);
     // 放大到页面比视口宽时，当前小节也会横向跑出视野——纵向模式原来只管上下，
@@ -4100,12 +4135,15 @@ function syncMode(){
 }
 $('mode').onchange=()=>{
   syncMode();
-  if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
+  // 切到打时间不再把人送到第一个没打时间的小节：目标是哪个，状态行里写着（stat 的
+  // 「目标 → 小节 N」），位置由用户自己掌握
+  if($('mode').value==='time'&&tapM==null)setTap(firstUntimed(),false);
   if($('mode').value!=='play'&&arm){arm=null;updLoop()}
   if($('mode').value==='time'&&!specOn())specShow(true);   // 打时间时把频谱条自动拉出来
   msg({mark:$('chkAutoRow').checked?'点空白处自动补齐整行小节'
                                     :'点谱面加小节标记；压在已有竖线上可以拖，单击开面板',
        time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍'}[$('mode').value]);
+  absorbFitBox();        // 最后一步：把上面这些显隐造成的工具栏高度变化吸收掉（见该函数）
 };
 // 勾上/取消「整行补齐」只改「点在空白处」那一支（补齐整行 / 只加一个）；压在竖线上的编辑
 // 两档一样（见 canEditMk），所以这里只是清一下可能残留的光标
