@@ -78,11 +78,14 @@ async def main():
         ta_e=await pg.evaluate("getComputedStyle(document.querySelector('.mk')).touchAction")
         print(ok(await pg.evaluate("pagesEl.classList.contains('dragmk')")), "标小节模式加了 .dragmk 类")
         print(ok(ta_e=="none"), f"标小节模式 touch-action={ta_e}（压在竖线上不滚屏）")
-        # 但勾上「整行补齐」是批量加，不给拖 → 这一档必须退回可滚
+        # 2026-09-29 这条断言翻转了：原先「整行补齐」档不给编辑竖线（canEditMk 看那个开关），
+        # 所以触屏在这一档必须摘掉 .dragmk、退回可滚。现在 canEditMk() 只看落点、两档一样，
+        # 补齐档下照样能从竖线上起手拖 → .dragmk 留着。代价是补齐档下从竖线上起手不再滚屏
+        # （从空白处起手照常滚），与非补齐档完全一致。
         await pg.evaluate("$('chkAutoRow').checked=true;$('chkAutoRow').onchange()"); await asyncio.sleep(0.1)
         ta_a=await pg.evaluate("getComputedStyle(document.querySelector('.mk')).touchAction")
-        print(ok(not await pg.evaluate("pagesEl.classList.contains('dragmk')") and ta_a=="auto"),
-              f"整行补齐 ON → 摘掉 .dragmk，touch-action={ta_a}")
+        print(ok(await pg.evaluate("pagesEl.classList.contains('dragmk')") and ta_a=="none"),
+              f"整行补齐 ON → 仍留着 .dragmk，touch-action={ta_a}（压在竖线上照样不滚）")
         await pg.evaluate("$('chkAutoRow').checked=false;$('chkAutoRow').onchange()"); await asyncio.sleep(0.1)
         await pg.select_option("#mode","play"); await asyncio.sleep(0.1)
         ta_p=await pg.evaluate("getComputedStyle(document.querySelector('.mk')).touchAction")

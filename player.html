@@ -717,7 +717,7 @@ body.hidebar #reh{display:flex}
   </select></label>
   <!-- 半自动只属于「标小节」：它是标小节的疏密档，不是一个独立的工具。
        只在标小节模式下露面（syncMode 控制），别的模式藏起来 -->
-  <label id="lblAutoRow" style="display:none" title="点一下行首，自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个"><input type="checkbox" id="chkAutoRow">整行补齐</label>
+  <label id="lblAutoRow" style="display:none" title="点在空白处（比如行首），自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个。压在竖线上仍是编辑它"><input type="checkbox" id="chkAutoRow">整行补齐</label>
   <input type="range" id="zoom" min="0.05" max="10" step="0.05" value="1.3" hidden>
   <span id="zoomVal" hidden>130%</span>
   <span class="sep"></span>
@@ -982,7 +982,9 @@ body.hidebar #reh{display:flex}
   频谱头上的提示文字窄屏不显示，但手势一样管用。<br>
   <b>标小节</b>模式下，手指压在竖线上就能拖：按住中段挪位置，拖上/下端改长度。
   只有<b>压在竖线上起手</b>时谱面才不跟着滚（不然拖到一半页面乱跑）；从空白处起手照常滚屏，
-  所以不用为了滚谱切模式。勾着「整行补齐」时这一击只加点、不给拖——那时是批量加的模式。
+  所以不用为了滚谱切模式。勾着「整行补齐」也一样：这一击落在空白处就补齐整行，
+  压在竖线上仍然是编辑它。想补上漏掉的那几根，点<b>这一行最左边还没标过的那根</b>——
+  检测只从落点往右扫。
  </section>
 
  <section id="helpPerf" class="hs">
@@ -2647,8 +2649,10 @@ pagesEl.onclick=e=>{
   const best=near(g);
 
   if(mode==='mark'){
-    // 半自动（菜单里「整行补齐」开关）：点一下行首，检测该行剩余印刷小节线，一次补齐整行。
-    // 行首（谱号/调号之后）没有印刷线，只能靠你点；往右的线是各小节边界，跳过最右的终止线。
+    // 半自动（菜单里「整行补齐」开关）：点空白处，检测该行剩余印刷小节线，一次补齐整行。
+    // 空白处没有印刷线，只能靠你点；检测从落点**往右**扫，所以想补缺就点最左边要补的那根，
+    // 往右的线是各小节边界，跳过最右的终止线。
+    // 压在已有竖线上走不到这里——上面那道 canEditMk 判成编辑了，所以不会重复加点。
     if($('chkAutoRow').checked){
       snap();
       const sys=systemAt(g.page,g.ny);
@@ -2731,6 +2735,9 @@ function dragEnd(){
   if(hit)msg('小节 '+mk.m+'：'+hit);
 }
 /* 标小节模式下，落点压在已有竖线上 = 编辑它（拖拽 / 开面板），落在空白 = 加一个新点。
+   这条判据**只看落点**，「整行补齐」开关不参与：补齐档下落在空白是把整行补上（见下面那支），
+   落在竖线上照样是编辑它。原来补齐档禁掉编辑，是为了能在一行标过之后重跑整行补齐——
+   现在重跑改从空白处点（点在「要补的那几个里最左边那根」上），不必再拿禁编辑来腾位置。
    原来这是两个模式（标小节 / 编辑点），来回切只为了挪一根线；并进来之后一次点击就能定夺。
    认哪根线用 DOM 命中盒：.mk 本身就是 44px 宽的命中区，浏览器已按 DOM 顺序消解了重叠，
    比自己拿距离去挑最近的邻居更贴近「你看到的是哪根线」。
@@ -2739,9 +2746,8 @@ function dragEnd(){
    半宽 22px —— 不然触屏得点在 3px 线附近的 8px 内，太难抓。 */
 const TAP_EDIT_MAX=22,TAP_EDIT_MIN=8;
 function canEditMk(){
-  // 整行补齐开着就是「批量加」，优先级最高：这一击只加点，不给编辑，
-  // 否则整行补齐没法在一行已经标过之后重跑（它本来是跳过重复点、把缺的补上）
-  return $('mode').value==='mark'&&!$('chkAutoRow').checked;
+  // 只看模式：「整行补齐」那档也一样能编辑（加还是编辑由落点定，见上面那段）
+  return $('mode').value==='mark';
 }
 function markUnder(g,e){
   const el=e.target.closest?e.target.closest('.mk'):null;
@@ -4082,8 +4088,9 @@ async function importAudioFile(f,projId){
 }
 function syncMode(){
   const m=$('mode').value;
-  // 标小节模式下竖线可以直接拖着改（见 canEditMk）；touch-action 只在这一档禁掉
-  pagesEl.classList.toggle('dragmk',m==='mark'&&!$('chkAutoRow').checked);
+  // 标小节模式下竖线可以直接拖着改（见 canEditMk）；touch-action 只在这一档禁掉。
+  // 「整行补齐」不再参与：那两档都能编辑竖线，是否禁滚也就跟着一样
+  pagesEl.classList.toggle('dragmk',m==='mark');
   // 实测/推算的配色只在打时间模式拉开，播放时太花（见 .mk.calc 那条注释）
   pagesEl.classList.toggle('timemode',m==='time');
   $('bUndo').style.display=(m!=='play')?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
@@ -4096,14 +4103,15 @@ $('mode').onchange=()=>{
   if($('mode').value==='time'&&tapM==null)setTap(firstUntimed());
   if($('mode').value!=='play'&&arm){arm=null;updLoop()}
   if($('mode').value==='time'&&!specOn())specShow(true);   // 打时间时把频谱条自动拉出来
-  msg({mark:$('chkAutoRow').checked?'点一下行首，自动补齐整行小节'
+  msg({mark:$('chkAutoRow').checked?'点空白处自动补齐整行小节'
                                     :'点谱面加小节标记；压在已有竖线上可以拖，单击开面板',
        time:'点竖线打时间',play:'点竖线跳转，再点一下换下一遍'}[$('mode').value]);
 };
-// 勾上/取消「整行补齐」会改变这一击是「加」还是「编辑」，光标和 touch-action 要跟着走
+// 勾上/取消「整行补齐」只改「点在空白处」那一支（补齐整行 / 只加一个）；压在竖线上的编辑
+// 两档一样（见 canEditMk），所以这里只是清一下可能残留的光标
 $('chkAutoRow').onchange=()=>{
   syncMode();pagesEl.style.cursor='';
-  if($('chkAutoRow').checked)msg('整行补齐：点一下行首自动补齐整行（此时竖线不可拖，避免和加点抢）');
+  if($('chkAutoRow').checked)msg('整行补齐：空白处点一下补齐整行；压在竖线上照常编辑');
 };
 $('nextN').onchange=()=>{const v=Math.max(1,Math.round(+$('nextN').value||1));nextM=v;$('nextN').value=v};
 $('bSkip').onclick=()=>{
