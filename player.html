@@ -1576,17 +1576,21 @@ async function replacePdf(projId,file,confirmed){
     // 换之前先把《p》的标注装进内存。用户此刻可能开着别的项目（或者 attachPdf 开头
     // 就已经 resetTrack 过），内存里的 M 跟《p》没关系——不装回来，换完谱的 save()
     // 就会把空标注写回库里，那才是真的丢数据。
+    // 但**确认框之前一个字节的状态都不许动**：原来 pid/track/M/MODES 先换成目标项目的，
+    // 用户点「取消」就留下"屏幕上是甲、内存里是乙"——之后在甲上添的标记、加的音频全落到乙头上。
+    // 所以标记数从非破坏性快照上算，真正的装载挪到 confirm 之后
     const sameView=pid===p.id&&!!pdf;
+    const old=sameView?null:await idbGet(idb,'marks',p.id);
+    const tM=sameView?M:((old&&old.data&&old.data.M)||[]);
+    const nM=tM.length;
+    const over=tM.filter(x=>x.page>np.numPages).length;
+    if(!confirmed&&!confirm('换谱：《'+p.name+'》\n'+(sameView?pdf.numPages+' 页 → ':'')+np.numPages+' 页\n'+
+      nM+' 个小节标记原样保留'+(over?'\n⚠ '+over+' 个标记的页码超出新谱子，换完不会显示':'')))return;
     if(!sameView){
       resetAnnotations();
       pid=p.id;track=p;
-      const old=await idbGet(idb,'marks',p.id);
       if(old)applySave(old.data);
     }
-    const nM=M.length;
-    const over=M.filter(x=>x.page>np.numPages).length;
-    if(!confirmed&&!confirm('换谱：《'+p.name+'》\n'+(sameView?pdf.numPages+' 页 → ':'')+np.numPages+' 页\n'+
-      nM+' 个小节标记原样保留'+(over?'\n⚠ '+over+' 个标记的页码超出新谱子，换完不会显示':'')))return;
     // 只重置「PDF 派生」那半边：M/MODES/TEMPO/METER/FORM/offset 一个都不碰
     resetPdfDerived();
     hist=[];                                   // 跨换谱的撤销语义混乱，明确定为清空
