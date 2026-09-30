@@ -1596,11 +1596,15 @@ async function replacePdf(projId,file,confirmed){
     await idbPut(idb,'projects',p);
     await prunePdfHistory(p);
     await buildPages();
+    const audMissing=await restoreLastAudio();   // resetPdfDerived 把播放器清空了，这里接回来
     syncModeSel();syncAudSel();refreshAudLocal();syncTrackSel();showLib(false);
     syncReh();                                 // 标题栏跟着换（resetPdfDerived 里 track 还是 null）
     layout();
+    // 换谱结果是这次操作的正题，音频缺失只作补充，所以追加而不是替换那条提示
+    const miss=audMissing?audMissMsg(audMissing):'';
     if(over)msg('已换谱：'+nM+' 个标记里 '+over+' 个的页码超出了新谱子（'+np.numPages+' 页），这些点不会显示；'+
-      '整体错位的话用「整页平移」挪一下',1);
+      '整体错位的话用「整页平移」挪一下'+(miss?'　'+miss:''),1);
+    else if(miss)msg('已换谱：'+nM+' 个标记全部保留（共 '+np.numPages+' 页）　'+miss,1);
     else msg('已换谱：'+nM+' 个标记全部保留（共 '+np.numPages+' 页）');
   }catch(err){msg('换谱失败：'+err.message,1)}
 }
@@ -1632,24 +1636,32 @@ async function loadPdfBlob(blob,name,pId,pH,pre){
   pdf=await openPdf(blob);pdfName=name;
   const note=await tryRestore();
   await buildPages();
-  let audMissing=null;
-  if(track&&track.lastAudio){                 // 打开曲目时带上上次在听的那个音频变体（并切到它的模式）
-    const r=await idbGet(idb,'files',track.lastAudio);
-    if(r)await selectAudio(track.lastAudio,r.blob);
-    else{
-      // 同步过来的标注只带曲目信息，音频文件是各设备本地的。
-      // 以前这里静默跳过，界面上还列着音频名，看着像"有音频但放不了"。
-      const a=(track.audios||[]).find(x=>x.hash===track.lastAudio);
-      audMissing=a?a.name:'音频';
-      const mode=a?audioModeOf(a):null;        // 模式仍要切过去，标注才对得上
-      if(mode&&MODES[mode]&&mode!==activeMode)switchMode(mode);
-    }
-  }
+  const audMissing=await restoreLastAudio();
   syncModeSel();
   syncAudSel();refreshAudLocal();syncTrackSel();
   showLib(false);
-  if(audMissing)msg('《'+audMissing+'》不在这台设备上——同步只搬标注，音频要在本机用「＋ 添加音频…」选一次（标注不受影响）',1);
+  if(audMissing)msg(audMissMsg(audMissing),1);
   else msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
+}
+
+// 「音频文件不在本机」的统一说法：换谱和打开曲目两处一字不差。
+//（:4749 那句是另一种情形——用户主动挑了个本机没有的文件，说法更短，别合并）
+const audMissMsg=n=>'《'+n+'》不在这台设备上——同步只搬标注，音频要在本机用「＋ 添加音频…」选一次（标注不受影响）';
+// 把「上次在听的那个音频变体」接回播放器，并切到它所属的模式。
+// 打开曲目和换谱都得走这一条：两边都会 resetPdfDerived/resetTrack 把播放器清空
+// （audUrl 撤销、aud.src=''）。只换 PDF 不接音频回来，audUrl 就是空的，而 aud.src 读回来是
+// **文档 URL**，所有 if(aud.src) 的播放键都会照常按下、然后 NotSupportedError ——
+// 表现就是「按播放没反应」。返回「文件不在本机」的那个音频名，都在本机（或没有 lastAudio）时返回 null
+async function restoreLastAudio(){
+  if(!idb||!track||!track.lastAudio)return null;
+  const r=await idbGet(idb,'files',track.lastAudio);
+  if(r){await selectAudio(track.lastAudio,r.blob);return null}
+  // 同步过来的标注只带曲目信息，音频文件是各设备本地的。
+  // 以前这里静默跳过，界面上还列着音频名，看着像"有音频但放不了"。
+  const a=(track.audios||[]).find(x=>x.hash===track.lastAudio);
+  const mode=a?audioModeOf(a):null;        // 模式仍要切过去，标注才对得上
+  if(mode&&MODES[mode]&&mode!==activeMode)switchMode(mode);
+  return a?a.name:'音频';
 }
 
 // 「PDF 派生出来的东西」：换一份谱子必须全部重建（页码/尺寸/渲染任务/谱表缓存/频谱）。
