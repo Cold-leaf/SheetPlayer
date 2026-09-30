@@ -674,6 +674,12 @@ body.hidebar #reh{display:flex}
        它唯一一档也可能是「⚠不在本机」——那是警告不是选项，而警告恰恰只在只有一档时
        最需要被看到（多档时你还能换个能放的版本）。为省 150px 把警告藏起来不划算 -->
   <label id="lblAud">音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
+  <!-- 模式下拉（T1 / T2 / 标准 / 现场…）：只有一套时间点时由 syncModeSel 收起来。
+       原来放在编辑行，理由是「切音频会自动切到它的模式，演奏行留音频就够」——可音频下拉
+       只列**当前模式**的音频，于是演奏态下根本没有路能从 T1 换到 T2（2026-09-30 用户在手机上
+       找不到）。切模式只换一套时间点 + 换音频、不写数据，够格留在演奏行；
+       会写数据的「＋ 新建模式…」只在编辑态才列出来（见 syncModeSel） -->
+  <label id="lblMode" title="时间点按模式分套（MIDI 标准版 / 现场版 / 各声部各一套），切过去会换成那一套的音频和时间点">模式<select id="modeSel"></select></label>
   <!-- 原生控件整个收掉，只留自制精简条：播放键 + 时间。点小节/频谱走带是粗定位，
        精细定位在排练胶囊那条进度条上（触屏没有 ←/→）；音量 iPad 有实体键、桌面用系统音量，不再重复 -->
   <audio id="aud" style="display:none"></audio>
@@ -734,9 +740,6 @@ body.hidebar #reh{display:flex}
   <button id="bGen">自动生成</button>
   <button id="bSpec">频谱</button>
   <button id="bDelAud" title="删除当前选中的音频变体（连同它在本机的文件）">删音频</button>
-  <!-- 模式下拉：只有一套时间点时由 syncModeSel 收起来。它跟「音频」是一件事的两面
-       （切音频会自动切到它那套时间点），所以演奏行留音频就够，这一个是给编辑时手动分套用的 -->
-  <label id="lblMode" title="时间点按模式分套（MIDI 标准版 / 现场版各一套），切音频会自动切到它的模式">模式<select id="modeSel"></select></label>
   <button id="bLib">曲目库</button>
  </div>
  <!-- ============ 第 3 行：状态行 ============
@@ -1242,7 +1245,8 @@ function syncModeSel(){
   $('lblMode').style.display=many?'':'none';
   sel.innerHTML=Object.keys(MODES).map(n=>
     '<option value="'+esc(n)+'"'+(n===activeMode?' selected':'')+'>'+esc(n)+'</option>').join('')+
-    '<option value="__new__">＋ 新建模式…</option>';
+    // 这个下拉在演奏行里：演奏态只给切、不给建（新建会写数据）
+    (document.body.classList.contains('perf')?'':'<option value="__new__">＋ 新建模式…</option>');
   sel.onchange=()=>{
     if(sel.value==='__new__'){sel.value=activeMode;promptNewMode();return}
     if(sel.value!==activeMode){switchMode(sel.value);loadModeAudio(sel.value)}
@@ -1977,6 +1981,7 @@ function setPerf(v){
   if(v&&$('mode').value!=='play'){$('mode').value='play';syncMode()}
   if(v&&arm){arm=null;updLoop()}                 // 待命中的 A/B 落点也一起取消
   if(v)closeLoopPop();
+  syncModeSel();                                 // 「＋ 新建模式…」跟着演奏/编辑显隐
   syncBarH();                                    // 行数变了，--barH 要跟上（菜单/弹层都钉在它下面）
 }
 $('bPerf').onclick=()=>setPerf(!document.body.classList.contains('perf'));
