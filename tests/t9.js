@@ -33,9 +33,20 @@ for(const n of [1,3,54,55,56,57,63,64,65,119,120,121,127,128,129,1000]){
 (async()=>{
   eq('sha256Hex("abc")',await P.sha256Hex(new Blob([te.encode('abc')])),
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  // 大文件：大小 + 前 1MB + 中间 128KB + 末尾 128KB。后两段是修「换谱静默不生效」的关键——
+  // 增量保存（加完笔记重新导出的那份）前面一个字节都不改，只动后面
   const big=new Uint8Array(3e6);for(let i=0;i<3e6;i++)big[i]=i&255;
-  eq('sha256Hex 只取前 1MB',await P.sha256Hex(new Blob([big])),
-    crypto.createHash('sha256').update(big.subarray(0,1<<20)).digest('hex'));
+  const fpBuf=(b)=>{
+    const head=b.subarray(0,1<<20),mo=Math.max(0,(b.length>>1)-(1<<16));
+    const mid=b.subarray(mo,mo+(1<<17)),tail=b.subarray(b.length-(1<<17));
+    const out=Buffer.concat([Buffer.from(head),Buffer.from(mid),Buffer.from(tail),Buffer.alloc(8)]);
+    out.writeDoubleBE(b.length,out.length-8);return out;};
+  eq('sha256Hex 大文件 = 大小+前1MB+中128KB+末128KB',await P.sha256Hex(new Blob([big])),
+    crypto.createHash('sha256').update(fpBuf(big)).digest('hex'));
+  // 只改后半段（增量保存）→ 指纹必须变。这一条就是那个 bug 的回归钉子
+  const edited=Uint8Array.from(big);edited[edited.length-100]^=0xff;
+  eq('只改末尾一个字节 → 指纹变了',
+    (await P.sha256Hex(new Blob([edited])))!==(await P.sha256Hex(new Blob([big]))),true);
   const mid=new Uint8Array(1e5);for(let i=0;i<1e5;i++)mid[i]=(i*13+5)&255;
   eq('sha256Hex <1MB 全量',await P.sha256Hex(new Blob([mid])),
     crypto.createHash('sha256').update(mid).digest('hex'));

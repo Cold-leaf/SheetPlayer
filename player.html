@@ -1340,7 +1340,7 @@ function askMode(msg,def){
 // 名字相似度只用来排序，认领仍是 nameKeys 精确键（拿相似度去认领会变成"看着像就吞"）。
 async function askProj(f,allowNew){
   const projs=(idb?await idbAll(idb,'projects'):[])||[];
-  const H=await sha256Hex(f);
+  const H=(await resolveFileKey(f)).hash;          // 只取键，不落库：用户还没点确认
   const hit=claimProjFor(projs,H,f.name);
   // 音频那一侧：哈希永远撞不上某份谱子（① ② 只可能命中 PDF），所以预选退到「当前打开的项目」，
   // 也就是以前那条路的行为，只是现在能改。没有谱子的项目（pdf===null）照样列出来——
@@ -1490,12 +1490,11 @@ async function attachPdf(f,projId,forceNew){
   // 不在开头 resetTrack：每条路径最后都会走 loadPdfBlob / replacePdf，它们自己会清零。
   // 提前清的话，用户在任何一个确认框上点「取消」，或者撞名没改成，当前正看着的谱面就白了。
   try{
-    const H=await sha256Hex(f);
     if(!idb){await loadPdfBlob(f,f.name,'','','');return}   // 传统模式：没有项目，按文件名存档
-    // 文件按内容哈希入库去重；一份谱子可以被多个项目合法共用
-    if(!(await idbGet(idb,'files',H)))
-      await idbPut(idb,'files',{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f});
-    const rec=await idbGet(idb,'files',H);
+    // 文件按内容指纹入库去重（老记录也认，见 resolveFileKey）；一份谱子可以被多个项目合法共用
+    const found=await resolveFileKey(f),H=found.hash;
+    if(!found.rec)await idbPut(idb,'files',{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f});
+    const rec=found.rec||{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f};   // 刚入库的那份
     const projs=await idbAll(idb,'projects');
     if(projId){                                  // 显式指定（点了那个项目的「打开」或「换谱」）
       const p=projs.find(x=>x.id===projId);
@@ -1570,13 +1569,12 @@ async function replacePdf(projId,file,confirmed){
   const p=await idbGet(idb,'projects',projId);if(!p)return;
   if(!p.pdf)return attachPdf(file,projId);
   try{
-    const H=await sha256Hex(file);
+    const found=await resolveFileKey(file),H=found.hash;
     if(H===p.pdf.hash)return attachPdf(file,projId);  // 同一份，走普通打开
-    if(!(await idbGet(idb,'files',H)))
-      await idbPut(idb,'files',{hash:H,kind:'pdf',name:file.name,size:file.size,blob:file});
-    const rec=await idbGet(idb,'files',H);
+    if(!found.rec)await idbPut(idb,'files',{hash:H,kind:'pdf',name:file.name,size:file.size,blob:file});
+    const blob=found.rec?found.rec.blob:file;
     msg('打开中…');
-    let np;try{np=await openPdf(rec.blob)}catch(err){return msg('PDF加载失败：'+err.message,1)}
+    let np;try{np=await openPdf(blob)}catch(err){return msg('PDF加载失败：'+err.message,1)}
     // 换之前先把《p》的标注装进内存。用户此刻可能开着别的项目（或者 attachPdf 开头
     // 就已经 resetTrack 过），内存里的 M 跟《p》没关系——不装回来，换完谱的 save()
     // 就会把空标注写回库里，那才是真的丢数据。
@@ -4124,10 +4122,10 @@ async function importAudioFile(f,projId){
       let mode=activeMode;
       if(v!=null){mode=v.startsWith('new:')?v.slice(4).trim():v}
       if(!mode)mode=activeMode;
-      H=await sha256Hex(f);
-      if(!(await idbGet(idb,'files',H)))
+      const foundA=await resolveFileKey(f);H=foundA.hash;
+      if(!foundA.rec)
         await idbPut(idb,'files',{hash:H,kind:'audio',name:f.name,size:f.size,blob:f});
-      const rec=await idbGet(idb,'files',H);blob=rec.blob;
+      blob=foundA.rec?foundA.rec.blob:f;
       if(!MODES[mode])newMode(mode,true);       // 输入的新名字就新建（结构沿用当前模式）
       const ex=p.audios.find(a=>a.hash===H);
       if(ex)ex.mode=mode;else p.audios.push({hash:H,name:f.name,mode});
@@ -4363,13 +4361,34 @@ function sha256Js(bytes){
   return out;
 }
 function hexOf(u8){let s='';for(let i=0;i<u8.length;i++)s+=u8[i].toString(16).padStart(2,'0');return s}
-// 前 1MB 的内容哈希：数据身份只认内容，文件名只做显示
-async function sha256Hex(blob){
-  const bytes=new Uint8Array(await blob.slice(0,1<<20).arrayBuffer());
+async function digestBytes(bytes){
   try{
-    if(globalThis.crypto&&crypto.subtle)return hexOf(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
+    if(globalThis.crypto&&crypto.subtle)return new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
   }catch(err){}
-  return hexOf(sha256Js(bytes));
+  return sha256Js(bytes);
+}
+// 内容指纹：数据身份只认内容，文件名只做显示。
+// 采样三段——前 1MB / 中间 128KB / 末尾 128KB——外加**大小**。后两段是必须的：
+// 原来只哈希前 1MB，而「加完笔记重新导出的那份 PDF」多半是增量保存（原字节原样留在前面，
+// 改动追加在后面），新旧两份的前 1MB 一个字节都不差，指纹于是完全相同 → 换谱被当成
+// 「这就是同一份」静默忽略：blob 不换、项目记录不动，屏幕上还是老谱子。同一份文件原地换掉
+// 其中一页的扫描图（大小不变、只动中间）也躲不过中间那一段。代价约 1.25MB 读取，和原来的 1MB 同量级。
+const FP_HEAD=1<<20,FP_MID=1<<17,FP_TAIL=1<<17;
+async function sha256Hex(blob){
+  const size=blob.size;
+  const head=new Uint8Array(await blob.slice(0,Math.min(size,FP_HEAD)).arrayBuffer());
+  if(size<=FP_HEAD)return hexOf(await digestBytes(head));   // 小文件：整份就是「前 1MB」，与老口径同一个键
+  const mo=Math.max(0,(size>>1)-(FP_MID>>1));
+  const mid=new Uint8Array(await blob.slice(mo,mo+FP_MID).arrayBuffer());
+  const tail=new Uint8Array(await blob.slice(size-FP_TAIL).arrayBuffer());
+  const buf=new Uint8Array(head.length+mid.length+tail.length+8);
+  let o=0;for(const s of [head,mid,tail]){buf.set(s,o);o+=s.length}
+  new DataView(buf.buffer).setFloat64(o,size);              // 大小进指纹：增量保存一定改大小
+  return hexOf(await digestBytes(buf));
+}
+// 升级前的口径：只有前 1MB 的那一个哈希。库里每一条老记录都用它当键，认领时还得靠它把人找回来。
+async function legacyHashHex(blob){
+  return hexOf(await digestBytes(new Uint8Array(await blob.slice(0,FP_HEAD).arrayBuffer())));
 }
 const legacyKey=name=>'legacy:'+name;
 const lsNameOf=k=>k.startsWith('player:')?k.slice(7):null;
@@ -4456,6 +4475,23 @@ function nameTaken(projects,nm,excludeId){
   return null;
 }
 /*PURE-END*/
+
+// 认领一份文件 → {hash, rec}：hash 是这次要用的身份键，rec 是库里已有的那一份（没有就是 null）。
+// ① 新指纹直接命中，就是它。② 没命中再退到老键（前 1MB，升级前存的记录都长这样）找那一条——
+// 但**内容**也得对得上：拿老记录里的字节按新指纹重算一遍再比，一致才沿用老键，
+// 身份不漂移、pdfHistory 不凭空多一条。只凭老键相等就认，正是那个静默不生效的 bug：
+// 换谱时把「改了后面那一版」认成了原谱，blob 和项目记录一个字节都没动。
+// 放在 PURE 块外面：它要读 IndexedDB（PURE 块的函数必须能在 node 里单独跑）。
+async function resolveFileKey(blob){
+  const N=await sha256Hex(blob);
+  const hit=await idbGet(idb,'files',N);
+  if(hit)return {hash:N,rec:hit};
+  if(blob.size>FP_HEAD){
+    const old=await idbGet(idb,'files',await legacyHashHex(blob));
+    if(old&&old.blob&&await sha256Hex(old.blob)===N)return {hash:old.hash,rec:old};
+  }
+  return {hash:N,rec:null};
+}
 
 /* ---------- IndexedDB ---------- */
 // v2：曲目身份从「PDF 内容哈希」换成「项目 id」。projects/marks 是新增的两张表，
