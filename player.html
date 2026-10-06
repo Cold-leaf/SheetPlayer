@@ -669,7 +669,7 @@ body.hidebar #reh{display:flex}
        桌面上它就是普通 flex 容器，内容居中、sysBox 靠右缘，经典工具栏两端布局 -->
   <div class="rowScroll">
   <input type="file" id="fAud" hidden accept="audio/*">
-  <label title="直接切到曲目库里的另一首">曲目<select id="trackSel"></select></label>
+  <label title="直接切到曲目库里的另一首；下拉最上面两项是导入：从本机选一份谱子 / 从 ownCloud 拿一份">曲目<select id="trackSel"></select></label>
   <!-- 音频版本下拉：**不**跟着「只有一个版本」收起来（跟 #modeSel 那条不一样）。
        它唯一一档也可能是「⚠不在本机」——那是警告不是选项，而警告恰恰只在只有一档时
        最需要被看到（多档时你还能换个能放的版本）。为省 150px 把警告藏起来不划算 -->
@@ -1006,6 +1006,8 @@ body.hidebar #reh{display:flex}
   工具栏上的<b>「演奏 ⇄ 编辑」</b>键决定工具栏长什么样，也决定点谱面算不算数：<br>
   <b>演奏</b>：工具栏只剩第一行（选曲 / 音频 / 走带 / 速度 / 跟随 / 段落条 / 循环），
   点谱面只会跳转，不落点、不改标注。手机和平板打开默认就是这一档——那台设备是拿来放音的。<br>
+  导入谱子/音频不用切回编辑：<b>「曲目」下拉最上面是「＋ 从本机导入谱子…」「＋ 从 ownCloud 导入谱子…」</b>，
+  「音频」下拉末尾是「＋ 添加音频…」「＋ 从 ownCloud 添加音频…」。<br>
   <b>编辑</b>：多出「工具 / 撤销 / 自动生成 / 频谱 / 删音频 / 模式 / 曲目库」那一行，
   点谱面按当前工具干活。桌面默认这一档。<br>
   切进演奏时会顺手把工具退回「播放」、取消待命的循环起点/终点，所以不会出现「锁上了还在往谱面上落点」。
@@ -1219,21 +1221,35 @@ function newMode(name,fromCurrent){             // 新建模式；fromCurrent �
 /* 项目列表的默认顺序：最近动过的在前。曲目库那边用的是 effTs（还叠了标注的落盘时间），
    这里只按 projects 表的 updatedAt —— 为排序多跑 N 次 marks 读不值当，下拉本来就是个快捷入口 */
 const byUpdated=(a,b)=>(b.updatedAt||0)-(a.updatedAt||0);
-/* 项目下拉：列出曲目库所有项目，直接切曲子 */
+/* 项目下拉：列出曲目库所有项目，直接切曲子。
+   头两项是导入入口，跟「音频 → ＋ 添加音频…」对称——**别做成一进导入先弹「本机 / ownCloud」**：
+   本地导入是常态，那样每首都多一次点击，而 ownCloud 那条路本身还要「下载完再选挂到哪个项目」，
+   前置一问就变成三步。并排成两项则各自保持最短路径，零额外点击。
+   放在**最上面**是因为项目有二十来个，搁底部得滑到底才看得见（音频那边只有一两档，放底部无妨）。
+   这两项也补上了演奏态的缺口：菜单里「谱子」段整块在 .editOnly 里被收掉，而手机默认就是演奏态，
+   没有它们的话演奏态里根本找不到「从本机导入谱子」，只能绕去曲目库 */
 async function syncTrackSel(){
   const sel=$('trackSel');if(!sel)return;
   if(!idb){sel.style.display='none';return}
   sel.style.display='';
   const ps=await idbAll(idb,'projects');
   ps.sort(byUpdated);
-  if(!ps.length){sel.innerHTML='<option value="">（没有项目）</option>';return}
-  sel.innerHTML=ps.map(p=>
-    '<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+' title="'+esc(p.name)+'">'+esc(dispName(p.name))+
-    (p.pdf?'':' ⚠待导入谱子')+'</option>').join('');
+  sel.innerHTML='<option value="__pdf">＋ 从本机导入谱子…</option>'+
+    '<option value="__dav">＋ 从 ownCloud 导入谱子…</option>'+
+    (ps.length?ps.map(p=>
+      '<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+' title="'+esc(p.name)+'">'+esc(dispName(p.name))+
+      (p.pdf?'':' ⚠待导入谱子')+'</option>').join('')
+      :'<option value="" disabled>（没有项目）</option>');
+  // 动作项不是曲目，做完立刻复位：停在动作项上，下次点它 value 不变、change 不触发，就点不动了
+  const back=()=>{sel.value=pid||''};
   sel.onchange=()=>{
     const h=sel.value;
+    // pendPid 可能是上次点「换谱」/「打开」设下、又在文件选择器里取消掉留下的，这里必须清空，
+    // 否则这份新谱子会被悄悄挂到那个项目头上（跟菜单里「导一份新谱子」同一条规则）
+    if(h==='__pdf'){pendPid='';back();$('fPdf').click();return}
+    if(h==='__dav'){back();davOpen();return}
     if(h&&h!==pid)openTrack(h);
-    else sel.value=pid||'';
+    else back();
   };
 }
 /* 模式下拉：列出所有模式 + 新建入口 */
@@ -4781,11 +4797,16 @@ async function refreshAudLocal(){
 }
 function syncAudSel(){
   const sel=$('audSel');
+  // ownCloud 那一项要有 idb 才给：没有 idb 时 davOpen() 直接 return，留着就是个点不动的死选项
+  const DAV=idb?'<option value="__dav">＋ 从 ownCloud 添加音频…</option>':'';
   if(!idb||!track){
     // 无曲目 / 传统模式：占位 + 添加。选完「添加」后重建下拉复位，
     // 否则停留在此选项上，下次再点 value 不变、change 不触发，就点不动了
-    sel.innerHTML='<option value="">音频</option><option value="__add__">＋ 添加音频…</option>';
-    sel.onchange=()=>{if(sel.value==='__add__'){$('fAud').click();setTimeout(syncAudSel,80)}};
+    sel.innerHTML='<option value="">音频</option><option value="__add__">＋ 添加音频…</option>'+DAV;
+    sel.onchange=()=>{
+      if(sel.value==='__add__'){$('fAud').click();setTimeout(syncAudSel,80);return}
+      if(sel.value==='__dav'){davOpen();setTimeout(syncAudSel,80)}
+    };
     return;
   }
   const auds=(track.audios||[]).filter(a=>audioModeOf(a)===activeMode);   // 只显示当前模式的音频
@@ -4793,13 +4814,14 @@ function syncAudSel(){
       '<option value="'+esc(a.hash)+'"'+(a.hash===track.lastAudio?' selected':'')+' title="'+esc(a.name)+'">'+esc(dispName(a.name))+
       (audLocal.has(a.hash)?'':' ⚠不在本机')+'</option>').join('')
     :'<option value="">（还没有音频）</option>')+
-    '<option value="__add__">＋ 添加音频…</option>';
+    '<option value="__add__">＋ 添加音频…</option>'+DAV;
   sel.onchange=async()=>{
     if(sel.value==='__add__'){
       $('fAud').click();                       // 立即开文件选择器，保留用户激活；模式在选完文件后再问
       setTimeout(syncAudSel,80);
       return;
     }
+    if(sel.value==='__dav'){davOpen();setTimeout(syncAudSel,80);return}   // 同上：动作项用完就复位
     const a=(track.audios||[]).find(x=>x.hash===sel.value);if(!a)return;
     const rec=await idbGet(idb,'files',a.hash);
     if(!rec){syncAudSel();

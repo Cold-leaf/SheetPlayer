@@ -42,8 +42,11 @@ async def main():
         await pg.wait_for_function("()=>SPEC!==null&&SPEC.dur<4",timeout=90000)
         await pg.wait_for_function("()=>track.audios.length===2",timeout=10000)
         print(ok(await pg.evaluate("M.length")==3), "切音频变体：小节标注全部保留")
-        print(ok(await pg.evaluate("[...$('audSel').options].length")==3 and
-                 "＋ 添加音频" in (await pg.evaluate("[...$('audSel').options].at(-1).text"))), "音频变体下拉齐全")
+        # 两档音频 + 末尾两个导入入口（本机 / ownCloud，见 pw_import_src）
+        print(ok(await pg.evaluate("[...$('audSel').options].length")==4 and
+                 "＋ 添加音频" in (await pg.evaluate("[...$('audSel').options].at(-2).text")) and
+                 "ownCloud" in (await pg.evaluate("[...$('audSel').options].at(-1).text"))),
+              "音频变体下拉齐全（两档音频 + 本机/ownCloud 两个入口）")
 
         # 切回音频 1：会话内缓存命中，不重新分析
         await pg.select_option("#audSel",h1)
