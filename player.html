@@ -4090,7 +4090,10 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
      · 只 reload 不够——HTTP 缓存（GitHub Pages 是 max-age=600）会把旧 HTML 直接还给你
      · 不注销 SW 不够——它的 navigation 分支虽然网络优先，但 fetch 仍可能命中 HTTP 缓存
      · 不带新 URL 不够——同一个地址还是可能被上面两层任一层截住 */
-const BUILD='v12';
+// 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
+// 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
+//（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
+const BUILD='v21';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
