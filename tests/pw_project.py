@@ -40,8 +40,9 @@ async def main():
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "重名没有建出第二个项目")
 
         # 点「打开」→ 选谱子 → 挂到这个项目上（名字保持用户起的，不跟文件名走）
+        await pg.click(".libCard button.open")               # 空项目 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.open")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(A)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=60000)
         print(ok(await pg.evaluate("track.name")=="我的排练曲"), "项目名保持用户起的: "+await pg.evaluate("track.name"))
@@ -59,8 +60,9 @@ async def main():
         # 换谱 → 标注还在
         await pg.evaluate("$('bLib').onclick()"); await pg.wait_for_timeout(500)
         pg.once("dialog",lambda dlg:asyncio.create_task(dlg.accept()))
+        await pg.click(".libCard button.repl")               # 换谱 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.repl")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(B)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===3",timeout=60000)
         await pg.wait_for_timeout(300)

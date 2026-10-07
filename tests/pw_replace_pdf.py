@@ -70,8 +70,9 @@ async def main():
 
         # ② 「换谱」按钮：换成一份完全不同的谱子，标注一个字都不能少
         pg.once("dialog",lambda dlg:asyncio.create_task(dlg.accept()))
+        await pg.click(".libCard button.repl")               # 换谱 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.repl")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(C)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===3",timeout=60000)
         await pg.wait_for_timeout(300)

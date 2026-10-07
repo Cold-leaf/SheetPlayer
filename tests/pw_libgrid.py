@@ -45,8 +45,9 @@ async def main():
 
         async def importPdf(title):
             card=pg.locator(".libCard",has_text=title).first
+            await card.locator("button.open").click()          # 空项目 → 先问来源
             async with pg.expect_file_chooser() as fc:
-                await card.locator("button.open").click()
+                await pg.click("#dlgPickBtns button >> nth=0")  # 「从本机选一份…」
             await (await fc.value).set_files(PDF)
             await enterScore()
 

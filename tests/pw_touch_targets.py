@@ -334,8 +334,9 @@ async def main():
         await pgl.wait_for_selector("#dlg",state="visible")
         await pgl.fill("#dlgInp","触屏测试曲"); await pgl.click("#dlgOk")
         await pgl.wait_for_function("()=>document.querySelectorAll('.libCard').length===1",timeout=8000)
+        await pgl.click(".libCard button.open")               # 空项目 → 先问来源
         async with pgl.expect_file_chooser() as fc:
-            await pgl.click(".libCard button.open")
+            await pgl.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(PDF)
         await pgl.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)
         await pgl.wait_for_timeout(600)

@@ -1354,7 +1354,7 @@ function askMode(msg,def){
 // resolve 成项目 id、'__new__'（新建）或 null（取消 = 丢弃这次下载，一个字节都不落库）。
 // 列表按名字相似度排序、预选自动认领的结果——预选走的是 claimProjFor，和真导入同一份规则。
 // 名字相似度只用来排序，认领仍是 nameKeys 精确键（拿相似度去认领会变成"看着像就吞"）。
-async function askProj(f,allowNew){
+async function askProj(f,allowNew,preferId){
   const projs=(idb?await idbAll(idb,'projects'):[])||[];
   const H=(await resolveFileKey(f)).hash;          // 只取键，不落库：用户还没点确认
   const hit=claimProjFor(projs,H,f.name);
@@ -1363,7 +1363,11 @@ async function askProj(f,allowNew){
   // ownCloud 列表那边「已隐藏 N 个」就是这么办的：藏掉用户自己建的东西，他会以为项目没了，
   // 而不是"这个暂时用不了"。行里写一句「等待导入谱子」说明状态就够了
   const pool=projs;
-  let cur=(hit.p&&hit.p.id)||(!allowNew&&track?track.id:'');
+  // ③ 从某张卡片的「☁」进来时，用户已经指明要挂到哪个项目（preferId）→ 直接预选它。
+  //    它压过按哈希认领的结果：那种情况后面 attachPdf 还会问一句"两个项目共用一份谱子"，
+  //    不会静默挂错
+  let cur=(preferId&&projs.some(p=>p.id===preferId)?preferId:'')||
+          (hit.p&&hit.p.id)||(!allowNew&&track?track.id:'');
   // 项目名来自同步文件（别的设备上编辑过），一律 textContent 插，不当 HTML
   return new Promise(res=>{
     const q=$('dlgProjQ'),list=$('dlgProjList'),none=$('dlgProjNone'),okb=$('dlgProjOk');
@@ -5023,7 +5027,14 @@ function renderLib(rows){
   }).join('');
   list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
   list.querySelectorAll('.pladd').forEach(b=>b.onclick=()=>plAdd(b.dataset.h));
-  list.querySelectorAll('.repl').forEach(b=>b.onclick=()=>{pendPid=b.dataset.h;$('fPdf').click()});
+  // 换谱也问一句来源（同上：卡片行塞不下第六个按钮）。取消 = 什么都不做
+  list.querySelectorAll('.repl').forEach(b=>b.onclick=async()=>{
+    const p=await idbGet(idb,'projects',b.dataset.h);if(!p)return;
+    const how=await askSource('《'+dispName(p.name)+'》换一份谱子。从哪来？\n（标注原样保留，旧谱子进历史）');
+    if(how==='dav')return davOpenFor(p.id);
+    if(how!=='local')return;
+    pendPid=p.id;$('fPdf').click();
+  });
   list.querySelectorAll('.ren').forEach(b=>b.onclick=()=>renTrack(b.dataset.h));
   list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
 }
@@ -5037,12 +5048,24 @@ async function drawLib(){
       (est.quota?(' / 配额 '+(est.quota/1073741824).toFixed(1)+' GB'):'')):'';
   }catch(err){$('libInfo').textContent=''}
 }
+// 「这份文件从哪来？」——只有卡片上那两个"要导一份谱子"的动作才问，
+// 工具栏/菜单里的入口照旧直接开文件选择器（本地导入是常态，别给常态加一步）。
+// 卡片那边非得问一句，是因为卡片操作行只有一行五个按钮的预算（见 pw_libgrid）：
+// 塞不下第六个「☁」，所以把两条来源折进同一次点击里
+async function askSource(msg){
+  return askPick(msg,[{v:'local',label:'从本机选一份…',primary:true},
+                      {v:'dav',label:'从 ownCloud 拿一份…'}]);
+}
 async function openTrack(id){
   const p=await idbGet(idb,'projects',id);if(!p)return;
   const f=p.pdf?await idbGet(idb,'files',p.pdf.hash):null;
   // 还没挂谱子（新建的空项目 / 同步来的标注 / 老存档），或者记录上有但文件不在本机
   //（别的设备同步过来的项目）→ 选一次文件，选完挂到**这个**项目上，不靠名字猜
-  if(!p.pdf||!f){pendPid=id;$('fPdf').click();return}
+  if(!p.pdf||!f){
+    const how=await askSource('《'+dispName(p.name)+'》还没有谱子。这份谱子从哪来？');
+    if(how==='dav')return davOpenFor(p.id);
+    if(how!=='local')return;
+    pendPid=id;$('fPdf').click();return}
   try{await loadPdfBlob(f.blob,p.pdf.name||p.name,p.id,p.pdf.hash)}
   catch(err){msg('打开失败：'+err.message,1)}
 }
@@ -5280,7 +5303,7 @@ async function davDownload(it){
     $('davTip').textContent='下载完成，选项目…';
     // 弹窗在**下载之后**：预选靠内容哈希和历史谱子，那是认领里最靠得住的两个信号，
     // 下载前根本算不出来。代价是取消会白下这一次——取消是少数情况，认了
-    const pid=await askProj(f,isPdf);              // null = 取消
+    const pid=await askProj(f,isPdf,davTarget);    // null = 取消；davTarget = 从卡片进来的话预选那个项目
     if(pid===null){msg('已取消，这份没有导入');return}     // 丢弃 blob，不落库，免得留孤儿文件
     // 关面板放在弹窗之后：取消了得让人留在面板里接着挑下一个文件
     $('davPop').style.display='none';
@@ -5292,15 +5315,27 @@ async function davDownload(it){
       await importAudioFile(f,pid);                // 它自己会问挂到哪个模式
     }
   }catch(err){msg('下载失败：'+err.message,1)}
-  finally{davBusy=false;$('davTip').textContent='点文件名下载并导入；下载完会让你选挂到哪个项目（音频不必先打开曲目）。'}
+  finally{davBusy=false;davTarget='';
+    $('davTip').textContent='点文件名下载并导入；下载完会让你选挂到哪个项目（音频不必先打开曲目）。'}
 }
 function davOpen(){
   if(!idb)return;
   $('davPop').style.display='flex';
   davRender();                                     // 没配好会自动展开登录区
 }
-$('libDav').onclick=davOpen;
-$('bDavOpen').onclick=()=>{$('menu').style.display='none';davOpen()};
+// 从某张卡片的「☁」进来：记下要挂到哪个项目，下载完那个弹窗直接预选它——
+// 面板本身照旧（能进目录、挑别的文件），只是下完不必再自己翻项目列表找那张卡片。
+// 每次打开都会重设（普通入口显式清空），所以不存在"上一次的目标还粘着"的情况
+let davTarget='';
+async function davOpenFor(pid){
+  const p=(idb&&pid)?await idbGet(idb,'projects',pid):null;
+  davTarget=p?p.id:'';
+  $('menu').style.display='none';
+  davOpen();
+  if(p)$('davTip').textContent='给《'+dispName(p.name)+'》拿一份：点文件名下载，下完的弹窗会预选它。';
+}
+$('libDav').onclick=()=>{davTarget='';davOpen()};
+$('bDavOpen').onclick=()=>{davTarget='';$('menu').style.display='none';davOpen()};
 $('davCfg').onclick=()=>davCfgShow();
 $('davKind').onchange=()=>davCfgShow(true);
 $('davClose').onclick=()=>{$('davPop').style.display='none'};

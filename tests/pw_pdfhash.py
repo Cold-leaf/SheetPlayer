@@ -74,8 +74,9 @@ async def main():
             await pg.wait_for_selector(".libCard button.repl")
         dialogs.clear()
         await openLib()
+        await pg.click(".libCard button.repl")               # 换谱 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.repl")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(NEW)
         await asyncio.sleep(2.5)
         h2 = await pg.evaluate("pdfHash")
@@ -96,8 +97,9 @@ async def main():
         print("--- 对照组：换成完全不同的谱子 ---")
         dialogs.clear()
         await openLib()
+        await pg.click(".libCard button.repl")
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.repl")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(CTRL_NAME)
         await pg.wait_for_function("(h)=>pdfHash!==h", arg=h1, timeout=60000)
         await asyncio.sleep(0.5)

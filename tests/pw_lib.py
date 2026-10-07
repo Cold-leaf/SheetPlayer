@@ -29,8 +29,9 @@ async def main():
         await pg.wait_for_function("()=>document.querySelectorAll('.libCard').length===1",timeout=8000)
         print(ok((await pg.inner_text(".libCard button.open")).strip()=="＋ 导入谱子"),
               "空项目那一行就是导入入口")
+        await pg.click(".libCard button.open")               # 空项目 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.open")
+            await pg.click("#dlgPickBtns button >> nth=0")   # 「从本机选一份…」
         await (await fc.value).set_files(PDF)
         await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=30000)
         print(ok(await pg.evaluate("$('lib').style.display==='none'")), "选完 PDF 自动进入谱面（库界面收起）")

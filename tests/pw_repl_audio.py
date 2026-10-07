@@ -44,8 +44,9 @@ async def swap_via_lib(pg,path,h_old):
     # （实测踩过：第三条拿到的是一条**上一次**的消息，哈希没变却"通过"了等待）
     await pg.evaluate("$('msg').textContent=''")
     pg.once("dialog",lambda dlg:asyncio.create_task(dlg.accept()))   # 「换谱：… 个小节标记原样保留」
+    await pg.click(".libCard button.repl")                   # 换谱 → 先问来源
     async with pg.expect_file_chooser() as fc:
-        await pg.click(".libCard button.repl")
+        await pg.click("#dlgPickBtns button >> nth=0")
     await (await fc.value).set_files(path)
     await pg.wait_for_function("(h)=>pdfHash!==h&&$('msg').textContent.includes('已换谱')",
                                arg=h_old,timeout=60000)
@@ -161,8 +162,9 @@ async def main():
             seen["m"]=d.message
             asyncio.create_task(d.dismiss())             # 取消
         pg.once("dialog",on_dlg)
+        await pg.click('.libCard button.repl[data-h="'+yiPid+'"]')   # 换谱 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click('.libCard button.repl[data-h="'+yiPid+'"]')
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(A)              # 跟乙现在的谱子不同 → 会弹确认框
         for _ in range(60):
             if seen.get("m"): break

@@ -61,8 +61,10 @@ async def main():
         await pg.wait_for_timeout(800)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "批量导入重建曲目")
         print(ok("等待导入谱子" in await pg.inner_text(".libCard")), "导入的项目先作为 stub（等待导入谱子）")
-        await pg.click(".libCard button.open")   # stub 打开 → 选 PDF 按哈希对上
-        await pg.set_input_files("#fPdf",PDF)
+        await pg.click(".libCard button.open")   # stub 打开 → 先问来源
+        await pg.wait_for_selector("#dlgPickBtns button")
+        await pg.click("#dlgPickBtns button >> nth=0")       # 「从本机选一份…」
+        await pg.set_input_files("#fPdf",PDF)    # pendPid 已指向这个 stub → 挂回本项目
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===3",timeout=30000)
         print(ok(await pg.evaluate("M.length")==3 and await pg.evaluate("E.length")==0), "stub 解析后标注恢复")
 

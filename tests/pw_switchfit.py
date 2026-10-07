@@ -54,8 +54,9 @@ async def main():
                 await pg.fill("#dlgInp",nm); await pg.click("#dlgOk")
                 await pg.wait_for_function("()=>$('dlg').style.display==='none'",timeout=8000)
                 card=pg.locator(".libCard",has_text=nm).first
+                await card.locator("button.open").click()      # 空项目 → 先问来源
                 async with pg.expect_file_chooser() as fc:
-                    await card.locator("button.open").click()
+                    await pg.click("#dlgPickBtns button >> nth=0")
                 await (await fc.value).set_files(D+f)
                 await pg.wait_for_function("()=>$('lib').style.display==='none'",timeout=40000)
                 await pg.wait_for_function("()=>document.querySelector('.page[data-page=\"1\"]')?.dataset.done",timeout=40000)

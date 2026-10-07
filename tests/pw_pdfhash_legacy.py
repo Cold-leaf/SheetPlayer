@@ -71,8 +71,9 @@ async def main():
             await pg.wait_for_selector(".libCard button.repl")
         dialogs.clear()
         await openLib()
+        await pg.click(".libCard button.repl")               # 换谱 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.repl")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(SRC)
         await pg.wait_for_function("(h)=>pdfHash===h", arg=O, timeout=60000)
         await asyncio.sleep(0.8)
@@ -87,8 +88,9 @@ async def main():
         # ② 改了后面那版：新键，真换谱，老键进历史
         dialogs.clear()
         await openLib()
+        await pg.click(".libCard button.repl")
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard button.repl")
+            await pg.click("#dlgPickBtns button >> nth=0")
         await (await fc.value).set_files(NEW)
         await pg.wait_for_function("(h)=>pdfHash!==h", arg=O, timeout=60000)
         await asyncio.sleep(0.8)

@@ -38,8 +38,9 @@ async def main():
               "落成 1 个项目（pdf=null）+ 1 份标注（marks.pid = projects.id）")
 
         # 打开这个项目 → 选 PDF → 挂上去（显式指定，不靠名字猜）
+        await pg.click(".libCard.legacy button.open")        # 空项目 → 先问来源
         async with pg.expect_file_chooser() as fc:
-            await pg.click(".libCard.legacy button.open")
+            await pg.click("#dlgPickBtns button >> nth=0")   # 「从本机选一份…」
         await (await fc.value).set_files(PDF)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===2",timeout=30000)
         print(ok(await pg.evaluate("M.map(x=>x.m).join(',')")=="1,2" and await pg.evaluate("E.length")==1),
