@@ -2,7 +2,7 @@
    每次发布改动记得 bump VER，旧缓存会在 activate 时清掉。
    VER 还要跟 player.html 里的 BUILD 一起 bump（同一个号）：菜单里那行「构建 vNN」
    是手机上唯一能看出"跑的是不是新页面"的地方，两边对不上就没法判断 */
-const VER='v21';
+const VER='v22';
 const CACHE='sheetplayer-'+VER;
 const ASSETS=['./','./index.html','./player.html','./manifest.json',
   './lib/pdf.min.js','./lib/pdf.worker.min.js',
@@ -31,6 +31,16 @@ self.addEventListener('fetch',e=>{
         return r;
       }).catch(()=>caches.match('./player.html'))
     );
+    return;
+  }
+  // CMap：按需取，取到就存下来。169 个文件共 1.7MB，全丢进 ASSETS 预缓存会让安装又慢又脆
+  //（addAll 一个失败就整个 install 失败），而一份谱子实际只用到一两个。
+  // 存下来之后离线也画得出中文批注——不存的话每次都要联网，离线排练时汉字又没了
+  if(req.url.includes('/cmaps/')){
+    e.respondWith(caches.match(req).then(r=>r||fetch(req).then(resp=>{
+      if(resp.ok){const cp=resp.clone();caches.open(CACHE).then(c=>c.put(req,cp))}
+      return resp;
+    })));
     return;
   }
   // 静态资源：缓存优先

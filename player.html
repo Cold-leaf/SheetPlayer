@@ -1483,14 +1483,23 @@ function undo(){
 
 /* ---------- PDF ---------- */
 // 先用真 worker；file:// 下建不出跨域 worker 时，再把 worker 装进主线程重试
+/* 未嵌入的 CJK 字体要配 CMap 才画得出来，这一条不是可选项：
+   WPS 里加的中文批注用的是**没有嵌入**的宋体（SimSun）+ GBK-EUC-H 编码，
+   不给 cMapUrl 的话 pdf.js 直接 `translateFont failed: ensure cMapUrl…`，汉字一个都不画。
+   坑在于**它不报错给用户看**：批注的白色文本框照画，白底落在白纸上看不出来，
+   于是整页跟没加批注的旧版长得一模一样。
+   「换了谱子怎么没变」最后查出来就是这个——换谱其实成功了（哈希、历史、标注全对），
+   只是新版多出来的那 13 条中文批注一条都渲染不出来，肉眼自然看不出换过。
+   cmaps 取自 pdfjs-dist 5.4.296，和自带的 pdf.js 3.11.174 实测兼容（bcmap 格式没变）。 */
+const PDF_OPTS={cMapUrl:CDN+'cmaps/',cMapPacked:true};
 async function openPdf(file){
-  try{return await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise}
+  try{return await pdfjsLib.getDocument({data:await file.arrayBuffer(),...PDF_OPTS}).promise}
   catch(err){
     if(globalThis.pdfjsWorker)throw err;
     await new Promise((ok,no)=>{const s=document.createElement('script');
       s.src=CDN+'pdf.worker.min.js';s.onload=ok;s.onerror=()=>no(new Error('worker 加载失败'));
       document.head.appendChild(s)});
-    return await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    return await pdfjsLib.getDocument({data:await file.arrayBuffer(),...PDF_OPTS}).promise;
   }
 }
 // 待挂载的项目：用户点了「打开」一个还没有谱子的项目，等他在文件选择器里选 PDF。
@@ -4097,7 +4106,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v21';
+const BUILD='v22';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

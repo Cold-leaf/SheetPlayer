@@ -327,6 +327,8 @@
 ## 开发
 
 - 源码即 `player.html` 单文件（CSS + JS 内联）。PWA 外壳：`manifest.json` + `sw.js` + `icon-*.png` + `index.html`（站点根重定向）；`lib/` 是本地化的 pdf.js（3.11.174），离线也能渲染。
+- **`lib/cmaps/` 不能删**：未嵌入的 CJK 字体要靠 CMap 才画得出来。WPS 加的中文批注用的是没嵌入的宋体（SimSun + `GBK-EUC-H`），少了 `cMapUrl` 就 `translateFont failed`、**汉字一个不画**——而批注的白色文本框照画，白底落在白纸上看不出来，整页看着跟没批注的旧版一模一样（「换了谱子怎么没变」查到最后就是这个：换谱其实成功了，只是新增的中文渲染不出来）。169 个文件共 1.7MB，按需取、`sw.js` 取到就存，所以不进 `ASSETS` 预缓存。见 `tests/pw_cmap.py`。
+- **发版要同时 bump 三处**：`sw.js` 的 `VER`、`player.html` 的 `BUILD`（两者同号，菜单里那行「构建 vNN」是手机上唯一能看出跑的是不是新页面的地方）。
 - 发布改动了内容记得 bump `sw.js` 里的 `VER`，否则旧缓存不清、用户拿不到更新（页面走网络优先一般能自动更新，但静态资源走缓存优先）。
 - 测试在 `tests/`：
   - `tests/t*.js`：纯逻辑测试。t9 直接从 player.html 提取 `/*PURE*/` 块测真实代码；其余为手工拷贝的函数快照。
