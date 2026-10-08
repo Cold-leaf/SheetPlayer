@@ -2,7 +2,7 @@
    每次发布改动记得 bump VER，旧缓存会在 activate 时清掉。
    VER 还要跟 player.html 里的 BUILD 一起 bump（同一个号）：菜单里那行「构建 vNN」
    是手机上唯一能看出"跑的是不是新页面"的地方，两边对不上就没法判断 */
-const VER='v22';
+const VER='v23';
 const CACHE='sheetplayer-'+VER;
 const ASSETS=['./','./index.html','./player.html','./manifest.json',
   './lib/pdf.min.js','./lib/pdf.worker.min.js',

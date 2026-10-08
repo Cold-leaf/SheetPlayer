@@ -436,8 +436,18 @@ body.perf .editOnly{display:none}
 #davList .dRow .ic{width:20px;text-align:center;flex:none}
 #davList .dRow .nm{flex:1;min-width:0;word-break:break-all}
 #davList .dRow .sz{color:var(--text-dim);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* 「最新更新时间」列（值由 davWhen 生成）。tabular-nums 不能省：
+   「今天 08:12」和「昨天 21:05」混在一列里，不等宽的数字会让这列看着是歪的 */
+#davList .dRow .dt{color:var(--text-dim);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
 #davList .dRow.dim{opacity:.5;cursor:default}
 #davList .dEmpty{color:var(--text-dim);padding:20px 12px;text-align:center;font-size:13px}
+/* 窄屏留哪一列：留时间、藏大小。这个面板是用来找「哪份是新的」的，
+   大小能从 ownCloud 网页版看；而 .nm 是 word-break:break-all，
+   三列挤下来曲名会碎成每行两三个字。
+   条件只按宽度、不带 pointer：这是版式问题不是指针精度问题（跟文件开头那套判断一致） */
+@media (max-width:700px){
+  #davList .dRow .sz{display:none}
+}
 #davTip{margin-top:8px;white-space:normal;line-height:1.6}
 #gen{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:21;
      align-items:center;justify-content:center}
@@ -4106,7 +4116,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v22';
+const BUILD='v23';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5223,7 +5233,13 @@ async function davList(path){
     if(!nm)continue;
     const isDir=resp.getElementsByTagNameNS('*','collection').length>0;
     const cl=resp.getElementsByTagNameNS('*','getcontentlength')[0];
-    out.push({name:nm,path:p,dir:isDir,size:cl?+cl.textContent:0});
+    // getlastmodified 是 RFC 1123（Wed, 01 Oct 2025 08:12:33 GMT），Date.parse 认。
+    // allprop（我们没写 body，就是 allprop）默认带这个字段，不用额外请求。
+    // 服务器不给、或给了个解不出来的值时落成 0——davWhen 会据此不显示，
+    // 不这么兜底的话行上会竖一排「Invalid Date」
+    const lm=resp.getElementsByTagNameNS('*','getlastmodified')[0];
+    const mt=lm?Date.parse(lm.textContent):NaN;
+    out.push({name:nm,path:p,dir:isDir,size:cl?+cl.textContent:0,mtime:isNaN(mt)?0:mt});
   }
   out.sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name,'zh'));
   return out;
@@ -5251,6 +5267,31 @@ async function davGet(path,onProgress){
 const DAV_AUD=/\.(mp3|m4a|wav|flac|aac|ogg|opus|wma|aiff?)$/i;
 const DAV_PDF=/\.pdf$/i;
 function fmtSize(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':(n>=1024?(n/1024).toFixed(0)+' KB':'')}
+// 服务器上的「最新更新时间」→ 列表里那一小列。返回 {short,full}：short 上行，full 进 title。
+// 今天/昨天写成字不写日期：找谱子时「今天改的」比「10-08」认得快，而且不用先想今天是几号。
+// 同年省掉年份、跨年才写全，都是为了在这一列里省宽度（窄屏上它跟大小列是二选一的关系）。
+// 跨天判断走 Date(y,m,d-1) 而不是减 86400000：夏令时那天少/多出来的那一小时
+// 会让「昨天」在换令当天认不出来（差一小时就落到今天或前天的格里）。day 0/负数是合法输入，
+// Date 会自己往前进位，所以月初、年初也不用特判。
+function davWhen(ms){
+  if(!ms)return{short:'',full:''};
+  const t=new Date(ms);
+  if(isNaN(t))return{short:'',full:''};
+  const hm=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  const now=new Date();
+  const day=new Date(t.getFullYear(),t.getMonth(),t.getDate()).getTime();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  const yest=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1).getTime();
+  // 月也要补零：不补的话「6-15」比「10-08」窄一截，tabular-nums 只统一数字宽度、
+  // 统一不了位数，这列照样是参差的
+  const md=String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  let s;
+  if(day===today)s='今天 '+hm;
+  else if(day===yest)s='昨天 '+hm;
+  else if(t.getFullYear()===now.getFullYear())s=md+' '+hm;
+  else s=t.getFullYear()+'-'+md;                   // 跨年不给时分：年份比时分更有用，一列放不下两个
+  return {short:s,full:t.toLocaleString()};
+}
 function davCfgShow(v){                            // 登录区：没配好时自动展开
   const on=v===undefined?$('davCfgBox').style.display==='none':v;
   $('davCfgBox').style.display=on?'block':'none';
@@ -5284,8 +5325,13 @@ async function davRender(){
     }
     box.innerHTML=items.map((it,i)=>{
       const ic=it.dir?'📁':(DAV_PDF.test(it.name)?'📄':'🎵');   // 非目录项已过滤，只剩这两种
+      const w=davWhen(it.mtime);
+      // 目录不给时间：ownCloud 里父目录的 mtime 随任何子文件改动就变，看它等于看噪音
+      //（跟「大小」一样留空，右端两列因此仍然对齐）。full 进 title，悬停能看到秒和星期
       return '<div class="dRow" data-i="'+i+'"><span class="ic">'+ic+'</span>'+
         '<span class="nm">'+esc(it.name)+'</span>'+
+        '<span class="dt"'+(w.full?' title="'+esc(w.full)+'"':'')+'>'+
+          (it.dir?'':esc(w.short))+'</span>'+
         '<span class="sz">'+(it.dir?'':fmtSize(it.size))+'</span></div>';
     }).join('')+tail;
     box.querySelectorAll('.dRow').forEach((el,k)=>{
