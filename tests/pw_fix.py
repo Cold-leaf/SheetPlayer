@@ -64,8 +64,11 @@ async def main():
 
         # --- 频谱拖动走带 ---
         await pg.evaluate("E=[{m:1,t:5,src:'tap'}];layout();aud.pause();aud.currentTime=40")
+        # #bSpec 只在「打时间」档露面（player.html:4226），别的档下它是 display:none——
+        # 旧写法直接 click 会以「element is not visible」超时。频谱本来就是打时间的工具，先切档
+        await pg.select_option("#mode","time"); await asyncio.sleep(0.2)
         if not await pg.is_visible("#specBox"): await pg.click("#bSpec")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.2)
         cv=await pg.query_selector("#specCv"); r2=await cv.bounding_box()
         pps=await pg.evaluate("specPPS")
         cx,cy=r2["x"]+r2["width"]*0.7, r2["y"]+r2["height"]/2

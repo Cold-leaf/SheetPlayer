@@ -26,7 +26,11 @@ async def main():
         gaps=await pg.evaluate("[...SPEC.onsets].slice(1).map((t,i)=>+(t-SPEC.onsets[i]).toFixed(3))")
         print(f"     前 8 个间隔: {gaps[:8]}  中位 {statistics.median(gaps):.3f}s")
 
+        # #bSpec 只在「打时间」档露面（player.html:4226），别的档下它是 display:none——
+        # 旧写法直接 click 会以「element is not visible」超时。频谱本来就是打时间的工具，先切档
+        await pg.select_option("#mode","time"); await asyncio.sleep(0.2)
         if not await pg.is_visible("#specBox"): await pg.click("#bSpec")
+        await asyncio.sleep(0.2)
         # 固定播放位置，直接数「开/关起音」两次渲染之间有多少像素变了
         GRAB="""()=>{const c=$('specCv');return [...c.getContext('2d').getImageData(0,0,c.width,c.height).data]}"""
         await pg.evaluate("aud.pause();aud.currentTime=12")

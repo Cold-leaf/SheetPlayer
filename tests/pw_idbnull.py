@@ -33,7 +33,9 @@ async def main():
         await asyncio.sleep(0.8)
         print(ok(await pg.evaluate("localStorage.getItem('player:'+pdfName)!==null")), "标注按文件名存进 localStorage")
         await pg.reload()
-        await pg.wait_for_function("()=>$('stat').textContent.includes('已标 0')",timeout=10000)
+        # 累计统计（已标 N 小节 / 已打 N 时间点）早就从工具栏 #stat 搬进菜单 #statMenu 了，
+        # #stat 现在只剩「打时间时的目标」——等它出现「已标 0」会一直等到超时
+        await pg.wait_for_function("()=>$('statMenu').textContent.includes('已标 0')",timeout=10000)
         await pg.set_input_files("#fPdf",PDF)
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===1",timeout=30000)
         print(ok(await pg.evaluate("M.length")==1), "刷新后从 localStorage 恢复标注")

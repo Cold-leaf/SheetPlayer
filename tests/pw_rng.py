@@ -37,6 +37,8 @@ async def main():
         print(ok(same==["6/8","9/8","6/8","9/8","6/8","6/8","6/8","6/8","9/8","6/8","9/8"]),
               f"逐小节结果与你原表一致: {same}")
 
+        # 「自动生成」只在「打时间」档露面（player.html:4227），别的档下 display:none
+        await pg.select_option("#mode","time"); await asyncio.sleep(0.2)
         await pg.click("#bGen"); await asyncio.sleep(0.4)
         rows=await pg.eval_on_selector_all("#gMeter .grow","e=>e.length")
         sigs=await pg.eval_on_selector_all("#gMeter input.sig","e=>e.map(x=>x.value)")
@@ -105,6 +107,8 @@ async def main():
         rs=await pg.evaluate("METER.map(r=>sigText(r.sig)+': '+formText(r.ranges))")
         print(ok(rs==ME), f"刷新恢复: {rs}")
 
+        # 「自动生成」只在「打时间」档露面（player.html:4227），别的档下 display:none
+        await pg.select_option("#mode","time"); await asyncio.sleep(0.2)
         await pg.click("#bGen"); await asyncio.sleep(0.4)
         await pg.screenshot(path="/tmp/meter_rng.png")
         print("\npage errors:",errs or "(none)")

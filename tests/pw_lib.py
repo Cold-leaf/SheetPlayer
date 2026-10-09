@@ -38,7 +38,10 @@ async def main():
         # 身份是项目 id（p 开头），PDF 只是挂在它下面的一份附件
         print(ok(await pg.evaluate("!!track&&track.id===pid&&pid[0]==='p'&&track.pdf.hash===pdfHash&&pdfHash.length===64")),
               "项目按 id 建立，PDF 是附件（内容哈希只当 blob 键）: "+str(await pg.evaluate("pid")))
-        print(ok("《" in await pg.inner_text("#stat")), "状态栏显示曲名: "+await pg.inner_text("#stat"))
+        # 曲名早就不在工具栏 #stat 里了（#stat 现在只剩打时间时的「目标 → 小节」）——
+        # 它挪到了排练胶囊的 #rehLblTxt，而且不带《》了
+        nm=await pg.inner_text("#rehLblTxt")
+        print(ok("斯卡布罗" in nm), "曲名显示在排练胶囊上: "+repr(nm))
 
         # 标 2 个小节 → 防抖落盘 → 回库看卡片统计
         await pg.select_option("#mode","mark")
@@ -61,7 +64,10 @@ async def main():
         await pg.click(".libCard button.open")
         await pg.wait_for_function("()=>document.querySelectorAll('.mk').length===2",timeout=30000)
         print(ok(await pg.evaluate("M.map(x=>x.m).join(',')")=="1,2"), "打开曲目后标注恢复 (M=1,2)")
-        print(ok((await pg.evaluate("$('stat').textContent")).find("已标 2 小节")>0), "状态栏与恢复数据一致")
+        # 累计统计同样收进了菜单的 #statMenu
+        # 注意是 >=0 不是 >0：#statMenu 的第一段就是「已标 N 小节」，find 返回 0，
+        # 写成 >0 会永远假红（统计搬到 #statMenu 之后它就命中在位置 0 了）
+        print(ok((await pg.evaluate("$('statMenu').textContent")).find("已标 2 小节")>=0), "菜单统计与恢复数据一致")
 
         print("\npage errors:",errs or "(none)")
         await b.close()

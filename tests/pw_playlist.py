@@ -43,16 +43,25 @@ async def main():
         await pg.evaluate("document.querySelectorAll('.libCard button.pladd').forEach(b=>b.click())")
         await pg.wait_for_function("()=>PL.items.length===2",timeout=10000)
         print(ok(await pg.evaluate("PL.items.length")==2), "两首都加入播放列表")
-        rows=await pg.evaluate("document.querySelectorAll('.plRow').length")
-        print(ok(rows==2), f"列表面板显示 {rows} 行")
+        # 列表渲染到**两个**容器：曲目库屏上的 #plList + 弹层 #plPopList（同一个 renderPL 渲染两遍），
+        # 所以全文档数 .plRow 是 4 行而不是 2 行。冷启动（没在播）时弹层打不开——#plNow 那个入口
+        # 要 plOn 才出现在状态条上、曲名胶囊那个入口在演奏态——所以就用曲目库屏上这份（它本来开着）
+        rows=await pg.evaluate("document.querySelectorAll('#plList .plRow').length")
+        print(ok(rows==2), f"曲目库里的播放列表显示 {rows} 行")
+
+        # 点 .pladd 会把人带回谱面（库屏收起），所以点行内按钮前把曲目库重新打开——
+        # #plList 在库屏里，库屏收着的时候这些按钮是 display:none，点它只会超时
+        if await pg.evaluate("getComputedStyle($('lib')).display")=="none":
+            await pg.evaluate("$('bLib').onclick()"); await pg.wait_for_timeout(400)
 
         # 排序：把第 2 首上移
-        names0=await pg.evaluate("[...document.querySelectorAll('.plRow .nm')].map(e=>e.textContent)")
-        await pg.click('.plRow [data-up="1"]'); await pg.wait_for_timeout(300)
-        names1=await pg.evaluate("[...document.querySelectorAll('.plRow .nm')].map(e=>e.textContent)")
+        names0=await pg.evaluate("[...document.querySelectorAll('#plList .plRow .nm')].map(e=>e.textContent)")
+        await pg.click('#plList .plRow [data-up="1"]'); await pg.wait_for_timeout(300)
+        names1=await pg.evaluate("[...document.querySelectorAll('#plList .plRow .nm')].map(e=>e.textContent)")
         print(ok(names1==[names0[1],names0[0]]), f"上移生效: {names0} → {names1}")
 
         # 开始播放 → 第 1 首
+        # 菜单里这个是 #plStart（弹层里那个叫 #plPopStart，两处同一个动作）
         await pg.click("#plStart")
         # 等状态条真正刷新（syncPL 在 loadPdfBlob 之后才跑）
         await pg.wait_for_function("()=>plOn&&plIdx===0&&$('plNow').textContent==='列表 1/2'",timeout=30000)

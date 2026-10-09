@@ -78,10 +78,16 @@ async def main():
         bb=await (await pg.query_selector('.page[data-page="1"]')).bounding_box()
         ny=truth["ny"]; h=truth["h"]
         await pg.evaluate(f"lastH={h}")
-        sc=await pg.evaluate("boxes[1].clientWidth/cvs[1].width")
-        await pg.mouse.click(bb["x"]+(tx+6)*sc, bb["y"]+bb["height"]*(ny+h/2))
-        got=await pg.evaluate("Math.round(M[0].nx*cvs[1].width)")
-        print(ok(abs(got-tx)<=3), f"点击标小节自动吸附: 点在 {tx+6} -> 存成 {got} (真值 {tx}±3)")
+        # ⚠ 一切按「页面宽度的比例」算，别把 tx 当像素直接使：扫真值和点击之间自动适配会重算画布
+        # 尺寸（实测 625 → 612，zoom 1.0487 → 1.0273），那份像素真值立刻过期——踩过一次：
+        # 拿过期的 317px 去点 612 宽的画布，落到了 0.528 而不是 0.507，app 老老实实吸到真线 310，
+        # 却被判成"吸附错了"。比例空间里怎么重排都不会过期
+        frac=tx/truth["W"]
+        await pg.mouse.click(bb["x"]+bb["width"]*(frac+6/truth["W"]), bb["y"]+bb["height"]*(ny+h/2))
+        got=await pg.evaluate("M[0].nx")
+        print(ok(abs(got-frac)<=3/truth["W"]),
+              f"点击标小节自动吸附: 点在真线右侧 6px（比例 {frac:.4f}）-> 存成 {got:.4f}"
+              f"（= {round(got*truth['W'])}px，真值 {tx}±3）")
         print(ok("吸到小节线" in await pg.inner_text("#msg")), f'提示: "{await pg.inner_text("#msg")}"')
 
         print("\npage errors:",errs or "(none)")

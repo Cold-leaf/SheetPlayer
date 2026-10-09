@@ -92,7 +92,16 @@ async def main():
         await pg.evaluate("aud.currentTime=1.4"); await asyncio.sleep(0.3)
         await pg.evaluate("wrap.scrollTop=0")
         el=await pg.query_selector('.page[data-page="1"]'); pb=await el.bounding_box()
-        await pg.screenshot(path="/tmp/prog.png",clip={"x":pb["x"],"y":pb["y"]+pb["height"]*0.22,"width":pb["width"],"height":pb["height"]*0.30})
+        # 这张图只是留给人眼看的诊断产物。谱面比视口大时 pb 会伸到视口外，
+        # 直接 clip 会抛「Clipped area is either empty or outside the resulting image」把测试搞挂——
+        # 夹到视口里，并且出错也不许冒泡（断言在上面已经打完了）
+        try:
+            vw,vh=1500,1000
+            x0=max(0,min(pb["x"],vw-2)); y0=max(0,min(pb["y"]+pb["height"]*0.22,vh-2))
+            await pg.screenshot(path="/tmp/prog.png",clip={"x":x0,"y":y0,
+              "width":max(2,min(pb["width"],vw-x0)),"height":max(2,min(pb["height"]*0.30,vh-y0))})
+        except Exception as e:
+            print("     （诊断截图跳过：%s）"%e)
         print("\npage errors:",errs or "(none)")
         await b.close()
 asyncio.run(main())

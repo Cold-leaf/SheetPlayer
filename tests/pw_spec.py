@@ -1,8 +1,15 @@
-import asyncio, glob, http.server, socketserver, threading, functools
+import asyncio, glob, http.server, socketserver, threading, functools, wave, struct, math
 from playwright.async_api import async_playwright
 ROOT="/home/xiaoyuanzhu/my-life-db/data/assets"
 PDF=ROOT+"/线谱合集/SK_斯卡布罗集市[线][TTBB+NA+WO].pdf"
 AUD=glob.glob(ROOT+"/ICT_working/08-Assets/*.mp3")[0]
+# 「换一个音频」用的第二份。原来是手放在 /tmp/other.mp3 的，仓库里没有、也没有任何测试生成它
+# ——换台机器（或清过 /tmp）跑到「换音频要重新分析」那一步就 FileNotFoundError，
+# 而且那一点在整段断言的最后，看起来像"频谱测试崩了"。现生成一份 3 秒正弦，自给自足
+AUD2="/tmp/spec_other.wav"
+with wave.open(AUD2,'w') as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+    w.writeframes(b''.join(struct.pack('<h',int(12000*math.sin(2*math.pi*330*i/22050))) for i in range(22050*3)))
 H=functools.partial(http.server.SimpleHTTPRequestHandler,directory=ROOT+"/SheetPlayer")
 socketserver.TCPServer.allow_reuse_address=True
 srv=socketserver.TCPServer(("127.0.0.1",8742),H); threading.Thread(target=srv.serve_forever,daemon=True).start()
@@ -17,7 +24,11 @@ async def main():
         await pg.goto("http://127.0.0.1:8742/player.html?direct=1")
         await pg.evaluate("localStorage.clear()"); await pg.reload()
 
-        # 无音频时的占位
+        # 无音频时的占位。#bSpec 只在「打时间」档露面（player.html:4226），默认是播放档。
+        # 而且**切进打时间档时频谱会自动展开**（syncMode 干的），所以不能无条件点它——
+        # 那样点的是「收起」。先收再开，验的仍然是这个按钮本身
+        await pg.select_option("#mode","time"); await asyncio.sleep(0.3)
+        if await pg.is_visible("#specBox"): await pg.click("#bSpec")    # 自动展开的先收起来
         await pg.click("#bSpec"); await asyncio.sleep(0.3)
         print(ok(await pg.is_visible("#specBox")), "频谱条可展开")
         print(ok(await pg.evaluate("SPEC===null")), "没音频时 SPEC 为空（画占位文字）")
@@ -101,14 +112,14 @@ async def main():
         # specSeq 是取消令牌，每次换音频会递增（可能不止 +1：先作废旧分析再开新分析），只断言递增
         await pg.evaluate("window.__old=SPEC")
         s0=await pg.evaluate("specSeq")
-        await pg.set_input_files("#fAud","/tmp/other.mp3")
+        await pg.set_input_files("#fAud",AUD2)
         await pg.wait_for_function("()=>SPEC!==null&&SPEC!==window.__old",timeout=60000)
         s1=await pg.evaluate("specSeq")
         print(ok(s1>s0), f"换音频后重新分析 specSeq={s0}->{s1}")
         # 清空 value 后，同一路径也能再次触发
         await pg.evaluate("window.__old=SPEC")
         s0=await pg.evaluate("specSeq")
-        await pg.set_input_files("#fAud","/tmp/other.mp3")
+        await pg.set_input_files("#fAud",AUD2)
         await pg.wait_for_function("()=>specSeq>"+str(s0),timeout=10000)
         print(ok(True), "重选同名文件也能重新分析（value 已清空）")
         await pg.wait_for_function("()=>SPEC!==null",timeout=60000)

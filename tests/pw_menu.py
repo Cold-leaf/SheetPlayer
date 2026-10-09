@@ -31,7 +31,10 @@ async def main():
         await pg.evaluate("zoomAt(0.05, 0, 0)"); await asyncio.sleep(0.6)
         print(ok(await pg.evaluate("zoom")==0.05), f"zoomAt 到 0.05x（旧下限 0.35）: {await pg.evaluate('zoom')}")
         # 还原
-        await pg.evaluate("zoomAt(1.3,0,0);applyZoom()")
+        # zoomAt(10,0,0) → zoomAt(0.05,0,0) 之后 wrap 停在 scrollLeft=5754，页盒跑到 x=-4612
+        # （视口外）——后面点谱面就点了个空、M 一直是 0，「标小节仍可用」那条红在这，不是标小节坏了。
+        # 缩放假在 0 点也未必回到原点，得显式收回并等重排落地
+        await pg.evaluate("zoomAt(1.3,0,0);applyZoom();scrollHome()"); await asyncio.sleep(0.5)
 
         # --- 菜单 ---
         print(ok(await pg.is_visible("#menu")==False), "菜单初始隐藏")
@@ -61,7 +64,11 @@ async def main():
         print(ok(await pg.evaluate("M.length")==1), "标小节仍可用")
         await pg.click("#bUndo"); await asyncio.sleep(0.2)
         print(ok(await pg.evaluate("M.length")==0), "撤销仍可用")
-        await pg.click("#bSpec"); await asyncio.sleep(0.2)
+        # #bSpec 只在「打时间」档露面（player.html:4226），且切进这个档时频谱会自动展开——
+        # 已经开着就别再点（那会把它收起）
+        await pg.select_option("#mode","time"); await asyncio.sleep(0.2)
+        if not await pg.is_visible("#specBox"): await pg.click("#bSpec")
+        await asyncio.sleep(0.2)
         print(ok(await pg.is_visible("#specBox")), "频谱仍可用")
 
         print("\npage errors:",errs or "(none)")
