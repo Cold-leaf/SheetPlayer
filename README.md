@@ -339,9 +339,14 @@
 - **发版要同时 bump 三处**：`sw.js` 的 `VER`、`player.html` 的 `BUILD`（两者同号，菜单里那行「构建 vNN」是手机上唯一能看出跑的是不是新页面的地方）。
 - 发布改动了内容记得 bump `sw.js` 里的 `VER`，否则旧缓存不清、用户拿不到更新（页面走网络优先一般能自动更新，但静态资源走缓存优先）。
 - 测试在 `tests/`：
-  - `tests/t*.js`：纯逻辑测试。t9 直接从 player.html 提取 `/*PURE*/` 块测真实代码；其余为手工拷贝的函数快照。
+  - `tests/t*.js`：纯逻辑测试。**t9 是正确做法**——它直接从 player.html 提取 `/*PURE*/` 块，测的就是线上代码。
+    `t6 / t7 / t8` 是早期的手工拷贝快照（拷来的函数已经和 player.html 有 1–2 处发散，等于在测旧行为），
+    新逻辑请一律加进 t9 那种 PURE 块，别再拷函数。
   - `tests/pw_*.py`：Playwright 浏览器端到端测试（`?direct=1` 参数跳过曲目库、走传统 localStorage 路径；库功能由 `pw_lib*.py` / `pw_migrate.py` / `pw_idbnull.py` 覆盖）。
   - 一键跑全套：`bash tests/run-tests.sh`（grep 输出中的 FAIL，任一失败 exit 1）。
+  - ⚠️ **断言必须让 `OK   ` / `FAIL` 落在行首**：run-tests.sh 是按 `^OK   ` / `^FAIL` 数的，
+    只 print 观察值、或把 FAIL 写在行中间的脚本一条都统计不到，套件会把它当成「0 ok / 0 fail」而永远绿
+    （2026-10-09 清掉过 5 个这样的探针）。写探针请放 `/tmp`，别放 `tests/`。
 - 测试里的 PDF/音频路径指向本机 `data/assets/`，换机器需改 `ROOT`。
 
 ---

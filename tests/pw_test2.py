@@ -61,7 +61,10 @@ async def main():
 
         # --- Shift+点击轮换第 N 遍（反复段）---
         await pg.evaluate("E=[{m:1,t:5},{m:4,t:9},{m:1,t:20},{m:4,t:24}]; refresh()")
-        rep = await pg.inner_text("#stat")
+        # 累计统计（段数/小节数/时间点数）早就从工具栏的 #stat 搬进菜单的 #statMenu 了，
+        # 而 #stat 现在只剩「打时间时的目标」——从搬家那天起这条断言就一直是红的（不是这一段改坏的）。
+        # 跟 pw_test4 同一个坑，那边已经改成读 #statMenu
+        rep = await pg.inner_text("#statMenu")
         print(ok("2 段" in rep), f'段落计数显示: "{rep}"')
         await pg.select_option("#mode","play")
         mk = await pg.query_selector('.mk[data-m="1"]'); r = await mk.bounding_box()
