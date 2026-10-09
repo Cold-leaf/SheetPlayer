@@ -3637,7 +3637,7 @@ function buildSpec(mono,dur,my,cacheHash){
       const cv=document.createElement('canvas');
       cv.width=frames;cv.height=SP_H;
       cv.getContext('2d').putImageData(new ImageData(data,frames,SP_H),0,0);
-      const on=pickOnsets(flux,frames,hop,SP_SR);
+      const on=pickOnsets(flux,frames,hop,SP_SR,mono);
       SPEC={cv,frames,hop,sr:SP_SR,dur,onsets:on.t,onsetStr:on.s};
       if(cacheHash)cacheSpec(cacheHash);        // 这里 my===specSeq 已校验过，缓存的就是这个音频
       specMsg('检出 '+on.t.length+' 个起音');specDirty=true;resolve();
@@ -3647,7 +3647,32 @@ function buildSpec(mono,dur,my,cacheHash){
 }
 
 /* 谱通量峰值 = 起音。局部最大 + 高于邻域均值 + 最小间距，避免平台期重复出峰 */
-function pickOnsets(flux,frames,hop,sr){
+/* 谱通量峰只能定位到「哪一帧」，而帧的窗是 [i*hop, i*hop+SP_N) —— 93ms 宽。
+   时间戳取窗起点会**系统性偏早**：实测点击类素材早 63–85ms（音头是从窗的右缘扫进来的，
+   而 flux 在它刚进来那一帧就跳起来了）。声音比标注早 70ms 是听得出来的，而且这个偏早会
+   经「吸附」传进标注本身（打点吸到音头 → 存下来的时间点偏早 → 播放时扫描线先到）。
+   所以这里在窗内用**时间域包络**精修时间戳：检出哪几帧完全不变（峰挑逻辑照旧），
+   只把时刻挪到真正的起音点——吸附「挑哪一个音头」的行为因此不变，变的只是时间。
+   取「第一个越过峰值 25% 的位置」而不是「斜率最大」：窗里挤进两个音时，
+   斜率最大会挑到后一个音，阈值法挑的是先来的那个（起音点就该是它）。 */
+function refineOnset(mono,sr,o){
+  const step=Math.max(1,Math.round(sr*0.001));        // 1ms 步（11025Hz 下 11 个采样）
+  const w=Math.max(2,Math.round(sr*0.002));           // 2ms 能量窗
+  const end=Math.min(mono.length-w,o+SP_N);
+  let peak=0,peakAt=o;
+  for(let p=o;p<end;p+=step){
+    let e=0;for(let k=p;k<p+w;k++){const v=mono[k];e+=v*v}
+    if(e>peak){peak=e;peakAt=p}
+  }
+  if(peak<=0)return o/sr;                             // 窗内全静音：退回窗起点，别给 NaN
+  const th=peak*0.25;
+  for(let p=o;p<peakAt;p+=step){
+    let e=0;for(let k=p;k<p+w;k++){const v=mono[k];e+=v*v}
+    if(e>=th)return p/sr;
+  }
+  return peakAt/sr;
+}
+function pickOnsets(flux,frames,hop,sr,mono){
   let mx=0;for(let i=0;i<frames;i++)if(flux[i]>mx)mx=flux[i];
   const ts=[],ss=[];
   if(!mx)return {t:new Float32Array(0),s:new Float32Array(0)};
@@ -3661,7 +3686,7 @@ function pickOnsets(flux,frames,hop,sr){
     for(let j=i-W;j<i;j++)if(flux[j]>=v){peak=false;break}
     if(peak)for(let j=i+1;j<=i+W;j++)if(flux[j]>v){peak=false;break}
     if(!(peak&&v>mean*1.45&&v>mx*0.05))continue;
-    const t=i*hop/sr;
+    const t=refineOnset(mono,sr,i*hop);
     if(ts.length&&t-ts[ts.length-1]<MINGAP){            // 挨太近的只留强的那个
       if(v/mx>ss[ss.length-1]){ts[ts.length-1]=t;ss[ss.length-1]=v/mx}
       continue;
@@ -4123,7 +4148,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v24';
+const BUILD='v25';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

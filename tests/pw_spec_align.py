@@ -4,7 +4,9 @@
 # 摆放会让画出来的声能早半个窗（1024 样本 @11025Hz = 46.4ms，实测 46.8ms）。肉眼看就是
 # 「谱图上的声音总在红色游标左边一点」。修法：画图时把源坐标减掉半窗的列数。
 #
-# 三条断言各盯一件事：
+# 四条断言各盯一件事：
+#   0. 起音刻度的时刻 = 真实点击（谱通量的峰只能定位到 93ms 宽的窗，时间戳取窗起点会早 63–85ms；
+#      现在在窗内用时间域包络精修，检出哪几帧不变、只把时刻挪到真正的起音点）
 #   1. 声能条纹的重心换算回时间 = 真实点击时刻（半窗没补就会偏早约 47ms）
 #   2. 修图像不能把别的一起挪了：E 竖线仍按真实时刻画（把偏移误加进 X() 是最容易犯的错）
 #   3. 端到端：声能条纹与 E 竖线同一列——「谱图里的声音」和「谱面上的竖线」同一时刻
@@ -12,8 +14,8 @@
 # 夹具：自制点击轨（10 个点击，严格每 0.5s 一个）+ 与之对齐的 10 根竖线。点击时刻是已知真值，
 # 所以偏移是量出来的，不是对实现的复述。
 #
-# 量之前先关掉「起音刻度」：它那条极淡的通天线按起音时刻画（比点击早约 70ms），
-# 会在点击左边竖出一道假条纹把重心拉偏——那是另一个问题（起音检测的窗起点偏差），别混进来。
+# 量声能条纹那两步（1、3）要先把「起音刻度」关掉：它那条极淡的通天线也是一条竖直的亮线，
+# 会在旁边竖出一道假条纹把重心拉偏。断言 0 读的是 SPEC.onsets，与画不画无关，不受影响。
 import asyncio, http.server, socketserver, threading, functools, wave, struct, math
 from playwright.async_api import async_playwright
 ROOT="/home/xiaoyuanzhu/my-life-db/data/assets"
@@ -96,6 +98,12 @@ async def main():
         await pg.wait_for_function("()=>SPEC!==null",timeout=90000)
         print(ok(await pg.evaluate("()=>SPEC.onsets.length")==10),
               "夹具：音频里检出 10 个起音（真值 10 个点击）")
+        # --- 0. 起音刻度的时刻 ---
+        ons=await pg.evaluate("()=>[...SPEC.onsets]")
+        o0=[(o-c)*1000 for o,c in zip(ons,CLICKS)]
+        print(ok(len(ons)==10 and max(abs(v) for v in o0)<=15),
+              "0. 起音刻度的时刻 = 真实点击（±15ms）：平均 %+.1f ms，最大 |偏移| %.1f ms（时间戳取窗起点时是 -63…-85ms）"%(
+                 sum(o0)/len(o0) if o0 else 0,max(abs(v) for v in o0) if o0 else -1))
         pid=await pg.evaluate("pid")
         await pg.evaluate("()=>{$('bSpec').onclick()}")
         await pg.wait_for_function("()=>specOn()&&$('specCv').clientWidth>0",timeout=5000)
