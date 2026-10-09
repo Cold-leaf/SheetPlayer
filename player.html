@@ -3735,7 +3735,14 @@ function drawSpec(){
   const t0=specT0(),t1=t0+W/specPPS,X=t=>(t-t0)*specPPS;
 
   if(SPEC){
-    const fx0=t0*SPEC.sr/SPEC.hop,fx1=t1*SPEC.sr/SPEC.hop;
+    // 谱图第 f 列是 [f*hop, f*hop+SP_N) 这段窗算出来的，能量重心在**窗中心** f*hop+SP_N/2，
+    // 不是窗起点。按 f*hop 摆放，画出来的声能就比真实时刻早半个窗——1024 样本 @11025Hz 时
+    // 实测早 47ms（理论 46.4ms），肉眼是"谱图上的声音总在游标左边一点"。
+    // 这里把源坐标整体减掉半个窗的**列数**来补正。只挪图像：下面 X() 那套时间→像素的映射
+    // 一律不动，播放头、E 竖线、秒刻度、循环区间仍然是真实时刻。
+    // 半窗有几列随 hop 变（长曲子 hop 会翻倍），所以按 SPEC.hop 现算，别写死 2
+    const half=SP_N/2/SPEC.hop;
+    const fx0=t0*SPEC.sr/SPEC.hop-half,fx1=t1*SPEC.sr/SPEC.hop-half;
     const sx0=Math.max(0,fx0),sx1=Math.min(SPEC.frames,fx1);
     if(sx1>sx0){
       ctx.imageSmoothingEnabled=true;
@@ -4116,7 +4123,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v23';
+const BUILD='v24';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
