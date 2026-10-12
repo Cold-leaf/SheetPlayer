@@ -1205,7 +1205,7 @@ let lastH=DEF_H,bandEl=null,sweepEl=null;
 const hOf=mk=>mk.h==null?DEF_H:mk.h;
 const spanOf=mk=>mk.span||1;                    // 这根竖线覆盖几个小节（多小节休止用，默认 1）
 let drag=null,curM=null,lastCur=null,lastSeek=null,tapM=null;
-let hist=[],dirty=true,lastT=-1,userScrollUntil=0,audUrl=null;
+let hist=[],dirty=true,lastT=-1,userScrollUntil=0,audUrl=null,loadedAudioHash='';
 const pagesEl=$('pages'),wrap=$('wrap'),aud=$('aud'),panel=$('panel');
 
 /* ---------- 小工具 ---------- */
@@ -2015,9 +2015,10 @@ function resetPdfDerived(keepAudio=false){
   staffCache.clear();                              // 按页面尺寸为键：必须留在「派生」这半边，分错会静默渲染错位
   rowEdgeCache.clear();
   if(!keepAudio){
-  if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
-  aud.src='';aud.load();aud.pause();
-  SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
+    loadedAudioHash='';
+    if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
+    aud.src='';aud.load();aud.pause();
+    SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
   }
   pagesEl.innerHTML='';
   panel.style.display='none';
@@ -4450,7 +4451,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v27';
+const BUILD='v28';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5102,6 +5103,7 @@ async function sweepOrphans(){
 /* ---------- 多音频 + 频谱缓存 ---------- */
 let specMem=new Map();                       // 会话内缓存：同一次使用里切音频变体零等待
 function resetAudio(){                       // 只清音频侧，标注一根都不动
+  loadedAudioHash='';
   if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
   aud.src='';aud.load();aud.pause();
   SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
@@ -5109,6 +5111,7 @@ function resetAudio(){                       // 只清音频侧，标注一根�
 async function switchAudio(blob,hash){
   resetAudio();
   audUrl=URL.createObjectURL(blob);aud.src=audUrl;
+  loadedAudioHash=hash||''; // 实际加载的文件身份；lastAudio 只是项目的选择记录。
   const my=specSeq;
   let sp=hash?specMem.get(hash):null;
   if(!sp&&hash&&idb)sp=await idbGet(idb,'spec',hash);
@@ -5455,9 +5458,15 @@ async function askSource(msg){
   return askPick(msg,[{v:'local',label:'从本机选一份…',primary:true},
                       {v:'dav',label:'从 ownCloud 拿一份…'}]);
 }
+// 曲目库只是覆盖谱面；回到同一项目/谱面时复用当前视图，不清播放器或编辑状态。
+function isCurrentScore(p){
+  return !!pdf&&!sheetBusy&&p?.id===pid&&p.pdf?.hash===pdfHash&&
+    (p.lastSheet||'default')===activeSheet;
+}
 async function openTrack(id){
   const p=await idbGet(idb,'projects',id);if(!p)return;
   ensureSheets(p);
+  if(isCurrentScore(p)){showLib(false);return}
   const f=p.pdf?await idbGet(idb,'files',p.pdf.hash):null;
   // 还没挂谱子（新建的空项目 / 同步来的标注 / 老存档），或者记录上有但文件不在本机
   //（别的设备同步过来的项目）→ 选一次文件，选完挂到**这个**项目上，不靠名字猜
@@ -5817,7 +5826,7 @@ async function plResolveAudio(it){
   const rec=await idbGet(idb,'files',a.hash);
   return {tr,rec,a,fallback:a.hash!==it.audioHash};
 }
-async function plPlay(i,autoplay,_skipped){
+async function plPlay(i,autoplay,_skipped,resumeCurrent=false){
   if(!PL.items.length)return;
   if(i<0||i>=PL.items.length){
     if(!PL.loop){plStop();return msg('播放列表已放完')}
@@ -5826,9 +5835,16 @@ async function plPlay(i,autoplay,_skipped){
   plIdx=i;plOn=true;
   const it=PL.items[i];
   const key=String(it.pid)+'|'+it.audioHash;
-  const pre=(plPre&&plPre.key===key)?plPre:null;    // 命中预取：blob 已在内存，省一次 IDB 往返
+  const pre=(!resumeCurrent&&plPre&&plPre.key===key)?plPre:null;    // 命中预取：blob 已在内存，省一次 IDB 往返
   plPre=null;
   const info=pre?pre.info:await plResolveAudio(it);
+  // 只有用户点回当前曲目才续播。自动连播、上/下一首（包括单曲循环）仍从头开始。
+  if(resumeCurrent&&isCurrentScore(info?.tr)&&info?.rec&&info.a?.hash===loadedAudioHash&&
+     audioModeOf(info.a)===activeMode&&audUrl&&!aud.ended&&!aud.error){
+    showLib(false);$('plPop').style.display='none';syncPL();
+    if(autoplay&&aud.paused){try{await aud.play()}catch(err){msg('点一下播放继续',1)}}
+    plPrefetch();return;
+  }
   const f=pre?pre.pdf:(info?await idbGet(idb,'files',info.tr.pdf.hash):null);
   if(!f||!info||!info.tr){                          // 整轮都缺文件就停下，别在循环模式下无限跳
     if((_skipped||0)+1>=PL.items.length){plStop();return msg('播放列表里的谱子都不在本机',1)}
@@ -5897,7 +5913,7 @@ async function renderPL(box){                       // 渲染一份列表到指�
   box.querySelectorAll('.plRow').forEach(r=>r.onclick=e=>{
     if(e.target.closest('select,button'))return;    // 点的是按钮/下拉，不抢它们
     $('plPop').style.display='none';
-    plPlay(+r.dataset.row,true);                    // 点整行 = 切到这首
+    plPlay(+r.dataset.row,true,undefined,true);                    // 点整行 = 切到这首
   });
   box.querySelectorAll('[data-aud]').forEach(s=>s.onchange=()=>{
     PL.items[+s.dataset.aud].audioHash=s.value;savePL();plPre=null;syncPL()});
@@ -5908,7 +5924,7 @@ async function renderPL(box){                       // 渲染一份列表到指�
     if(plIdx>=i)plIdx--;
     if(!PL.items.length)plOn=false;
     savePL();syncPL()});
-  box.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>plPlay(+b.dataset.play,true));
+  box.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>plPlay(+b.dataset.play,true,undefined,true));
 }
 function drawPL(){
   $('plPanel').classList.toggle('empty',!PL.items.length);
@@ -5956,7 +5972,7 @@ $('plClear').onclick=()=>{
 $('plStart').onclick=()=>{
   if(!PL.items.length)return msg('播放列表是空的',1);
   if(loop.on){loop.on=false;updLoop();msg('播放列表开始，已关掉 A-B 循环')}   // A-B 开着音频永不结束，进不了下一首
-  plPlay(0,true);
+  plPlay(0,true,undefined,true);
 };
 $('plPrev').onclick=()=>plPlay(plIdx-1,!aud.paused);
 $('plNext').onclick=()=>plPlay(plIdx+1,!aud.paused);
@@ -5986,7 +6002,7 @@ $('plPopAdd').onclick=async()=>{if(!pid)return msg('先打开一个项目',1);aw
 $('plPopStart').onclick=()=>{
   if(!PL.items.length)return msg('播放列表是空的',1);
   if(loop.on){loop.on=false;updLoop();msg('播放列表开始，已关掉 A-B 循环')}
-  $('plPop').style.display='none';plPlay(0,true);
+  $('plPop').style.display='none';plPlay(0,true,undefined,true);
 };
 $('plPopClear').onclick=()=>{
   if(!PL.items.length)return;
