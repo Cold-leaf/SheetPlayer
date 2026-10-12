@@ -174,3 +174,11 @@ eq('不撞',P.nameTaken(projs,'全新的名字',null),null);
 eq('排除自己后不算撞（改名不动）',P.nameTaken(projs,'CQ_传奇[线].pdf','p1'),null);
 eq('排除自己但撞别人仍然拦',P.nameTaken(projs,'改名前.pdf','p1')?.id,'p2');
 eq('空名字不拦（由调用方校验非空）',P.nameTaken(projs,'',null),null);
+
+// 非当前谱面与其历史同样参与项目认领，不能误建第二个项目。
+const multi={id:'multi',name:'合唱',pdf:{hash:'line'},pdfHistory:[],sheets:[
+  {id:'default',pdf:{hash:'line'},pdfHistory:[]},
+  {id:'numbered',pdf:{hash:'num'},pdfHistory:[{hash:'old-num'}]}
+]};
+eq('非当前简谱哈希认回项目',P.claimProjFor([multi],'num','另一文件名').p.id,'multi');
+eq('简谱历史哈希认回项目',P.claimProjFor([multi],'old-num','另一文件名').why,'hist');

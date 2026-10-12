@@ -33,7 +33,7 @@ button:active{opacity:.65}
 #bar label{display:inline-flex;gap:4px;align-items:center}
 #bar select,#bar input[type=number]{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px}
 /* 曲目/音频下拉别被库里最长名字撑满整条：封顶 200px，超出的省略号，全名在 title/曲目库看 */
-#trackSel,#audSel{max-width:200px;text-overflow:ellipsis;white-space:nowrap}
+#trackSel,#audSel,#sheetSel{max-width:200px;text-overflow:ellipsis;white-space:nowrap}
 #bar input[type=number]{width:62px}
 #bar #barWin{width:46px}
 #bar input[type=range]{width:120px;accent-color:var(--accent)}
@@ -67,7 +67,7 @@ button:active{opacity:.65}
   #bar #bPlay{width:44px;height:44px}
 
   /* ---- A 层：所在容器可折行/可滚动，长高只花纵向空间、不会裁切 ---- */
-  #libHd button,#libManage button,#libHd label.libBtn,#libManage label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,
+  #libHd button,#libManage button,#libHd label.libBtn,#libManage label.libBtn,#libTools button,#libTools input,.libCard button,.libCard select,#plHd button,
   .plRow button,.plRow select,#plPopHd button,#plPopHd label,
   #menu button,#menu .mbtn,#menu input,#menu select,#menu label,
   #dlg button,#dlg input,#dlgMode button,#dlgMode input,#dlgMode select,#dlgPick button,
@@ -117,7 +117,7 @@ button:active{opacity:.65}
   #aud{flex:none}
   /* select 的宽度由最长的那个选项撑开——曲库里有长名字的曲目就会把整条顶宽。
      窄屏封顶，超出的名字由 text-overflow 收掉（全名在 title 和曲目库里看） */
-  #trackSel,#audSel{max-width:38vw;text-overflow:ellipsis}
+  #trackSel,#audSel,#sheetSel{max-width:38vw;text-overflow:ellipsis}
 }
 .sep{width:1px;height:20px;background:var(--border)}
 /* 演奏行的内容区：桌面/宽屏是普通 flex 容器（内容 safe center 居中，wrap 折行），
@@ -687,6 +687,8 @@ body.hidebar #reh{display:flex}
 #dlg>div,#dlgMode>div,#dlgPick>div{box-sizing:border-box;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto}
 .uiIcon{width:16px;height:16px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 button:disabled{cursor:default}
+.libSheet{display:flex;align-items:center;gap:8px;color:var(--text-dim);font-size:13px}
+.libSheet select{min-width:0;max-width:100%;flex:1;background:var(--bg-soft);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px}
 </style>
 </head>
 <body>
@@ -707,6 +709,7 @@ button:disabled{cursor:default}
   <!-- 音频版本下拉：**不**跟着「只有一个版本」收起来（跟 #modeSel 那条不一样）。
        它唯一一档也可能是「⚠不在本机」——那是警告不是选项，而警告恰恰只在只有一档时
        最需要被看到（多档时你还能换个能放的版本）。为省 150px 把警告藏起来不划算 -->
+  <label id="lblSheet" style="display:none">谱面<select id="sheetSel" aria-label="谱面版本"></select><span id="sheetStatus" style="color:var(--text-dim);font-size:12px"></span></label>
   <label id="lblAud">音频<select id="audSel"><option value="__add__">＋ 添加音频…</option></select></label>
   <!-- 模式下拉（T1 / T2 / 标准 / 现场…）：只有一套时间点时由 syncModeSel 收起来。
        原来放在编辑行，理由是「切音频会自动切到它的模式，演奏行留音频就够」——可音频下拉
@@ -831,7 +834,11 @@ button:disabled{cursor:default}
       分组而不是逐个按钮加 class：菜单里加新控件时只要放进对应的组就自动被锁上，
       不会出现「新加的按钮忘了加隐藏规则、演奏态里还能点」这种漏网 -->
  <div class="editOnly">
- <div class="msec">谱子</div>
+ <div class="msec">谱面版本</div>
+ <button id="bAddSheet">＋ 新增谱面版本</button>
+ <button id="bRenameSheet">重命名当前谱面</button>
+ <button id="bReplaceSheet">替换当前谱面 PDF</button>
+ <div class="ginfo" style="white-space:normal">不同谱面共用音频与时间轴；请按同一套小节编号标位置。替换只用于同一版谱子的文件更新。</div>
  <label class="mbtn" id="lblPdf" title="随便导一份谱子：文件名/内容哈希对得上已有项目就挂上去，否则新建项目。想给项目起名就先「＋ 新建项目」，再在那一条上导入谱子">导一份新谱子<input type="file" id="fPdf" hidden accept=".pdf"></label>
  </div>
  <div class="msec">统计</div>
@@ -844,7 +851,7 @@ button:disabled{cursor:default}
   <button id="bSkip" title="下一编号 = 最后一个小节号 + 上面填的数，用完复位成 1">跳</button>
  </div>
  <button id="bClr">清空时间点</button>
- <div class="msec">打点 / 时间</div>
+ <div class="msec">打点 / 时间（本曲所有谱面共用）</div>
  <div class="mrow">
   <label title="补偿人的反应延迟：打点时记录的时间 = 当前时间 − 补偿">补偿ms<input type="number" id="off" step="10" value="0"></label>
   <label title="把所有已打的时间点整体前后移动">平移ms<input type="number" id="shift" step="10" value="0"></label>
@@ -1188,7 +1195,7 @@ let M=[],E=[],OCC=[],RUNS=[],nextM=1,offset=0,zoom=1.3,repeats=0;
 // METER 一行 = 一个拍号 + 它管的小节区间（写法同播放顺序）；ranges 留空的那行兜底管"其余全部"。
 let TEMPO=[{m:1,bpm:120}],METER=[{sig:[4,4],ranges:[]}],FORM=[];
 // 音频模式：同一份谱子可以有多套时间点（MIDI 标准版 / 现场版各一套）。
-// MODES = { 模式名: {E,TEMPO,METER,FORM,offset} }；M（谱面位置）按 PDF 共享。
+// MODES 是曲目共用时间轴；M 是当前谱面的位置，SHEET_MARKS 保存每份谱面的独立位置。
 // E/TEMPO/METER/FORM/offset 这几个全局变量始终是「当前模式」的那套。
 let MODES={'标准':defaultModeData()},activeMode='标准';   // 始终有个「标准」模式，别让下拉在没加载谱子时是空的
 let loop={a:null,b:null,on:false},arm=null,lastIdx=-2,lastRun=-2;
@@ -1281,7 +1288,7 @@ async function syncTrackSel(){
     const h=sel.value;
     // pendPid 可能是上次点「换谱」/「打开」设下、又在文件选择器里取消掉留下的，这里必须清空，
     // 否则这份新谱子会被悄悄挂到那个项目头上（跟菜单里「导一份新谱子」同一条规则）
-    if(h==='__pdf'){pendPid='';back();$('fPdf').click();return}
+    if(h==='__pdf'){pendPid='';pendSheet=null;back();$('fPdf').click();return}
     if(h==='__dav'){back();davOpen();return}
     if(h&&h!==pid)openTrack(h);
     else back();
@@ -1568,13 +1575,175 @@ $('bDelMode').onclick=()=>{
 };
 
 /* ---------- 撤销：整体快照，覆盖所有改动路径 ---------- */
-function snap(){hist.push(JSON.stringify({M:pureM(),E}));if(hist.length>200)hist.shift()}
+function snap(){hist.push(JSON.stringify({M:pureM(),E,sheets:SHEET_MARKS,activeSheet}));if(hist.length>200)hist.shift()}
 function undo(){
   if(!hist.length)return msg('没有可撤销的操作',1);
-  const s=JSON.parse(hist.pop());M=s.M;E=s.E;
+  const s=JSON.parse(hist.pop());
+  if(s.activeSheet&&s.activeSheet!==activeSheet)return msg('不能跨谱面撤销',1);
+  M=s.M;E=s.E;if(s.sheets)SHEET_MARKS=s.sheets;
   syncNext();if(tapM!=null&&!M.some(x=>x.m===tapM))tapM=null;
   layout();save();
 }
+
+/* ---------- 一曲多谱：位置属于谱面，音频/时间轴属于曲目 ---------- */
+let SHEET_MARKS={},activeSheet='default',sheetBusy=false;
+function ensureSheets(p){
+  if(!p)return;
+  if(!Array.isArray(p.sheets)||!p.sheets.length){
+    p.sheets=[{id:'default',name:'默认谱面',pdf:p.pdf||null,pdfHistory:p.pdfHistory||[]}];
+  }
+  if(!p.sheets.some(x=>x.id===p.lastSheet))p.lastSheet=p.sheets[0].id;
+  bindSheet(p,p.lastSheet);
+}
+function bindSheet(p,id){
+  const sh=p.sheets?.find(x=>x.id===id);if(!sh)return;
+  p.lastSheet=sh.id;p.pdf=sh.pdf||null;p.pdfHistory=sh.pdfHistory||[];
+}
+function updateBoundSheet(p){
+  if(!p.sheets?.length){ensureSheets(p);return}
+  const sh=p.sheets.find(x=>x.id===p.lastSheet)||p.sheets[0];
+  sh.pdf=p.pdf;sh.pdfHistory=p.pdfHistory||[];
+}
+function multiSheet(){return !!track&&track.sheets?.length>1}
+function marksForSheet(data,id){
+  if(!data)return [];
+  if(data.sheets)return data.sheets[id]?.M||[];
+  return id==='default'?(data.M||[]):[];
+}
+function snapshotSheet(){SHEET_MARKS[activeSheet]=pureM()}
+function restoreSheetMarks(data){
+  SHEET_MARKS={};
+  if(data.sheets){for(const [id,sh] of Object.entries(data.sheets))SHEET_MARKS[id]=deepClone(sh.M||[])}
+  else SHEET_MARKS.default=deepClone(data.M||[]);
+  if(track){ensureSheets(track);activeSheet=track.lastSheet}
+  else activeSheet=data.activeSheet||'default';
+  M=deepClone(SHEET_MARKS[activeSheet]||[]);
+}
+function annotationData(){
+  modeSnapshot();snapshotSheet();
+  const data={v:6,M:pureM(),modes:deepClone(MODES),activeMode,ts:Date.now()};
+  if(track){
+    ensureSheets(track);data.v=7;data.activeSheet=activeSheet;data.sheets={};
+    for(const sh of track.sheets)data.sheets[sh.id]={...deepClone(sh),M:deepClone(SHEET_MARKS[sh.id]||[])};
+  }
+  return data;
+}
+async function migrateSheets(){
+  // 保留旧字段与数据，迁移可重入；旧版数据只归默认谱面，绝不复制到新版本。
+  for(const p of await idbAll(idb,'projects')){
+    if(p.sheets?.length)continue;
+    ensureSheets(p);await idbPut(idb,'projects',p);
+  }
+}
+async function mergeSheetCatalog(p,data,catalog){
+  if(!p)return;
+  ensureSheets(p);
+  const sources=catalog?.length?catalog:Object.entries(data.sheets||{}).map(([id,sh])=>({...sh,id}));
+  for(const src of sources){
+    if(!src?.id)continue;
+    let sh=p.sheets.find(x=>x.id===src.id);
+    if(!sh){sh={id:src.id,name:src.name||'谱面',pdf:src.pdf||null,pdfHistory:src.pdfHistory||[]};p.sheets.push(sh)}
+    else{
+      sh.name=src.name||sh.name;
+      // 同步的位置必须对应同步的 PDF；本机选哪版仍保留。
+      if(src.pdf)sh.pdf=deepClone(src.pdf);
+      if(src.pdfHistory)sh.pdfHistory=deepClone(src.pdfHistory);
+    }
+  }
+  bindSheet(p,p.lastSheet);
+  await idbPut(idb,'projects',p);
+}
+function syncSheetSel(){
+  const sel=$('sheetSel'),label=$('lblSheet');
+  label.style.display=track?'':'none';if(!track)return;
+  ensureSheets(track);
+  sel.innerHTML=track.sheets.map(sh=>'<option value="'+esc(sh.id)+'">'+esc(sh.name)+'</option>').join('');
+  sel.value=activeSheet;sel.title=track.sheets.find(x=>x.id===activeSheet)?.name||'';
+  sel.disabled=sheetBusy;
+  $('sheetStatus').textContent=M.length?'':'仅看谱';
+}
+async function switchSheet(id){
+  if(!track||sheetBusy||id===activeSheet){syncSheetSel();return}
+  const project=track,projectId=pid,sh=project.sheets.find(x=>x.id===id);
+  if(!sh?.pdf){syncSheetSel();return msg('这份谱面还没有 PDF',1)}
+  const rec=await idbGet(idb,'files',sh.pdf.hash);
+  if(!rec){
+    syncSheetSel();
+    const how=await askSource('《'+sh.name+'》的 PDF 不在本机。请导入对应文件，标注会自动接回。');
+    if(how==='local'){pendPid=project.id;pendSheet={kind:'attach',sheetId:id};$('fPdf').click()}
+    if(how==='dav')davOpenFor(project.id,{kind:'attach',sheetId:id})
+    return;
+  }
+  sheetBusy=true;syncSheetSel();
+  try{
+    // 解析成功前不动当前谱；音频元素、时间、倍速、频谱均保持原样。
+    const np=await openPdf(rec.blob);
+    if(pid!==projectId)return;
+    snapshotSheet();await flushSave();
+    const savedLoop=deepClone(loop);
+    resetPdfDerived(true);
+    track=project;pid=projectId;activeSheet=id;pdf=np;pdfName=sh.pdf.name;pdfHash=sh.pdf.hash;
+    bindSheet(track,id);M=deepClone(SHEET_MARKS[id]||[]);hist=[];tapM=null;arm=null;loop=savedLoop;
+    syncNext();await buildPages();
+    await idbPut(idb,'projects',track);plPre=null;
+    lastT=-1;lastCur=null;lastIdx=-2;lastRun=-2;
+    const o=OCC[occIndex(aud.currentTime)];
+    if(o)follow(byM.get(o.cover?.m??o.m)?.[0],true);
+    syncReh();syncSheetSel();
+    msg(M.length?'已切换到《'+sh.name+'》':'《'+sh.name+'》仅看谱：标好小节位置后即可跟随共用音频');
+  }catch(err){msg('切换谱面失败：'+err.message,1)}
+  finally{sheetBusy=false;syncSheetSel()}
+}
+$('sheetSel').onchange=()=>switchSheet($('sheetSel').value);
+async function addSheetFile(p,file,H,name){
+  ensureSheets(p);
+  const same=p.sheets.find(x=>x.pdf?.hash===H);
+  if(same){
+    if(pid===p.id)return switchSheet(same.id);
+    bindSheet(p,same.id);await idbPut(idb,'projects',p);return openTrack(p.id);
+  }
+  await openPdf(file); // 校验 PDF，失败不增加空版本。
+  const nm=(name||'').trim()||dispName(file.name);
+  if(p.sheets.some(x=>x.name===nm))return msg('谱面名称已存在，请换一个名字',1);
+  const sh={id:newId(),name:nm,pdf:{hash:H,name:file.name},pdfHistory:[]};
+  // 新版本从空位置开始，不能复制旧谱的页码坐标。
+  if(pid===p.id){save();await flushSave()}
+  p.sheets.push(sh);p.updatedAt=Date.now();
+  await idbPut(idb,'projects',p);
+  if(pid===p.id){
+    track=p;SHEET_MARKS[sh.id]=[];save();await flushSave();await switchSheet(sh.id);
+  }else{
+    const old=await idbGet(idb,'marks',p.id);
+    if(old){
+      const d=old.data;
+      if(!d.sheets)d.sheets={default:{...p.sheets[0],M:d.M||[]}};
+      d.sheets[sh.id]={...sh,M:[]};d.v=7;d.ts=Date.now();
+      await idbPut(idb,'marks',{pid:p.id,data:d});
+    }
+    bindSheet(p,sh.id);await idbPut(idb,'projects',p);await openTrack(p.id);
+  }
+}
+$('bAddSheet').onclick=async()=>{
+  if(!track||!idb)return msg('先从曲目库打开一个曲目',1);
+  const projectId=pid;
+  const name=await askText('新谱面叫什么？例如：无钢伴线谱、带钢伴线谱、简谱','');
+  if(name==null)return;
+  if(!name.trim())return msg('谱面名称不能为空',1);
+  if(track.sheets.some(x=>x.name===name.trim()))return msg('谱面名称已存在',1);
+  pendPid=projectId;pendSheet={kind:'add',name:name.trim()};
+  $('menu').style.display='none';$('fPdf').click();
+};
+$('bRenameSheet').onclick=async()=>{
+  if(!track)return msg('先打开曲目',1);
+  const sh=track.sheets.find(x=>x.id===activeSheet);
+  const name=await askText('谱面名称',sh.name);if(name==null)return;
+  if(!name.trim()||track.sheets.some(x=>x!==sh&&x.name===name.trim()))return msg('名称为空或已存在',1);
+  sh.name=name.trim();track.updatedAt=Date.now();await idbPut(idb,'projects',track);save();syncSheetSel();
+};
+$('bReplaceSheet').onclick=()=>{
+  if(!track)return msg('先打开曲目',1);
+  pendPid=pid;pendSheet={kind:'replace',sheetId:activeSheet};$('menu').style.display='none';$('fPdf').click();
+};
 
 /* ---------- PDF ---------- */
 // 先用真 worker；file:// 下建不出跨域 worker 时，再把 worker 装进主线程重试
@@ -1599,18 +1768,19 @@ async function openPdf(file){
 }
 // 待挂载的项目：用户点了「打开」一个还没有谱子的项目，等他在文件选择器里选 PDF。
 // 显式指定比按名字猜准得多——他刚点的就是那个项目。
-let pendPid='';
+let pendPid='',pendSheet=null,davSheetAction=null;
 $('fPdf').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   e.target.value='';                 // 清掉，重新导出同名 PDF 后再选一次也能触发
-  const t=pendPid;pendPid='';
-  await attachPdf(f,t);
+  const t=pendPid,action=pendSheet;pendPid='';pendSheet=null;
+  await attachPdf(f,t,false,action);
 };
 // PDF 导入总入口：本机「PDF」按钮 /「＋ 导入谱子」/「打开」没谱子的项目 / ownCloud 下载共用。
 // projId 给定时直接挂到那个项目；否则按 ① 内容哈希 → ② 历史谱子 → ③ 名字 → ④ 新建项目 的顺序认领
 //（①②③ 就是 claimProjFor 那一份规则）。forceNew 跳过 ①②③ 直接走 ④：
 // ownCloud 下载弹窗里用户选了「新建项目」，就不能再被自动认领挂回某个已有项目——那和他的选择相反。
-async function attachPdf(f,projId,forceNew){
+async function attachPdf(f,projId,forceNew,sheetAction){
+  await flushSave();
   // 不在开头 resetTrack：每条路径最后都会走 loadPdfBlob / replacePdf，它们自己会清零。
   // 提前清的话，用户在任何一个确认框上点「取消」，或者撞名没改成，当前正看着的谱面就白了。
   try{
@@ -1623,6 +1793,24 @@ async function attachPdf(f,projId,forceNew){
     if(projId){                                  // 显式指定（点了那个项目的「打开」或「换谱」）
       const p=projs.find(x=>x.id===projId);
       if(!p)return msg('这个项目不在了，请从曲目库重新打开',1);
+      ensureSheets(p);
+      if(sheetAction?.kind==='add')return addSheetFile(p,f,H,sheetAction.name);
+      if(sheetAction?.sheetId){
+        const target=p.sheets.find(x=>x.id===sheetAction.sheetId);
+        if(!target)return msg('谱面版本已不存在',1);
+        if(sheetAction.kind==='attach'&&target.pdf?.hash!==H)return msg('文件与所选谱面不一致，请选择对应 PDF；更新 PDF 请用「替换当前谱面」',1);
+        bindSheet(p,target.id);
+        await idbPut(idb,'projects',p);
+      }else{
+        const existing=p.sheets.find(x=>x.pdf?.hash===H);
+        if(existing){bindSheet(p,existing.id);await idbPut(idb,'projects',p)}
+      }
+      if(p.pdf&&p.pdf.hash!==H&&!sheetAction){
+        const how=await askPick('《'+p.name+'》已有谱面。这份 PDF 是另一种排版，还是当前谱面的文件更新？',[
+          {v:'add',label:'新增谱面版本',primary:true},{v:'replace',label:'替换当前谱面 PDF'}]);
+        if(how==null)return;
+        if(how==='add')return addSheetFile(p,f,H,dispName(f.name));
+      }
       if(p.pdf&&p.pdf.hash!==H){                 // 原本就有别的谱子 → 换谱，标注一个都不动
         const other=projs.find(x=>x.id!==projId&&x.pdf&&x.pdf.hash===H);
         if(other&&!confirm('这份谱子是《'+other.name+'》在用着的。\n仍然用它换掉《'+p.name+'》的谱子？（两个项目共用一份谱子）'))return;
@@ -1638,11 +1826,16 @@ async function attachPdf(f,projId,forceNew){
     //    这里已经问过一次了（还带"取消=当新项目"的出路），replacePdf 不用再问一遍。
     //    取消 = 当成新项目，所以照旧往下走 ③④（跟改之前一样，不是直接掉到新建）
     if(hit.why==='hist'){
+      ensureSheets(hit.p);
+      const sh=hit.p.sheets.find(x=>(x.pdfHistory||[]).some(h=>h.hash===H));
+      if(sh)bindSheet(hit.p,sh.id);
       if(!hit.p.pdf)return attachToProject(hit.p,rec.blob,f.name,H,'按用过的谱子认回《'+hit.p.name+'》');
-      if(confirm('这份谱子是《'+hit.p.name+'》用过的（后来换掉了）。\n用它换回《'+hit.p.name+'》现在的谱子？\n（取消 = 当成一个新项目导入）'))
-        return replacePdf(hit.p.id,f,true);
+      if(confirm('这份谱子是《'+hit.p.name+'》用过的（后来换掉了）。\n用它换回《'+hit.p.name+'》现在的谱子？\n（取消 = 当成一个新项目导入）')){
+        await idbPut(idb,'projects',hit.p);return replacePdf(hit.p.id,f,true);
+      }
     }
     // ③ 名字对得上 → 挂上去。文件名命中不是改名，项目的名字一个字母都不动
+    if(hit.why==='name'&&hit.p.pdf&&hit.p.pdf.hash!==H)return attachPdf(f,hit.p.id);
     if(hit.why==='name')return attachToProject(hit.p,rec.blob,f.name,H,
       hit.p.pdf?'按文件名认回《'+hit.p.name+'》，旧谱子已存进历史（时间点与竖线照旧）'
                :'已按文件名认回等待导入谱子的《'+hit.p.name+'》');
@@ -1665,12 +1858,18 @@ async function attachPdf(f,projId,forceNew){
 }
 // 把一份 PDF 挂到项目上（旧谱子进历史）并打开它。已经是当前这份就什么都不动，直接打开。
 async function attachToProject(p,blob,fileName,H,pre){
+  ensureSheets(p);
+  const existing=p.sheets.find(x=>x.pdf?.hash===H);
+  if(existing)bindSheet(p,existing.id);
   if(!p.pdf||p.pdf.hash!==H){
     if(p.pdf)p.pdfHistory=[{hash:p.pdf.hash,name:p.pdf.name||'',at:Date.now()},...(p.pdfHistory||[])];
     p.pdf={hash:H,name:fileName};p.updatedAt=Date.now();
+    updateBoundSheet(p);
     await idbPut(idb,'projects',p);
     await prunePdfHistory(p);
   }
+  updateBoundSheet(p);await idbPut(idb,'projects',p);
+  if(pid===p.id&&pdf&&activeSheet!==p.lastSheet){track=p;return switchSheet(p.lastSheet)}
   await loadPdfBlob(blob,fileName,p.id,H,pre);
 }
 // 历史谱子只留最近 PDF_HIST 份，更老的连 blob 一起回收——扫描版总谱一份可能几十 MB，
@@ -1680,9 +1879,9 @@ async function prunePdfHistory(p){
   const h=p.pdfHistory||[];
   if(h.length<=PDF_HIST)return;
   const drop=h.slice(PDF_HIST);
-  p.pdfHistory=h.slice(0,PDF_HIST);
+  p.pdfHistory=h.slice(0,PDF_HIST);updateBoundSheet(p);
   await idbPut(idb,'projects',p);
-  const used=await blobsInUse(p.id);
+  const used=await blobsInUse(p.id);for(const h of projectPdfRefs(p))used.add(h);
   for(const x of drop)if(!used.has(x.hash)){used.add(x.hash);await delBlob(x.hash)}
 }
 // 换谱：只换 PDF 这个附件，标注一根都不动——「加完笔记重新导出的 PDF」能接回原标注的前提。
@@ -1690,7 +1889,9 @@ async function prunePdfHistory(p){
 // 只是因为 M 非空而碰巧跳过，是运气不是设计。
 // confirmed=true 表示调用方已经问过用户了，别再弹一遍
 async function replacePdf(projId,file,confirmed){
+  await flushSave();
   const p=await idbGet(idb,'projects',projId);if(!p)return;
+  ensureSheets(p);
   if(!p.pdf)return attachPdf(file,projId);
   try{
     const found=await resolveFileKey(file),H=found.hash;
@@ -1705,16 +1906,16 @@ async function replacePdf(projId,file,confirmed){
     // 但**确认框之前一个字节的状态都不许动**：原来 pid/track/M/MODES 先换成目标项目的，
     // 用户点「取消」就留下"屏幕上是甲、内存里是乙"——之后在甲上添的标记、加的音频全落到乙头上。
     // 所以标记数从非破坏性快照上算，真正的装载挪到 confirm 之后
-    const sameView=pid===p.id&&!!pdf;
+    const sameView=pid===p.id&&activeSheet===p.lastSheet&&!!pdf;
     const old=sameView?null:await idbGet(idb,'marks',p.id);
-    const tM=sameView?M:((old&&old.data&&old.data.M)||[]);
+    const tM=sameView?M:marksForSheet(old?.data,p.lastSheet);
     const nM=tM.length;
     const over=tM.filter(x=>x.page>np.numPages).length;
     if(!confirmed&&!confirm('换谱：《'+p.name+'》\n'+(sameView?pdf.numPages+' 页 → ':'')+np.numPages+' 页\n'+
       nM+' 个小节标记原样保留'+(over?'\n⚠ '+over+' 个标记的页码超出新谱子，换完不会显示':'')))return;
     if(!sameView){
       resetAnnotations();
-      pid=p.id;track=p;
+      pid=p.id;track=p;activeSheet=p.lastSheet;
       if(old)applySave(old.data);
     }
     // 只重置「PDF 派生」那半边：M/MODES/TEMPO/METER/FORM/offset 一个都不碰
@@ -1723,13 +1924,14 @@ async function replacePdf(projId,file,confirmed){
     pid=p.id;pdf=np;pdfName=file.name;pdfHash=H;track=p;
     p.pdfHistory=[{hash:p.pdf.hash,name:p.pdf.name||'',at:Date.now()},...(p.pdfHistory||[])];
     p.pdf={hash:H,name:file.name};p.updatedAt=Date.now();
+    updateBoundSheet(p);activeSheet=p.lastSheet;
     await idbPut(idb,'projects',p);
     await prunePdfHistory(p);
     await buildPages();
     const audMissing=await restoreLastAudio();   // resetPdfDerived 把播放器清空了，这里接回来
     syncModeSel();syncAudSel();refreshAudLocal();syncTrackSel();showLib(false);
     syncReh();                                 // 标题栏跟着换（resetPdfDerived 里 track 还是 null）
-    layout();
+    layout();syncSheetSel();save();
     // 换谱结果是这次操作的正题，音频缺失只作补充，所以追加而不是替换那条提示
     const miss=audMissing?audMissMsg(audMissing):'';
     if(over)msg('已换谱：'+nM+' 个标记里 '+over+' 个的页码超出了新谱子（'+np.numPages+' 页），这些点不会显示；'+
@@ -1760,16 +1962,18 @@ async function newProject(){
 // pId = 项目记录键；pH = PDF 内容哈希（只当 blob 的键用）。两者绝不能混用：
 // 混了会在换谱时读到另一个项目的 marks，并把它的标注覆盖掉。
 async function loadPdfBlob(blob,name,pId,pH,pre){
+  await flushSave();
   msg('打开中…');
   resetTrack();
   pid=pId||'';pdfHash=pH||'';
   track=idb&&pid?await idbGet(idb,'projects',pid):null;
+  if(track){ensureSheets(track);const sh=track.sheets.find(x=>x.pdf?.hash===pH);bindSheet(track,sh?.id||track.lastSheet);activeSheet=track.lastSheet}
   pdf=await openPdf(blob);pdfName=name;
   const note=await tryRestore();
   await buildPages();
   const audMissing=await restoreLastAudio();
   syncModeSel();
-  syncAudSel();refreshAudLocal();syncTrackSel();
+  syncAudSel();refreshAudLocal();syncTrackSel();syncSheetSel();
   showLib(false);
   if(audMissing)msg(audMissMsg(audMissing),1);
   else msg((pre?pre+'　':'')+(note||('共 '+pdf.numPages+' 页')));   // 关联提示/恢复存档优先于页数
@@ -1797,7 +2001,7 @@ async function restoreLastAudio(){
 
 // 「PDF 派生出来的东西」：换一份谱子必须全部重建（页码/尺寸/渲染任务/谱表缓存/频谱）。
 // 换谱（replacePdf）只调这一半，标注那一半一个字节都不动——这就是标注能跨换谱活下来的原因。
-function resetPdfDerived(){
+function resetPdfDerived(keepAudio=false){
   pdf=null;pdfName='';pdfHash='';track=null;
   pageObj=[];pageVP=[];boxes=[];cvs=[];
   OCC=[];RUNS=[];                                   // refresh() 里会按 M/E 重建
@@ -1810,16 +2014,18 @@ function resetPdfDerived(){
   io?.disconnect();io=null;
   staffCache.clear();                              // 按页面尺寸为键：必须留在「派生」这半边，分错会静默渲染错位
   rowEdgeCache.clear();
+  if(!keepAudio){
   if(audUrl){URL.revokeObjectURL(audUrl);audUrl=null}
   aud.src='';aud.load();aud.pause();
   SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
+  }
   pagesEl.innerHTML='';
   panel.style.display='none';
   updLoop();stat();syncReh();
 }
 // 「标注和项目身份」：切到另一个项目才清。换谱子绝不能调它
 function resetAnnotations(){
-  M=[];E=[];nextM=1;offset=0;repeats=0;
+  M=[];E=[];SHEET_MARKS={};activeSheet='default';nextM=1;offset=0;repeats=0;
   TEMPO=[{m:1,bpm:120}];METER=[{sig:[4,4],ranges:[]}];FORM=[];
   MODES={};activeMode='标准';modeSnapshot();          // 保证始终有个「标准」模式
   loop={a:null,b:null,on:false};arm=null;lastIdx=-2;lastRun=-2;
@@ -2971,6 +3177,7 @@ function renderPanel(){
   const mk=mkByM.get(m),ph=mk&&boxes[mk.page]?boxes[mk.page].clientHeight:1000;
   let html='<b>小节 '+m+'</b> <button id="pClose">关闭</button> <button id="pTap">设为打点目标</button>'+
            ' <button id="pDelMk">删标记</button>';
+  if(mk&&multiSheet())html+='<div style="margin:6px 0">共同小节号 <input id="pNumber" type="number" min="1" step="1" value="'+m+'">（只改当前谱面，不移动时间点）</div>';
   if(mk)html+='<div style="margin:6px 0">覆盖到 <input type="number" id="pEnd" min="'+m+'" step="1" '+
     'value="'+(m+spanOf(mk)-1)+'"> 小节（多小节休止填结束节，后面的小节自动顺位）</div>';
   if(mk)html+='<div style="margin:6px 0">竖线高度 <input type="number" id="pH" step="2" min="2" '+
@@ -2988,6 +3195,12 @@ function renderPanel(){
   panel.innerHTML=html;panel.style.display='block';
   panel.querySelector('#pClose').onclick=()=>{panel.style.display='none';curM=null};
   panel.querySelector('#pTap').onclick=()=>setTap(m);
+  const number=panel.querySelector('#pNumber');
+  if(number)number.onchange=()=>{
+    const n=Math.round(+number.value);
+    if(n<1||M.some(x=>x!==mk&&x.m===n)){number.value=m;return msg('编号无效或已经存在',1)}
+    snap();mk.m=n;curM=n;syncNext();layout();save();renderPanel();
+  };
   const ie=panel.querySelector('#pEnd');
   if(ie){
     ie.onchange=()=>{                          // 设结束节 → 覆盖范围变 → 后面的小节号顺位
@@ -2997,7 +3210,7 @@ function renderPanel(){
       if(delta===0)return;
       mk.span=end-m+1;
       M.forEach(x=>{if(x.m>m)x.m+=delta});
-      E.forEach(x=>{if(x.m>m)x.m+=delta});
+      if(!multiSheet())E.forEach(x=>{if(x.m>m)x.m+=delta});
       if(tapM!=null&&tapM>m)tapM+=delta;
       syncNext();layout();save();
       msg(delta>0?('小节 '+m+' 现在覆盖到 '+end+'，后面顺位 +'+delta):('小节 '+m+' 收回到 '+end));
@@ -3016,10 +3229,12 @@ function renderPanel(){
   panel.querySelector('#pDelMk').onclick=()=>{
     snap();
     const del=mkByM.get(m),sp=del?spanOf(del):1;      // 覆盖几个小节，删掉后后面顺位退几个
-    M=M.filter(x=>x.m!==m);E=E.filter(x=>x.m!==m);
-    M.forEach(x=>{if(x.m>m)x.m-=sp});
-    E.forEach(x=>{if(x.m>m)x.m-=sp});
-    if(tapM===m)tapM=null;else if(tapM!=null&&tapM>m)tapM-=sp;
+    M=M.filter(x=>x.m!==m);
+    if(!multiSheet()){
+      E=E.filter(x=>x.m!==m);M.forEach(x=>{if(x.m>m)x.m-=sp});E.forEach(x=>{if(x.m>m)x.m-=sp});
+      if(tapM!=null&&tapM>m)tapM-=sp;
+    }
+    if(tapM===m)tapM=null;
     syncNext();panel.style.display='none';curM=null;layout();save();
   };
   panel.querySelector('#pAdd').onclick=()=>{addTime(m,stamp());renderPanel();refresh();save()};
@@ -4235,7 +4450,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v26';
+const BUILD='v27';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4381,18 +4596,25 @@ function warnLS(){if(!lsWarned){lsWarned=true;
   msg('此浏览器禁用了本地存储（隐私模式或已阻止 Cookie），自动保存失效，请用「导出本曲标注」备份',1)}}
 
 /* ---------- 三级存储：IndexedDB（曲目库模式）→ localStorage（传统模式）→ 内存 ---------- */
-let saveT=null,memStore=new Map();
+let saveT=null,pendingSave=null,memStore=new Map();
 // 键和载荷在 save() 调用时就定死：切曲目 / 清状态不会把旧数据写进新键，防抖只延迟写入本身
 function save(){
   if(!pdfName&&!pid)return;                      // 库模式下键是 pid（项目），跟文件名无关
   clearTimeout(saveT);
   modeSnapshot();                                // 当前全局写回 MODES[activeMode] 再存
   const key=idb?pid:pdfName;
-  const payload=JSON.stringify({v:6,M:pureM(),modes:MODES,activeMode,ts:Date.now()});
-  saveT=setTimeout(()=>{storeSave(key,payload)},400);
+  const payload=JSON.stringify(annotationData());
+  syncSheetSel();
+  if(pendingSave&&pendingSave.key!==key)storeSave(pendingSave.key,pendingSave.payload);
+  pendingSave={key,payload};
+  saveT=setTimeout(()=>{const p=pendingSave;pendingSave=null;if(p)storeSave(p.key,p.payload)},400);
+}
+async function flushSave(){
+  clearTimeout(saveT);const p=pendingSave;pendingSave=null;
+  if(p)await storeSave(p.key,p.payload);
 }
 function storeSave(key,payloadStr){
-  if(idb){idbPut(idb,'marks',{pid:key,data:JSON.parse(payloadStr)});return}
+  if(idb)return idbPut(idb,'marks',{pid:key,data:JSON.parse(payloadStr)});
   if(LS){try{LS.setItem('player:'+key,payloadStr)}catch(err){warnLS()}return}
   memStore.set(key,payloadStr);
   warnLS();
@@ -4403,9 +4625,9 @@ function applySave(s){
   if(!s)return false;
   let modes=s.modes;
   if(!modes)modes={'标准':{E:s.E||[],TEMPO:s.TEMPO,METER:s.METER,SIG:s.SIG,FORM:s.FORM,offset:s.offset||0}};
-  const hasM=s.M?.length,hasE=Object.values(modes).some(m=>m&&m.E?.length);
+  const hasM=s.M?.length||Object.keys(s.sheets||{}).length,hasE=Object.values(modes).some(m=>m&&m.E?.length);
   if(!hasM&&!hasE)return false;
-  M=s.M||[];MODES=modes;
+  restoreSheetMarks(s);MODES=modes;
   activeMode=s.activeMode||'标准';
   if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
   if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
@@ -4427,7 +4649,7 @@ async function tryRestore(){
 /* ---------- 导入导出 ---------- */
 $('bExp').onclick=()=>{
   modeSnapshot();                                // 导出前把当前模式写回
-  const data={v:6,pdf:pdfName,M:pureM(),modes:MODES,activeMode};
+  const data={...annotationData(),pdf:pdfName};
   if(pdfHash)data.pdfHash=pdfHash;               // 带上内容哈希，换机/换浏览器也能校验谱子对不对
   const b=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
@@ -4440,8 +4662,15 @@ $('fMap').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
     const j=JSON.parse(await f.text());
+    if(j.sheets&&track){
+      const target=j.sheets[activeSheet];
+      if(target?.pdf?.hash&&pdfHash&&target.pdf.hash!==pdfHash)
+        throw new Error('这份标注对应不同的 PDF，请通过曲目库「导入全部标注」同步版本后再打开');
+    }
     snap();
-    if(j.modes){                                // v6：带多套模式
+    if(j.sheets){
+      await mergeSheetCatalog(track,j);applySave(j);
+    }else if(j.modes){                                // v6：带多套模式
       M=j.M||[];MODES=j.modes;activeMode=j.activeMode||Object.keys(j.modes)[0]||'标准';
       if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
       if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
@@ -4470,12 +4699,21 @@ $('fMap').onchange=async e=>{
 };
 
 /* ================= 曲目库 =================
-   项目 = 名字（对外的身份，跨设备靠它认领）+ 1 个 PDF + N 个音频变体 + 1 份标注。
+   项目 = 名字 + 多份谱面（各自 PDF / 小节位置）+ 共用音频与时间轴。
    PDF 和音频都是可随时导入/更换的附件，按内容哈希（前 1MB SHA-256）存 files 去重；
    项目记录另有自己的 id（p 开头），改个名/换份谱子都不会丢标注。
    数据存 IndexedDB，不可用则退回 localStorage（按文件名键，和旧版一致），再不行退内存。 */
 
 /*PURE-START*/
+function projectPdfRefs(p){
+  const refs=new Set();
+  for(const sh of [p,...(p.sheets||[])]){
+    if(sh.pdf?.hash)refs.add(sh.pdf.hash);
+    for(const h of sh.pdfHistory||[])if(h.hash)refs.add(h.hash);
+  }
+  return refs;
+}
+
 // 纯 JS SHA-256（crypto.subtle 不可用时的回退）。输入 Uint8Array，输出 32 字节
 function sha256Js(bytes){
   const K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
@@ -4600,9 +4838,9 @@ function findByNameIn(projs,name){
 // 这是认领规则的**唯一**一份：attachPdf 的真导入和下载弹窗的预选都走它，
 // 不会出现「问的时候算一套、真导入时算另一套」。
 function claimProjFor(projs,H,name){
-  const byHash=(projs||[]).find(x=>x.pdf&&x.pdf.hash===H);
+  const byHash=(projs||[]).find(x=>(x.pdf&&x.pdf.hash===H)||(x.sheets||[]).some(sh=>sh.pdf?.hash===H));
   if(byHash)return {p:byHash,why:'hash'};
-  const byHist=(projs||[]).find(x=>(x.pdfHistory||[]).some(h=>h.hash===H));
+  const byHist=(projs||[]).find(x=>projectPdfRefs(x).has(H));
   if(byHist)return {p:byHist,why:'hist'};
   const byName=findByNameIn(projs,name);
   if(byName)return {p:byName,why:'name'};
@@ -4833,7 +5071,7 @@ async function blobsInUse(exceptId){
   const refs=new Set();
   for(const p of await idbAll(idb,'projects')){
     if(p.id===exceptId)continue;
-    if(p.pdf)refs.add(p.pdf.hash);
+    for(const h of projectPdfRefs(p))refs.add(h);
     for(const h of (p.pdfHistory||[]))refs.add(h.hash);
     for(const a of (p.audios||[]))refs.add(a.hash);
   }
@@ -4852,7 +5090,7 @@ async function sweepOrphans(){
     const live=new Set(),ids=new Set();
     for(const p of await idbAll(idb,'projects')){
       ids.add(p.id);
-      if(p.pdf)live.add(p.pdf.hash);
+      for(const h of projectPdfRefs(p))live.add(h);
       for(const h of (p.pdfHistory||[]))live.add(h.hash);
       for(const a of (p.audios||[]))live.add(a.hash);
     }
@@ -5073,7 +5311,7 @@ document.querySelectorAll('#libTools button').forEach(b=>b.onclick=()=>{
 // 换谱 设好 pendPid 之后触发的——那两种要保留指定的项目，不能被清成空
 $('lblPdf').onclick=e=>{
   if(e.target!==$('lblPdf'))return;
-  pendPid='';                            // 从菜单导 = 没指定项目，走"按文件名认领/新建"
+  pendPid='';pendSheet=null;              // 从菜单导 = 没指定项目，走"按文件名认领/新建"
   $('menu').style.display='none';        // 收起菜单，选完文件直接看结果
 };
 $('libNew').onclick=()=>newProject();
@@ -5083,17 +5321,23 @@ $('libGcHist').onclick=async()=>{
   if(!idb)return;
   const live=new Set();
   for(const p of await idbAll(idb,'projects')){
+    for(const sh of (p.sheets||[]))if(sh.pdf)live.add(sh.pdf.hash);
     if(p.pdf)live.add(p.pdf.hash);
     for(const a of (p.audios||[]))live.add(a.hash);
   }
   let n=0;
   for(const p of await idbAll(idb,'projects')){
-    const keep=[];
-    for(const h of (p.pdfHistory||[])){
-      if(live.has(h.hash)||!(await idbGet(idb,'files',h.hash))){keep.push(h);continue}
-      await delBlob(h.hash);live.add(h.hash);n++;
+    ensureSheets(p);
+    for(const sh of p.sheets){
+      const keep=[];
+      for(const h of sh.pdfHistory||[]){
+        if(live.has(h.hash)||!(await idbGet(idb,'files',h.hash))){keep.push(h);continue}
+        await delBlob(h.hash);n++;
+      }
+      sh.pdfHistory=keep;
     }
-    if(keep.length!==(p.pdfHistory||[]).length){p.pdfHistory=keep;await idbPut(idb,'projects',p)}
+    bindSheet(p,p.lastSheet);await idbPut(idb,'projects',p);
+    if(track?.id===p.id)track=p;
   }
   drawLib();
   msg(n?'已清理 '+n+' 份历史谱子的文件':'没有可清理的历史谱子');
@@ -5145,7 +5389,7 @@ function renderLib(rows){
     return;
   }
   list.innerHTML=arr.map(({p,d})=>{
-    const nb=d&&d.M?d.M.length:0;
+    const nb=d?.sheets?marksForSheet(d,p.lastSheet||'default').length:(d?.M?.length||0);
     // v6 起时间点在 modes 里分套；老数据（v5）才在顶层 E。多套时按模式分别显示。
     const ms=d&&d.modes?Object.entries(d.modes).map(([n,v])=>[n,(v&&v.E||[]).length])
                        :(d&&d.E?[['',d.E.length]]:[]);
@@ -5161,6 +5405,8 @@ function renderLib(rows){
       '</div>'+
       '<div class="meta">已标 '+nb+' 小节 · 已打 '+neTxt+' 时间点 · 音频 '+(p.audios?p.audios.length:0)+
         ' · <span class="upd" title="'+esc(ts.full)+'">更新 '+ts.short+'</span></div>'+
+      ((p.sheets||[]).length>1?'<label class="libSheet">谱面 <select aria-label="谱面版本" data-sheet-project="'+esc(p.id)+'">'+
+        p.sheets.map(sh=>'<option value="'+esc(sh.id)+'"'+(sh.id===p.lastSheet?' selected':'')+'>'+esc(sh.name)+'</option>').join('')+'</select></label>':'')+
       '<div class="acts">'+
         // 还没有谱子的项目，这一格就是它的导入入口——两件事本来就是同一次点击
         //（openTrack 对没有 pdf 的项目就是「选一次文件挂到本项目」）
@@ -5172,15 +5418,21 @@ function renderLib(rows){
         '<button class="del" data-h="'+esc(p.id)+'">删除</button>'+
       '</div></div>';
   }).join('');
+  list.querySelectorAll('[data-sheet-project]').forEach(sel=>sel.onchange=async()=>{
+    const p=await idbGet(idb,'projects',sel.dataset.sheetProject);if(!p)return;
+    ensureSheets(p);
+    if(pid===p.id&&pdf){await switchSheet(sel.value);sel.value=activeSheet}
+    else{bindSheet(p,sel.value);await idbPut(idb,'projects',p);plPre=null}
+  });
   list.querySelectorAll('.open').forEach(b=>b.onclick=()=>openTrack(b.dataset.h));
   list.querySelectorAll('.pladd').forEach(b=>b.onclick=()=>plAdd(b.dataset.h));
   // 换谱也问一句来源（同上：卡片行塞不下第六个按钮）。取消 = 什么都不做
   list.querySelectorAll('.repl').forEach(b=>b.onclick=async()=>{
     const p=await idbGet(idb,'projects',b.dataset.h);if(!p)return;
     const how=await askSource('《'+dispName(p.name)+'》换一份谱子。从哪来？\n（标注原样保留，旧谱子进历史）');
-    if(how==='dav')return davOpenFor(p.id);
+    if(how==='dav'){ensureSheets(p);return davOpenFor(p.id,{kind:'replace',sheetId:p.lastSheet})}
     if(how!=='local')return;
-    pendPid=p.id;$('fPdf').click();
+    ensureSheets(p);pendPid=p.id;pendSheet={kind:'replace',sheetId:p.lastSheet};$('fPdf').click();
   });
   list.querySelectorAll('.ren').forEach(b=>b.onclick=()=>renTrack(b.dataset.h));
   list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
@@ -5205,14 +5457,15 @@ async function askSource(msg){
 }
 async function openTrack(id){
   const p=await idbGet(idb,'projects',id);if(!p)return;
+  ensureSheets(p);
   const f=p.pdf?await idbGet(idb,'files',p.pdf.hash):null;
   // 还没挂谱子（新建的空项目 / 同步来的标注 / 老存档），或者记录上有但文件不在本机
   //（别的设备同步过来的项目）→ 选一次文件，选完挂到**这个**项目上，不靠名字猜
   if(!p.pdf||!f){
-    const how=await askSource('《'+dispName(p.name)+'》还没有谱子。这份谱子从哪来？');
-    if(how==='dav')return davOpenFor(p.id);
+    const how=await askSource(p.pdf?'《'+(p.sheets.find(x=>x.id===p.lastSheet)?.name||dispName(p.name))+'》的 PDF 不在本机。请导入对应文件。':'《'+dispName(p.name)+'》还没有谱子。这份谱子从哪来？');
+    if(how==='dav')return davOpenFor(p.id,p.pdf?{kind:'attach',sheetId:p.lastSheet}:null);
     if(how!=='local')return;
-    pendPid=id;$('fPdf').click();return}
+    pendPid=id;pendSheet=p.pdf?{kind:'attach',sheetId:p.lastSheet}:null;$('fPdf').click();return}
   try{await loadPdfBlob(f.blob,p.pdf.name||p.name,p.id,p.pdf.hash)}
   catch(err){msg('打开失败：'+err.message,1)}
 }
@@ -5493,12 +5746,13 @@ async function davDownload(it){
     if(isPdf){
       // __new__ 要 forceNew：用户明确说了新建，就别再被自动认领挂回某个已有项目——那和他的选择相反
       if(pid==='__new__')await attachPdf(f,null,true);
+      else if(pid===davTarget&&davSheetAction)await attachPdf(f,pid,false,davSheetAction);
       else await attachPdf(f,pid);
     }else{
       await importAudioFile(f,pid);                // 它自己会问挂到哪个模式
     }
   }catch(err){msg('下载失败：'+err.message,1)}
-  finally{davBusy=false;davTarget='';
+  finally{davBusy=false;davTarget='';davSheetAction=null;
     $('davTip').textContent='点文件名下载并导入；下载完会让你选挂到哪个项目（音频不必先打开曲目）。'}
 }
 function davOpen(){
@@ -5510,15 +5764,16 @@ function davOpen(){
 // 面板本身照旧（能进目录、挑别的文件），只是下完不必再自己翻项目列表找那张卡片。
 // 每次打开都会重设（普通入口显式清空），所以不存在"上一次的目标还粘着"的情况
 let davTarget='';
-async function davOpenFor(pid){
+async function davOpenFor(pid,action=null){
+  davSheetAction=action;
   const p=(idb&&pid)?await idbGet(idb,'projects',pid):null;
   davTarget=p?p.id:'';
   $('menu').style.display='none';
   davOpen();
   if(p)$('davTip').textContent='给《'+dispName(p.name)+'》拿一份：点文件名下载，下完的弹窗会预选它。';
 }
-$('libDav').onclick=()=>{davTarget='';davOpen()};
-$('bDavOpen').onclick=()=>{davTarget='';$('menu').style.display='none';davOpen()};
+$('libDav').onclick=()=>{davTarget='';davSheetAction=null;davOpen()};
+$('bDavOpen').onclick=()=>{davTarget='';davSheetAction=null;$('menu').style.display='none';davOpen()};
 $('davCfg').onclick=()=>davCfgShow();
 $('davKind').onchange=()=>davCfgShow(true);
 $('davClose').onclick=()=>{hideModal('davPop')};
@@ -5746,7 +6001,7 @@ async function delTrack(id){
   const t=await idbGet(idb,'projects',id);if(!t)return;
   if(!confirm('删除项目《'+t.name+'》？它的标注和文件都会从库里移除。'))return;
   const own=new Set();
-  if(t.pdf)own.add(t.pdf.hash);
+  for(const h of projectPdfRefs(t))own.add(h);
   for(const h of (t.pdfHistory||[]))own.add(h.hash);
   for(const a of (t.audios||[]))own.add(a.hash);
   own.delete('');
@@ -5758,7 +6013,7 @@ async function delTrack(id){
   const n=PL.items.length;
   PL.items=PL.items.filter(it=>it.pid!==id);
   if(PL.items.length!==n){if(plIdx>=PL.items.length)plIdx=-1;savePL();syncPL()}
-  if(pid===id){resetTrack();syncAudSel()}
+  if(pid===id){resetTrack();syncAudSel();syncSheetSel()}
   drawLib();syncTrackSel();
 }
 
@@ -5766,16 +6021,17 @@ async function delTrack(id){
    条目形状：{id, name, aka, pdf, pdfHistory, data}。name / data 两个字段名是老格式的约定，
    动不得（tests/pw_autobar.py 和 eval_autobar*.py 直接读仓库里那份 annotations.json）。 */
 $('libExpAll').onclick=async()=>{
+  await flushSave();
   const ps=await idbAll(idb,'projects');
   const items=[];
   for(const p of ps){
     // 不跳过「等待导入谱子」的项目：跳过的话它们的标注永远没有备份
     const a=await idbGet(idb,'marks',p.id);
-    if(a)items.push({id:p.id,name:p.name,aka:p.aka||[],pdf:p.pdf?p.pdf.hash:null,
+    if(a)items.push({id:p.id,name:p.name,aka:p.aka||[],sheets:p.sheets||[],pdf:p.pdf?p.pdf.hash:null,
       pdfHistory:(p.pdfHistory||[]).map(h=>({hash:h.hash,name:h.name||''})),data:a.data});
   }
   if(!items.length)return msg('没有可导出的标注',1);
-  const b=new Blob([JSON.stringify({app:'sheetplayer',v:2,ts:Date.now(),items},null,1)],{type:'application/json'});
+  const b=new Blob([JSON.stringify({app:'sheetplayer',v:3,ts:Date.now(),items},null,1)],{type:'application/json'});
   const a=document.createElement('a');
   const d=new Date();
   a.href=URL.createObjectURL(b);
@@ -5808,6 +6064,7 @@ const normHist=h=>(h||[]).map(x=>typeof x==='string'?{hash:x,name:''}:x).filter(
 // force=true：本机较新也照样用对端那份盖掉（调用方问过用户了）
 // dry=true ：只认领、只统计「本机较新会被跳过」的那些，一个字节都不写——用来在覆盖前问一句
 async function importAnns(items,{force=false,dry=false}={}){
+  await flushSave();
   let imported=0,skipped=0;const newer=[];
   for(const it of items){
     if(!it||!it.data)continue;
@@ -5817,8 +6074,7 @@ async function importAnns(items,{force=false,dry=false}={}){
     const pH=it.pdf||it.pdfHash||'';
     let p=(id&&projs.find(x=>x.id===id))||
           (it.name&&findByNameIn(projs,it.name))||
-          (pH&&projs.find(x=>(x.pdf&&x.pdf.hash===pH)||
-                              (x.pdfHistory||[]).some(h=>h.hash===pH)))||null;
+          (pH&&projs.find(x=>projectPdfRefs(x).has(pH)))||null;
     if(!p){
       const now=Date.now();
       p={id:newId(),name:(it.name||'').trim()||String(pH).slice(0,8),
@@ -5851,10 +6107,29 @@ async function importAnns(items,{force=false,dry=false}={}){
       skipped++;continue;
     }
     if(dry)continue;                               // 干跑到此为止：后面的 marks/projects 写入全跳过
-    await idbPut(idb,'marks',{pid:p.id,data:it.data});
+    const incoming=deepClone(it.data);
+    if(incoming.sheets||it.sheets?.length){
+      await mergeSheetCatalog(p,incoming,it.sheets);
+      if(!incoming.sheets)incoming.sheets={default:{...p.sheets.find(x=>x.id==='default'),M:incoming.M||[]}};
+      if(ex?.data?.sheets)incoming.sheets={...ex.data.sheets,...incoming.sheets};
+      incoming.v=7;
+    }else if(ex?.data?.sheets){
+      // 旧文件只覆盖默认谱面，不能把其他谱面的位置清掉。
+      incoming.sheets={...ex.data.sheets,default:{...(ex.data.sheets.default||{}),M:incoming.M||[]}};
+      incoming.v=7;
+    }
+    await idbPut(idb,'marks',{pid:p.id,data:incoming});
     if(+it.data.ts>(p.updatedAt||0)){p.updatedAt=+it.data.ts;ch=true}
     if(ch||!ex)await idbPut(idb,'projects',p);
-    if(track&&track.id===p.id)applyAnn(it.data);
+    if(track&&track.id===p.id){
+      const oldHash=pdfHash;
+      track=p;applyAnn(incoming);syncSheetSel();
+      if(p.pdf?.hash&&oldHash!==p.pdf.hash){
+        const f=await idbGet(idb,'files',p.pdf.hash);
+        if(f)await loadPdfBlob(f.blob,p.pdf.name,p.id,p.pdf.hash);
+        else{resetPdfDerived();track=p;pid=p.id;syncSheetSel();showLib(true);msg('同步后的谱面 PDF 不在本机，请在曲目库导入对应文件',1)}
+      }
+    }
     imported++;
   }
   return dry?{newer}:{imported,skipped};
@@ -5893,7 +6168,7 @@ function applyAnn(s){
   snap();
   let modes=s.modes;
   if(!modes)modes={'标准':{E:s.E||[],TEMPO:s.TEMPO,METER:s.METER,SIG:s.SIG,FORM:s.FORM,offset:s.offset||0}};
-  M=s.M||[];MODES=modes;
+  restoreSheetMarks(s);MODES=modes;
   activeMode=s.activeMode||Object.keys(modes)[0]||'标准';
   if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
   if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
@@ -5926,6 +6201,7 @@ async function boot(){
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
   await migrateToProjects();    // 先把老库搬进项目模型（幂等），再扫 localStorage
   await sweepLegacy();          // 扫完再画列表，否则老曲目要等下次重开才出现
+  await migrateSheets();
   await sweepOrphans();         // 清掉没人引用的频谱缓存和孤儿标注
   await loadPL();syncPL();
   await loadDAV();

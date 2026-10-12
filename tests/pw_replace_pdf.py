@@ -45,6 +45,9 @@ async def main():
 
         # ① 同名不同内容（加完笔记重新导出的那份）→ 按文件名认回同一个项目
         await pg.set_input_files("#fPdf",SAME)
+        await pg.wait_for_selector("#dlgPick",state="visible")
+        pg.once("dialog",lambda dlg:asyncio.create_task(dlg.accept()))
+        await pg.get_by_role("button",name="替换当前谱面 PDF",exact=True).click()
         await pg.wait_for_function("(h)=>pdfHash!==h&&M.length===3&&document.querySelectorAll('.mk').length===3",
                                    arg=h1,timeout=60000)
         h2=await pg.evaluate("pdfHash")
@@ -53,7 +56,7 @@ async def main():
         print(ok(await pg.evaluate("track.name")==name0), "文件名命中不是改名：项目名照旧 "+name0)
         print(ok(await marks(pg)=="1,2,3"), "换谱后 3 个小节还在: "+await marks(pg))
         m=await pg.inner_text("#msg")
-        print(ok("按文件名认回" in m), "提示: "+m)
+        print(ok("已换谱" in m), "显式确认替换后的提示: "+m)
 
         await pg.evaluate("$('bLib').onclick()"); await pg.wait_for_timeout(500)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1), "没有重复建项目：库里 1 张卡")
