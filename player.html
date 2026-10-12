@@ -2573,11 +2573,55 @@ async function recognitionCanvas(page){
   if(recognitionPages.size>3)recognitionPages.delete(recognitionPages.keys().next().value);
   return c;
 }
+// 简谱：先由多条同高度的长竖线确定声部带，再用左侧连谱线组合成行。
+// 数字笔画短且上下不齐，不能仅凭单列黑像素成为小节线。
+function numberedSystems(c){
+  const W=c.width,H=c.height,d=c.getContext('2d').getImageData(0,0,W,H).data;
+  const dark=(x,y)=>{if(x<0||x>=W||y<0||y>=H)return false;const p=(y*W+x)*4;return d[p]*.299+d[p+1]*.587+d[p+2]*.114<150};
+  const groups=[];
+  for(let x=2;x<W-2;x++){
+    let start=-1,last=-1;
+    const finish=()=>{
+      if(start<0||last-start<H*.018||last-start>H*.12)return;
+      let g=groups.find(g=>Math.abs(g.top-start)<H*.004&&Math.abs(g.bot-last)<H*.004);
+      if(!g){g={top:start,bot:last,xs:[]};groups.push(g)}
+      if(!g.xs.length||x-g.xs[g.xs.length-1]>W*.012)g.xs.push(x);
+    };
+    for(let y=0;y<H;y++){
+      if(dark(x,y)||dark(x-1,y)||dark(x+1,y)){if(start<0)start=y;last=y}
+      else if(start>=0&&y-last>2){finish();start=-1}
+    }
+    finish();
+  }
+  const bands=groups.filter(g=>g.xs.length>=3&&g.xs[g.xs.length-1]-g.xs[0]>W*.25)
+    .sort((a,b)=>a.top-b.top).filter((g,i,a)=>!a.slice(0,i).some(o=>Math.abs(o.top-g.top)<H*.012));
+  const linked=(a,b)=>{
+    if(a.xs.filter(x=>b.xs.some(y=>Math.abs(x-y)<W*.012)).length<3)return false;
+    for(let x=Math.floor(W*.04);x<W*.18;x++){
+      let n=0;for(let y=a.bot;y<=b.top;y++)if(dark(x,y)||dark(x-1,y)||dark(x+1,y))n++;
+      if(n/Math.max(1,b.top-a.bot+1)>.88)return true;
+    }
+    return false;
+  };
+  const systems=[];
+  for(const b of bands){
+    let sys=systems[systems.length-1];
+    if(!sys||!linked(sys.raw,b)){sys={top:b.top/H,bot:b.bot/H,staves:[],numbered:true};systems.push(sys)}
+    sys.bot=b.bot/H;sys.raw=b;sys.staves.push({top:b.top/H,bot:b.bot/H});
+  }
+  return systems;
+}
 function autoRowSystem(page,ny,c){
   // 已有标记是用户给出的行范围，优先于图像猜测。
   const mates=M.filter(m=>m.page===page&&ny>=m.ny-.006&&ny<=m.ny+hOf(m));
   const anchor=mates.sort((a,b)=>Math.abs(a.ny-ny)-Math.abs(b.ny-ny))[0];
-  if(!anchor)return systemAt(page,ny,c);
+  const staff=staves(page,c)||[];
+  const numbered=!staff.length&&numberedSystems(c).find(s=>ny>=s.top-.012&&ny<=s.bot+.004);
+  if(numbered)return numbered;
+  if(!anchor){
+    const sys=systemAt(page,ny,c);
+    return sys&&ny>=sys.top-.012&&ny<=sys.bot+.004?sys:null;
+  }
   const top=anchor.ny,bot=top+hOf(anchor);
   const st=staves(page,c)||[];
   const bands=st.filter(s=>s.top>=top-.006&&s.bot<=bot+.006);
@@ -2991,6 +3035,7 @@ function detectRowBars(page,sys,rightOfNx,source){
   // 整条推出谱表，实测 CQ_传奇 整行返回空、十送红军一行只中 1/6。九份真值上它是净负面的：
   // 关掉 640/659，开着 613/659。
   // 所以两边都扫，谁找得多用谁：估歪的那次自然选不上，影印件那次照旧生效。
+  if(sys.numbered)return scan(0.88,false).lines;
   if(sys.continuous)return scan(0.9,false).lines; // 简谱只认贯穿人工行范围的竖线，数字笔画不能过关。
   const sT=scan(0.9,true), sF=scan(0.9,false);
   if(!sys.scan){
@@ -4508,7 +4553,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v30';
+const BUILD='v31';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
