@@ -2012,6 +2012,7 @@ function resetPdfDerived(keepAudio=false){
   for(const t of tasks.values()){try{t.cancel()}catch(e){}}   // 挂起的页面渲染作废，别落到新谱上
   tasks.clear();visible.clear();
   io?.disconnect();io=null;
+  recognitionEpoch++;recognitionPages.clear();
   staffCache.clear();                              // 按页面尺寸为键：必须留在「派生」这半边，分错会静默渲染错位
   rowEdgeCache.clear();
   if(!keepAudio){
@@ -2558,10 +2559,34 @@ function alignNy(mk){
 const staffCache=new Map();
 const scanPages=new Set();                       // 走了「扫描兜底」才认出的页：严格法一条谱线都找不到
 let scanChecked=false;
-function staves(page){
-  const c=cvs[page];
+// 识别画布独立于显示缩放和设备 DPR；只保留最近三页。
+const recognitionPages=new Map();
+let recognitionEpoch=0,autoRowBusy=false;
+async function recognitionCanvas(page){
+  if(recognitionPages.has(page))return recognitionPages.get(page);
+  const p=pageObj[page],epoch=recognitionEpoch;if(!p)return null;
+  const base=p.getViewport({scale:1}),vp=p.getViewport({scale:2200/Math.max(base.width,base.height)});
+  const c=document.createElement('canvas');c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);
+  await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+  if(epoch!==recognitionEpoch)return null;
+  recognitionPages.set(page,c);
+  if(recognitionPages.size>3)recognitionPages.delete(recognitionPages.keys().next().value);
+  return c;
+}
+function autoRowSystem(page,ny,c){
+  // 已有标记是用户给出的行范围，优先于图像猜测。
+  const mates=M.filter(m=>m.page===page&&ny>=m.ny-.006&&ny<=m.ny+hOf(m));
+  const anchor=mates.sort((a,b)=>Math.abs(a.ny-ny)-Math.abs(b.ny-ny))[0];
+  if(!anchor)return systemAt(page,ny,c);
+  const top=anchor.ny,bot=top+hOf(anchor);
+  const st=staves(page,c)||[];
+  const bands=st.filter(s=>s.top>=top-.006&&s.bot<=bot+.006);
+  return {top,bot,staves:bands.length?bands:[{top,bot}],continuous:!bands.length,scan:!!st.scan};
+}
+function staves(page,source){
+  const c=source||cvs[page];
   if(!c||!c.width)return null;
-  const key=page+'@'+c.width+'x'+c.height;
+  const key=page+'@'+c.width+'x'+c.height+(source?'analysis':'display');
   if(staffCache.has(key))return staffCache.get(key);
   const W=c.width,H=c.height;
   let d;
@@ -2665,6 +2690,27 @@ function staves(page){
     out=alt;
     if(scanned)out.scan=true;                       // 给下游用：影印件才允许放宽判定
   }
+  // 数字、歌词、连音线的投影也可能凑出五个峰；必须有真正延展的横向谱线。
+  const scanFlag=out.scan;
+  if(source)out=out.filter(s=>{
+    let good=0;
+    for(let k=0;k<5;k++){
+      const y=Math.round((s.top+(s.bot-s.top)*k/4)*H);
+      let run=0,longest=0;
+      for(let x=0;x<W;x++){
+        let ink=false;
+        for(let dy=-1;dy<=1;dy++){
+          const yy=y+dy;if(yy<0||yy>=H)continue;
+          const p=(yy*W+x)*4;
+          if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<175)ink=true;
+        }
+        run=ink?run+1:0;longest=Math.max(longest,run);
+      }
+      if(longest>W*.12)good++;
+    }
+    return good>=4;
+  });
+  if(scanFlag)out.scan=true;
   // 相邻两个谱表是否属于同一个系统：看左端有没有连谱线/括号把它们连起来。这是印刷上真正的
   // 依据。拿「间隙小于某个阈值」去猜是切不开的 —— 实测这份密排合唱谱行【内】（中间夹两行
   // 歌词）的间隙有 2.46 倍谱表高，而另一份谱子行【间】的间隙才 2.48 倍，两者完全重叠。
@@ -2815,8 +2861,8 @@ function rowRightEdge(mk){
   return out;
 }
 // ④ 半自动标小节：给一个 y 坐标，找到它所在的「谱表组」（系统）——组内空隙小、组间空隙大
-function systemAt(page,ny){
-  const st=staves(page);
+function systemAt(page,ny,source){
+  const st=staves(page,source);
   if(!st||!st.length)return null;
   let best=0,bd=1e9;
   for(let i=0;i<st.length;i++){
@@ -2841,8 +2887,8 @@ function systemAt(page,ny){
   return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1),scan:!!st.scan};
 }
 // 扫描一行（谱表组）里所有印刷小节线，返回 nx（升序，含最右的终止线，由调用方去掉）
-function detectRowBars(page,sys,rightOfNx){
-  const c=cvs[page];
+function detectRowBars(page,sys,rightOfNx,source){
+  const c=source||cvs[page];
   if(!c||!c.width||!sys)return null;
   const W=c.width,H=c.height;
   const ys=Math.max(0,Math.round(sys.top*H)-1);
@@ -2945,6 +2991,7 @@ function detectRowBars(page,sys,rightOfNx){
   // 整条推出谱表，实测 CQ_传奇 整行返回空、十送红军一行只中 1/6。九份真值上它是净负面的：
   // 关掉 640/659，开着 613/659。
   // 所以两边都扫，谁找得多用谁：估歪的那次自然选不上，影印件那次照旧生效。
+  if(sys.continuous)return scan(0.9,false).lines; // 简谱只认贯穿人工行范围的竖线，数字笔画不能过关。
   const sT=scan(0.9,true), sF=scan(0.9,false);
   if(!sys.scan){
     // 清晰谱：严格档为主，只在【整行】凑不齐 4 条时才退宽松档，两倾斜取多的那份。
@@ -2952,10 +2999,10 @@ function detectRowBars(page,sys,rightOfNx){
     // 越容易误判成"这份是影印件"而切到宽松档，整行检出集合跟着换一套（实测四海同一行
     // head=0.05 给 8 条、head=0.50 给完全另一套 7 条，两份互不嵌套）。影印页有并集兜着，
     // 清晰页就靠这一句保持前后一致。
-    const pick=(lo,st)=>lo.lines.length>st.lines.length?lo:st;
+    const pick=(lo,st)=>lo.whole>st.whole?lo:st;
     const A=sT.whole<4?pick(scan(0.72,true),sT):sT;
     const B=sF.whole<4?pick(scan(0.72,false),sF):sF;
-    return B.lines.length>A.lines.length?B.lines:A.lines;
+    return B.whole>A.whole?B.lines:A.lines;
   }
   // 影印页：严格档和宽松档**各只覆盖一部分真线**（实测四海同一行，严格档中左三条
   // 0.493/0.560/0.626、宽松档中右三条 0.723/0.786/0.851，互补）。原来的「谁找得多用谁」
@@ -3023,7 +3070,7 @@ function tap(){
 }
 
 /* ---------- 鼠标 ---------- */
-pagesEl.onclick=e=>{
+pagesEl.onclick=async e=>{
   if(!pdf)return;
   if(dragAte){dragAte=false;return}           // 这一击已判给编辑（拖拽 / 开面板），不再加点
   const g=geo(e);if(!g)return;
@@ -3038,14 +3085,22 @@ pagesEl.onclick=e=>{
     // 往右的线是各小节边界，跳过最右的终止线。
     // 压在已有竖线上走不到这里——上面那道 canEditMk 判成编辑了，所以不会重复加点。
     if($('chkAutoRow').checked){
+      if(autoRowBusy)return;
+      autoRowBusy=true;
+      const epoch=recognitionEpoch;
+      let source;
+      try{source=await recognitionCanvas(g.page)}
+      catch(err){msg('谱面识别准备失败，请重试',1);return}
+      finally{autoRowBusy=false}
+      if(!source||epoch!==recognitionEpoch||$('mode').value!=='mark')return;
       snap();
-      const sys=systemAt(g.page,g.ny);
+      const sys=autoRowSystem(g.page,g.ny,source);
       const h=sys?Math.max(0.04,sys.bot-sys.top):lastH;
       const nmk={page:g.page,nx:g.nx,ny:sys?sys.top:g.ny,m:nextM,h};
       M.push(nmk);lastH=h;
       let added=0,lines=null;
       if(sys){
-        lines=detectRowBars(g.page,sys,g.nx);
+        lines=detectRowBars(g.page,sys,g.nx,source);
         if(lines&&lines.length>1){
           for(const nx of lines.slice(0,-1)){        // 去掉最右的终止线
             if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004&&
@@ -3057,7 +3112,8 @@ pagesEl.onclick=e=>{
       }
       syncNext();layout();save();
       msg(added?('已补齐整行 '+added+' 个小节'+(lines&&lines.length>1?('（检测到 '+(lines.length-1)+' 条小节线）'):''))
-               :'未检测到更多小节线，已标 1 个（关掉「整行补齐」就变回手动逐个点）');
+               :sys?'未检测到更多可靠小节线，已标 1 个；可手动补标'
+               :'未识别到可靠谱行，已在点击处标 1 个；请先调整竖线高度，再补齐本行');
       return;
     }
     snap();
@@ -4452,7 +4508,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v29';
+const BUILD='v30';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

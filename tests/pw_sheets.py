@@ -35,14 +35,14 @@ async def main():
         return good&&legacy.sheets[0].name==='自定义';
       }"""), '旧默认名迁移仅去 PDF 扩展名，自定义名称保留')
       await pg.wait_for_function("()=>document.querySelector('.page')?.dataset.done")
-      check(await pg.evaluate("""()=>{
+      check(await pg.evaluate("""async()=>{
         const oldM=M,oldSys=systemAt,oldBars=detectRowBars,oldMode=$('mode').value;
         try{
           M=[{m:1,page:1,nx:.5,ny:.1,h:.05}];syncNext();
           systemAt=()=>({top:.6,bot:.7,staves:[]});detectRowBars=()=>[.5,.9];
           $('mode').value='mark';$('chkAutoRow').checked=true;
           const el=document.querySelector('.page'),r=el.getBoundingClientRect();
-          pagesEl.onclick({target:el,clientX:r.left+r.width*.2,clientY:r.top+r.height*.6});
+          await pagesEl.onclick({target:el,clientX:r.left+r.width*.2,clientY:r.top+r.height*.6});
           return M.some(m=>m.nx===.5&&m.ny===.6)&&M.length===3;
         }finally{
           systemAt=oldSys;detectRowBars=oldBars;M=oldM;syncNext();
