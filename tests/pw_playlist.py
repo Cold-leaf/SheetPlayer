@@ -14,7 +14,9 @@ tone(A1,1.0,440); tone(A2,1.0,330)      # 各 1 秒，方便测自动进下一�
 H=functools.partial(http.server.SimpleHTTPRequestHandler,directory=ROOT+"/SheetPlayer")
 socketserver.TCPServer.allow_reuse_address=True
 srv=socketserver.TCPServer(("127.0.0.1",8802),H); threading.Thread(target=srv.serve_forever,daemon=True).start()
-def ok(c): return "OK   " if c else "FAIL "
+def ok(c):
+    assert c, "播放列表回归检查失败"
+    return "OK   "
 
 async def add_track(pg,pdf,aud):
     await pg.set_input_files("#fPdf",pdf)
@@ -46,6 +48,8 @@ async def main():
         # 列表渲染到**两个**容器：曲目库屏上的 #plList + 弹层 #plPopList（同一个 renderPL 渲染两遍），
         # 所以全文档数 .plRow 是 4 行而不是 2 行。冷启动（没在播）时弹层打不开——#plNow 那个入口
         # 要 plOn 才出现在状态条上、曲名胶囊那个入口在演奏态——所以就用曲目库屏上这份（它本来开着）
+        # PL.items 先更新，renderPL 还要异步读取 IndexedDB；等待实际渲染完成。
+        await pg.wait_for_function("()=>document.querySelectorAll('#plList .plRow').length===2",timeout=10000)
         rows=await pg.evaluate("document.querySelectorAll('#plList .plRow').length")
         print(ok(rows==2), f"曲目库里的播放列表显示 {rows} 行")
 
@@ -111,5 +115,6 @@ async def main():
         print(ok(await pg.evaluate("PL.items.length")==2), "刷新后播放列表仍在")
 
         print("\npage errors:",errs or "(none)")
+        assert not errs, errs
         await b.close()
 asyncio.run(main())
