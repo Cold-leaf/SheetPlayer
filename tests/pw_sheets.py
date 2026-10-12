@@ -27,16 +27,40 @@ async def main():
       await pg.goto(URL);await ready(pg)
       await pg.set_input_files('#fPdf',str(A));await pg.wait_for_function("()=>pdf && $('lib').style.display==='none'")
       await pg.evaluate("()=>{M=[{m:1,page:1,nx:.2,ny:.3,h:.06},{m:2,page:1,nx:.5,ny:.3,h:.06}];E=[{m:1,t:0,src:'tap'},{m:2,t:10,src:'tap'}];syncNext();layout();save()}")
+      check(await pg.evaluate("""()=>{
+        const legacy={pdf:{name:'原名_0_1787155482878.PDF'},sheets:[{id:'default',name:'默认谱面',pdf:{name:'原名_0_1787155482878.PDF'}}]};
+        ensureSheets(legacy);
+        const good=legacy.sheets[0].name==='原名_0_1787155482878';
+        legacy.sheets[0].name='自定义';ensureSheets(legacy);
+        return good&&legacy.sheets[0].name==='自定义';
+      }"""), '旧默认名迁移仅去 PDF 扩展名，自定义名称保留')
+      await pg.wait_for_function("()=>document.querySelector('.page')?.dataset.done")
+      check(await pg.evaluate("""()=>{
+        const oldM=M,oldSys=systemAt,oldBars=detectRowBars,oldMode=$('mode').value;
+        try{
+          M=[{m:1,page:1,nx:.5,ny:.1,h:.05}];syncNext();
+          systemAt=()=>({top:.6,bot:.7,staves:[]});detectRowBars=()=>[.5,.9];
+          $('mode').value='mark';$('chkAutoRow').checked=true;
+          const el=document.querySelector('.page'),r=el.getBoundingClientRect();
+          pagesEl.onclick({target:el,clientX:r.left+r.width*.2,clientY:r.top+r.height*.6});
+          return M.some(m=>m.nx===.5&&m.ny===.6)&&M.length===3;
+        }finally{
+          systemAt=oldSys;detectRowBars=oldBars;M=oldM;syncNext();
+          $('mode').value=oldMode;$('chkAutoRow').checked=false;layout();save();
+        }
+      }"""), '整行补齐不会把其他行同一横坐标的标记误判为重复')
       await pg.set_input_files('#fAud',str(tone));await pg.wait_for_selector('#dlgMode',state='visible');await pg.click('#dlgModeOk')
       await pg.wait_for_function('()=>aud.duration===60 && track.audios.length===1')
       await pg.evaluate("()=>{aud.currentTime=12;setRate(1.25)}")
       await pg.click('#bPlay')
       before=await pg.evaluate('({src:aud.src,t:aud.currentTime,E:JSON.stringify(E),id:pid,hash:pdfHash})')
-      await pg.click('#bMenu');await pg.click('#bAddSheet');await pg.fill('#dlgInp','简谱')
+      check(await pg.evaluate('track.sheets[0].name')==A.stem, '首份谱面使用 PDF 原文件名')
+      await pg.click('#bMenu')
       async with pg.expect_file_chooser() as fc:
-        await pg.click('#dlgOk')
+        await pg.click('#bAddSheet')
       await (await fc.value).set_files(str(B))
       await pg.wait_for_function("()=>track.sheets.length===2 && activeSheet!=='default' && !sheetBusy")
+      check(await pg.evaluate('track.sheets.find(s=>s.id===activeSheet).name')==B.stem, '新增谱面使用 PDF 原文件名')
       alternate=await pg.evaluate('activeSheet')
       check(await pg.evaluate('M.length===0'), '新增谱面从空位置开始，不复制旧版坐标')
       check(await pg.evaluate('JSON.stringify(E)')==before['E'], '新增谱面保留共享时间点')

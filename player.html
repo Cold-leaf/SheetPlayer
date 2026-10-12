@@ -1587,10 +1587,14 @@ function undo(){
 
 /* ---------- 一曲多谱：位置属于谱面，音频/时间轴属于曲目 ---------- */
 let SHEET_MARKS={},activeSheet='default',sheetBusy=false;
+function sheetFileName(name){return String(name||'').replace(/\.pdf$/i,'')||'谱面'}
 function ensureSheets(p){
   if(!p)return;
   if(!Array.isArray(p.sheets)||!p.sheets.length){
-    p.sheets=[{id:'default',name:'默认谱面',pdf:p.pdf||null,pdfHistory:p.pdfHistory||[]}];
+    p.sheets=[{id:'default',name:sheetFileName(p.pdf?.name),pdf:p.pdf||null,pdfHistory:p.pdfHistory||[]}];
+  }
+  for(const sh of p.sheets){
+    if(!sh.name||(sh.id==='default'&&sh.name==='默认谱面'))sh.name=sheetFileName(sh.pdf?.name);
   }
   if(!p.sheets.some(x=>x.id===p.lastSheet))p.lastSheet=p.sheets[0].id;
   bindSheet(p,p.lastSheet);
@@ -1631,8 +1635,9 @@ function annotationData(){
 async function migrateSheets(){
   // 保留旧字段与数据，迁移可重入；旧版数据只归默认谱面，绝不复制到新版本。
   for(const p of await idbAll(idb,'projects')){
-    if(p.sheets?.length)continue;
-    ensureSheets(p);await idbPut(idb,'projects',p);
+    const before=JSON.stringify(p);
+    ensureSheets(p);
+    if(JSON.stringify(p)!==before)await idbPut(idb,'projects',p);
   }
 }
 async function mergeSheetCatalog(p,data,catalog){
@@ -1642,7 +1647,7 @@ async function mergeSheetCatalog(p,data,catalog){
   for(const src of sources){
     if(!src?.id)continue;
     let sh=p.sheets.find(x=>x.id===src.id);
-    if(!sh){sh={id:src.id,name:src.name||'谱面',pdf:src.pdf||null,pdfHistory:src.pdfHistory||[]};p.sheets.push(sh)}
+    if(!sh){sh={id:src.id,name:src.name||sheetFileName(src.pdf?.name),pdf:src.pdf||null,pdfHistory:src.pdfHistory||[]};p.sheets.push(sh)}
     else{
       sh.name=src.name||sh.name;
       // 同步的位置必须对应同步的 PDF；本机选哪版仍保留。
@@ -1703,7 +1708,7 @@ async function addSheetFile(p,file,H,name){
     bindSheet(p,same.id);await idbPut(idb,'projects',p);return openTrack(p.id);
   }
   await openPdf(file); // 校验 PDF，失败不增加空版本。
-  const nm=(name||'').trim()||dispName(file.name);
+  const nm=(name||'').trim()||sheetFileName(file.name);
   if(p.sheets.some(x=>x.name===nm))return msg('谱面名称已存在，请换一个名字',1);
   const sh={id:newId(),name:nm,pdf:{hash:H,name:file.name},pdfHistory:[]};
   // 新版本从空位置开始，不能复制旧谱的页码坐标。
@@ -1725,12 +1730,7 @@ async function addSheetFile(p,file,H,name){
 }
 $('bAddSheet').onclick=async()=>{
   if(!track||!idb)return msg('先从曲目库打开一个曲目',1);
-  const projectId=pid;
-  const name=await askText('新谱面叫什么？例如：无钢伴线谱、带钢伴线谱、简谱','');
-  if(name==null)return;
-  if(!name.trim())return msg('谱面名称不能为空',1);
-  if(track.sheets.some(x=>x.name===name.trim()))return msg('谱面名称已存在',1);
-  pendPid=projectId;pendSheet={kind:'add',name:name.trim()};
+  pendPid=pid;pendSheet={kind:'add'};
   $('menu').style.display='none';$('fPdf').click();
 };
 $('bRenameSheet').onclick=async()=>{
@@ -3048,7 +3048,8 @@ pagesEl.onclick=e=>{
         lines=detectRowBars(g.page,sys,g.nx);
         if(lines&&lines.length>1){
           for(const nx of lines.slice(0,-1)){        // 去掉最右的终止线
-            if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004))continue;   // 重复的点跳过
+            if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004&&
+              Math.min(x.ny+hOf(x),sys.bot)-Math.max(x.ny,sys.top)>=0.5*Math.min(hOf(x),sys.bot-sys.top)))continue;   // 重复的点跳过
             M.push({page:g.page,nx,ny:sys.top,m:++nextM,h});
             added++;
           }
@@ -4451,7 +4452,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v28';
+const BUILD='v29';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
