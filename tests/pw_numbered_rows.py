@@ -39,6 +39,28 @@ async def main():
           return out;
         }""")
         print('PASS 雪花第 1 页四行：点击定位、六条边界、后半行补齐、三档缩放',result)
+        result=await pg.evaluate("""async()=>{
+          M=[];const results=[];
+          for(const [ny,expected] of [
+            [.10,[.257,.396,.528,.677,.828,.966]],
+            [.35,[.235,.383,.530,.672,.817,.964]],
+            [.59,[.253,.398,.541,.681,.826,.965]],
+            [.84,[.257,.399,.540,.683,.820,.961]]]){
+            const variants=[];
+            for(const z of [.5,1,2]){
+              zoom=z;applyZoom();const c=await recognitionCanvas(2);
+              const sys=autoRowSystem(2,ny,c);
+              if(!sys?.numbered||sys.staves.length!==4)throw Error('第 2 页声部点击识别错误 '+ny);
+              const bars=detectRowBars(2,sys,.12,c);
+              if(bars.length!==6||bars.some((x,i)=>Math.abs(x-expected[i])>.004))throw Error('第 2 页边界错误 '+bars);
+              variants.push(JSON.stringify({sys,bars}));
+            }
+            if(new Set(variants).size!==1)throw Error('第 2 页缩放不一致');
+            results.push(ny);
+          }
+          return results;
+        }""")
+        print('PASS 雪花第 2 页四行：中间声部点击、真实边界位置、三档缩放',result)
         assert not errors,errors
         await browser.close()
 asyncio.run(main())

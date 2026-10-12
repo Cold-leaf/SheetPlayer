@@ -2737,6 +2737,8 @@ function staves(page,source){
   // 数字、歌词、连音线的投影也可能凑出五个峰；必须有真正延展的横向谱线。
   const scanFlag=out.scan;
   if(source)out=out.filter(s=>{
+    // 五线模板的 ±1 像素容差不能把同一条粗横线重复算作五条线。
+    if((s.bot-s.top)*H<12)return false;
     let good=0;
     for(let k=0;k<5;k++){
       const y=Math.round((s.top+(s.bot-s.top)*k/4)*H);
@@ -4553,7 +4555,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v31';
+const BUILD='v32';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
