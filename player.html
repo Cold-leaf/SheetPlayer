@@ -3281,7 +3281,9 @@ function renderPanel(){
   const m=curM;
   const mk=mkByM.get(m),ph=mk&&boxes[mk.page]?boxes[mk.page].clientHeight:1000;
   let html='<b>小节 '+m+'</b> <button id="pClose">关闭</button> <button id="pTap">设为打点目标</button>'+
-           ' <button id="pDelMk">删标记</button>';
+           ' <button id="pDelMk">仅删标记</button>'+
+           ' <button id="pDelShift">删除并前移本谱面后续编号</button>'+
+           '<div style="margin:6px 0">两种删除均保留音频时间点；前移编号只影响当前谱面，可撤销。</div>';
   if(mk&&multiSheet())html+='<div style="margin:6px 0">共同小节号 <input id="pNumber" type="number" min="1" step="1" value="'+m+'">（只改当前谱面，不移动时间点）</div>';
   if(mk)html+='<div style="margin:6px 0">覆盖到 <input type="number" id="pEnd" min="'+m+'" step="1" '+
     'value="'+(m+spanOf(mk)-1)+'"> 小节（多小节休止填结束节，后面的小节自动顺位）</div>';
@@ -3331,17 +3333,21 @@ function renderPanel(){
       msg('已把高度应用到整行 '+row.length+' 条竖线');
     };
   }
-  panel.querySelector('#pDelMk').onclick=()=>{
+  const deleteMark=(shift)=>{
+    const del=mkByM.get(m);if(!del)return;
     snap();
-    const del=mkByM.get(m),sp=del?spanOf(del):1;      // 覆盖几个小节，删掉后后面顺位退几个
+    const sp=spanOf(del);
     M=M.filter(x=>x.m!==m);
-    if(!multiSheet()){
-      E=E.filter(x=>x.m!==m);M.forEach(x=>{if(x.m>m)x.m-=sp});E.forEach(x=>{if(x.m>m)x.m-=sp});
+    if(tapM===m)tapM=null;
+    if(shift){
+      M.forEach(x=>{if(x.m>m)x.m-=sp});
       if(tapM!=null&&tapM>m)tapM-=sp;
     }
-    if(tapM===m)tapM=null;
     syncNext();panel.style.display='none';curM=null;layout();save();
+    msg(shift?'已删除标记，本谱面后续编号前移 '+sp:'已删除标记，后续编号保留');
   };
+  panel.querySelector('#pDelMk').onclick=()=>deleteMark(false);
+  panel.querySelector('#pDelShift').onclick=()=>deleteMark(true);
   panel.querySelector('#pAdd').onclick=()=>{addTime(m,stamp());renderPanel();refresh();save()};
   panel.querySelectorAll('input[data-i]').forEach(inp=>inp.onchange=()=>{   // 只绑时间输入框，别把高度输入框也覆盖了
     snap();E[+inp.dataset.i].t=+inp.value;renderPanel();refresh();save()});
@@ -4555,7 +4561,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v32';
+const BUILD='v33';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
