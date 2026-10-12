@@ -23,7 +23,7 @@ PANELS=[
   ("工具栏",   "#bar",     "button,label,select,input[type=checkbox]"),
   ("菜单",     "#menu",    "button,.mbtn,input,select,label"),
   ("播放列表", "#plPop",   "#plPopHd button,#plPopHd label,.plRow button,.plRow select"),
-  ("曲目库",   "#lib",     "#libHd button,#libHd label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,.plRow button,.plRow select"),
+  ("曲目库",   "#lib",     "#libHd button,#libManage button,#libManage label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,.plRow button,.plRow select"),
   ("生成面板", "#gen",     "button,input,select,label"),
   ("频谱头",   "#specHdr", "button,input,select,label"),
   ("ownCloud", "#davPop",  "#davHd button,#davCfgBox button,#davCfgBox input,#davCfgBox select"),
@@ -221,7 +221,7 @@ async def main():
             return {dt:Math.round(y.top-x.top),dh:Math.round(y.height-x.height),
                     disp:getComputedStyle(document.querySelector(b)).display}};
           // 菜单里有两个 label.mbtn（「谱子 → 导一份新谱子」在前面），指名道姓找导入本曲标注
-          return {exp:pair('#bExp','#menu label:has(#fMap)'), lib:pair('#bSync','#libHd label.libBtn')};
+          return {exp:pair('#bExp','#menu label:has(#fMap)'), lib:pair('#libExpAll','#libManage label.libBtn')};
         }""")
         # 容差 1px：button 和 label 是两套不同的盒模型，静态时实测完全重合，
         # 但布局刚变化时会读到 1px 的亚像素抖动。原来偏 9px，量级差在这里
@@ -260,7 +260,7 @@ async def main():
               f"锚点 × ：命中 {got['w']}×{got['h']}px 没有靠 ::after 外扩（视觉 {got['vw']}×{got['vh']}，"
               f"胶囊整体 {got['an']}px 高）")
         await scan("生成面板·锚点 ×","#gAncList",".anc button")
-        await pg.evaluate("$('gen').style.display='none'")
+        await pg.evaluate("hideModal('gen')")
 
         await pg.evaluate("specShow(true)"); await pg.wait_for_timeout(400)
         await scan("频谱头",PANELS[5][1],PANELS[5][2])
@@ -280,9 +280,9 @@ async def main():
         await scan("对话框",PANELS[8][1],PANELS[8][2])
         await pg.evaluate("$('dlgCancel').onclick()"); await pg.wait_for_timeout(250)
 
-        await pg.evaluate("$('instPop').style.display='flex'"); await pg.wait_for_timeout(250)
+        await pg.evaluate("showModal('instPop')"); await pg.wait_for_timeout(250)
         await scan("安装卡片",PANELS[10][1],PANELS[10][2])
-        await pg.evaluate("$('instPop').style.display='none'")
+        await pg.evaluate("hideModal('instPop')")
         # 菜单里点得开、卡片按浏览器分列、装过就不显示入口。
         # 直接写 display 而不是点 #bMenu —— 那是个开关，菜单开着时点它反而会关掉
         await pg.evaluate("$('menu').style.display='block'"); await pg.wait_for_timeout(200)
@@ -298,7 +298,7 @@ async def main():
               "没有 beforeinstallprompt 时不显示「立即安装」")
         await pg.click("#instClose"); await pg.wait_for_timeout(200)
         print(ok(await pg.evaluate("getComputedStyle($('instPop')).display")=="none"), "关闭键能关安装卡片")
-        await pg.evaluate("$('instPop').style.display='flex'"); await pg.wait_for_timeout(150)
+        await pg.evaluate("showModal('instPop')"); await pg.wait_for_timeout(150)
         await pg.mouse.click(6,6); await pg.wait_for_timeout(200)
         print(ok(await pg.evaluate("getComputedStyle($('instPop')).display")=="none"), "点遮罩也能关安装卡片")
 
@@ -344,8 +344,10 @@ async def main():
         cards=await pgl.evaluate("document.querySelectorAll('.libCard').length")
         print(ok(cards>0), f"曲目库里有 {cards} 张卡片（.libCard button 才有得量）")
         await scan("曲目库（有卡片）",PANELS[3][1],PANELS[3][2],pgl)
-        # ownCloud 面板：库头部的 ☁ 进得去
-        await pgl.evaluate("$('libDav').onclick()"); await pgl.wait_for_timeout(800)
+        await pgl.click("#libMore")
+        await scan("曲目库（管理展开）",PANELS[3][1],PANELS[3][2],pgl)
+        # ownCloud 面板：管理区的入口
+        await pgl.click("#libDav"); await pgl.wait_for_timeout(800)
         dv=await pgl.evaluate("getComputedStyle($('davPop')).display")
         print(ok(dv=="flex"), f"ownCloud 面板打开: display={dv}")
         await pgl.evaluate("$('davCfg').onclick()"); await pgl.wait_for_timeout(300)

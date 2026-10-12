@@ -67,7 +67,7 @@ button:active{opacity:.65}
   #bar #bPlay{width:44px;height:44px}
 
   /* ---- A 层：所在容器可折行/可滚动，长高只花纵向空间、不会裁切 ---- */
-  #libHd button,#libHd label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,
+  #libHd button,#libManage button,#libHd label.libBtn,#libManage label.libBtn,#libTools button,#libTools input,.libCard button,#plHd button,
   .plRow button,.plRow select,#plPopHd button,#plPopHd label,
   #menu button,#menu .mbtn,#menu input,#menu select,#menu label,
   #dlg button,#dlg input,#dlgMode button,#dlgMode input,#dlgMode select,#dlgPick button,
@@ -494,21 +494,22 @@ body.perf .editOnly{display:none}
    min-height:100% 保证内容少时也铺满（短列表的悬停高亮不会只到半截） */
 /* 1100 而不是 880：库里一行一首改成网格后，880 只放得下两列，宽屏上第三列正好被挤掉 */
 #libBox{width:100%;max-width:1100px;margin:0 auto;padding:16px;box-sizing:border-box;min-height:100%;flex:0 0 auto}
-#libHd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-#libHd b{font-size:17px}
-#libHd button,#libHd label.libBtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
-#libHd label.libBtn{display:inline-block}
+#libHd{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;align-items:center;margin-bottom:18px}
+#libHd>span{display:none}
+#libHd b{font-size:20px;letter-spacing:.02em}
+#libHd button,#libManage button,#libHd label.libBtn,#libManage label.libBtn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+#libHd label.libBtn,#libManage label.libBtn{display:inline-block}
 /* 做成按钮样子的 <label>（「导入本曲标注（覆盖）」「导入全部标注」）在触屏下要对齐相邻的 <button>。
    <button> 会把内容纵向居中，<label> 只是普通行盒、文字贴着上边——min-height 一撑到 44px，
    两者的基线就差出 9px，看上去"没在一条水平线上"。桌面高度只有 26px（盒子贴着内容），
    居中等于顶部对齐，所以这个毛病只在触屏上露出来。
    必须排在上面那两条基础规则之后：同特异性靠源码顺序取胜 */
 @media (pointer:coarse),(any-pointer:coarse){
-  #menu .mbtn,#libHd label.libBtn{display:inline-flex;align-items:center}
+  #menu .mbtn,#libHd label.libBtn,#libManage label.libBtn{display:inline-flex;align-items:center}
 }
 #libInfo{color:var(--text-dim);font-size:12px}
 /* 搜索 + 排序。跟 #libHd 分两行：库头那排是低频操作（新建/导入/导出/同步），
-   这行是每次进库都要用的，挤在一起会把「找曲子」这件事埋掉 */
+   这行是每次进库都要用的；低频操作现在单独放进可展开的管理区 */
 #libTools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 #libQ{flex:1;min-width:180px;box-sizing:border-box;background:var(--surface);color:var(--text);
   border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px}
@@ -663,6 +664,29 @@ body.hidebar #reh{display:flex}
   #reh select.rate{font-size:13px}
 }
 
+
+/* 曲目库管理区按需展开；主要路径始终是新建、搜索、打开。 */
+#libManage{background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px}
+#libManage[hidden]{display:none}
+.libManageGroup{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.libManageGroup+.libManageGroup{margin-top:12px}
+.libSectionLabel{font-size:12px;color:var(--text-dim);flex:0 0 64px}
+#libManage label.libBtn{display:inline-flex;align-items:center;justify-content:center}
+#libHd button.primary,#dlg button.primary,#dlgMode button.primary,#dlgProj button.primary{
+  background:var(--accent);border-color:var(--accent);color:#1a1408;font-weight:600}
+#libMore[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}
+#libQ{padding:10px 12px}
+#libList{gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr))}
+.libCard{padding:16px 14px;gap:10px}
+.libCard.cur{background:var(--surface);border-color:var(--accent);outline:none}
+.libCard .acts{margin-top:4px}
+#plPanel.empty{background:transparent;border-style:dashed;padding:10px 12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+#plPanel.empty #plHd{margin:0;font-size:13px;color:var(--text-dim)}
+#plPanel.empty #plHd label,#plPanel.empty #plHd button,#plPanel.empty #plHd>span{display:none}
+#plPanel.empty .plEmpty{padding:0;font-size:12px}
+#dlg>div,#dlgMode>div,#dlgPick>div{box-sizing:border-box;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto}
+.uiIcon{width:16px;height:16px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button:disabled{cursor:default}
 </style>
 </head>
 <body>
@@ -727,7 +751,7 @@ body.hidebar #reh{display:flex}
    <!-- 演奏 / 编辑 锁。文案显示**当前**状态（跟菜单里那个方向按钮同一套说法，见 bHoriz）。
         不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认 -->
    <button id="bPerf" title="当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）">编辑</button>
-   <button id="bMenu" title="更多设置与数据">☰ 菜单</button>
+   <button id="bMenu" title="更多设置与数据"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg> 菜单</button>
   </span>
   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
@@ -793,7 +817,7 @@ body.hidebar #reh{display:flex}
       放最后那栏等于要滚半屏才看得到——而这俩恰恰是手机上最该先看到的 -->
  <div class="msec">应用</div>
  <button id="bHelp">? 快捷键</button>
- <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用">📲 安装到主屏幕</button>
+ <button id="bInstall" title="装成 PWA：独立图标、全屏、离线可用"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></svg> 安装到主屏幕</button>
  <!-- 构建号 + 强制刷新：浏览器/Service Worker 缓存没刷掉时，页面和仓库对不上。
       这一行既让人一眼看出手上跑的是哪一版，点一下还能把缓存清掉重新拉
       （跟 sw.js 的 VER 一起 bump） -->
@@ -854,9 +878,9 @@ body.hidebar #reh{display:flex}
  </div>
  <div class="msec">ownCloud 曲库（只读）</div>
  <div class="mrow">
-  <button id="bDavOpen">☁ 打开 ownCloud 曲库…</button>
+  <button id="bDavOpen"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10Z"/></svg> 打开 ownCloud 曲库…</button>
  </div>
- <div class="ginfo" style="white-space:normal">在曲目库里点「☁ ownCloud」打开；登录/配置也在那个面板里，密码只存本机浏览器。</div>
+ <div class="ginfo" style="white-space:normal">在曲目库里点「管理 → ownCloud」打开；登录/配置也在那个面板里，密码只存本机浏览器。</div>
  <div class="msec">竖线吸附</div>
  <label title="放下或拖完后，抄同一行最近那条竖线的高度和纵向位置"><input type="checkbox" id="chkAlignY" checked>对齐同行</label>
  <label title="在窗口内找印刷的小节线并横向吸过去"><input type="checkbox" id="chkSnapX" checked>吸小节线</label>
@@ -916,35 +940,35 @@ body.hidebar #reh{display:flex}
  <canvas id="specCv"></canvas>
 </div>
 <div id="panel"></div>
-<div id="dlg" style="display:none"><div>
+<div id="dlg" aria-labelledby="dlgMsg" style="display:none"><div>
  <div id="dlgMsg" style="margin-bottom:10px;font-size:14px"></div>
- <input type="text" id="dlgInp" autocomplete="off" style="width:100%;box-sizing:border-box;background:#2b2b2b;color:#eee;border:1px solid #555;border-radius:4px;padding:6px 8px;font-size:15px">
- <div style="margin-top:12px;text-align:right"><button id="dlgCancel">取消</button><button id="dlgOk" style="background:#0a6;color:#fff;margin-left:8px">确定</button></div>
+ <input type="text" id="dlgInp" aria-labelledby="dlgMsg" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:15px">
+ <div style="margin-top:12px;text-align:right"><button id="dlgCancel">取消</button><button id="dlgOk" class="primary" style="margin-left:8px">确定</button></div>
 </div></div>
-<div id="dlgMode" style="display:none"><div>
+<div id="dlgMode" aria-labelledby="dlgModeMsg" style="display:none"><div>
  <div id="dlgModeMsg" style="margin-bottom:10px;font-size:14px"></div>
- <select id="dlgModeSel"></select>
+ <select id="dlgModeSel" aria-labelledby="dlgModeMsg"></select>
  <input type="text" id="dlgModeNew" autocomplete="off" placeholder="新模式的名称" style="display:none">
- <div style="margin-top:12px;text-align:right"><button id="dlgModeCancel">取消</button><button id="dlgModeOk" style="background:#0a6;color:#fff;margin-left:8px">确定</button></div>
+ <div style="margin-top:12px;text-align:right"><button id="dlgModeCancel">取消</button><button id="dlgModeOk" class="primary" style="margin-left:8px">确定</button></div>
 </div></div>
 <!-- 选项目弹窗（askProj）。ownCloud 下载完之后问「这份文件挂到哪个项目」——
      面板里点一下就直接落库、挂到哪儿全凭自动认领，一首歌有几个版本时就会分叉成好几个项目。
      行由 JS 现生成（项目名来自同步文件，只能 textContent 插） -->
-<div id="dlgProj" style="display:none"><div>
+<div id="dlgProj" aria-labelledby="dlgProjMsg" style="display:none"><div>
  <div id="dlgProjMsg" style="margin-bottom:2px;font-size:14px"></div>
- <input type="text" id="dlgProjQ" autocomplete="off" placeholder="搜索项目名…">
+ <input type="text" id="dlgProjQ" aria-label="搜索项目名" autocomplete="off" placeholder="搜索项目名…">
  <div id="dlgProjList"></div>
  <div id="dlgProjNone" style="display:none"></div>
  <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
   <button id="dlgProjNew">＋ 新建项目</button>
   <span style="flex:1"></span>
   <button id="dlgProjCancel">取消</button>
-  <button id="dlgProjOk" style="background:#0a6;color:#fff">确定</button>
+  <button id="dlgProjOk" class="primary">确定</button>
  </div>
 </div></div>
 <!-- 多选一确认框（askPick）。用在「本机较新，要不要用对方那份覆盖」这种需要三个出路的地方——
      原生 confirm 只有两个按钮，「覆盖 / 保留 / 取消」表达不了。按钮由 JS 现生成 -->
-<div id="dlgPick" style="display:none"><div>
+<div id="dlgPick" aria-labelledby="dlgPickMsg" style="display:none"><div>
  <div id="dlgPickMsg"></div>
  <div id="dlgPickBtns"></div>
 </div></div>
@@ -952,15 +976,15 @@ body.hidebar #reh{display:flex}
  <div id="libBox">
   <div id="libHd">
    <b>曲目库</b>
-   <span id="libInfo"></span>
    <span style="flex:1"></span>
-   <button id="libNew" title="先给项目起个名字，然后在它那一行点「导入谱子」选文件。项目才是身份，谱子只是挂在它下面的附件">＋ 新建项目</button>
-   <button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读">☁ ownCloud</button>
-   <button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button>
-   <label class="libBtn" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label>
-   <button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用仓库那份覆盖">从 GitHub 同步</button>
-   <button id="libGcHist" title="把换谱时留下的历史谱子文件删掉（只删文件，不删项目）。删完就换不回更早的谱子了">清理历史谱子</button>
-   <button id="libClose" title="回到谱面">✕</button>
+   <button id="libNew" class="primary" title="先给项目起个名字，然后在它那一行点「导入谱子」选文件。项目才是身份，谱子只是挂在它下面的附件">＋ 新建项目</button>
+   <button id="libMore" aria-expanded="false" aria-controls="libManage">管理</button>
+   <button id="libClose" title="回到谱面" aria-label="回到谱面">✕</button>
+  </div>
+  <div id="libManage" hidden>
+   <div class="libManageGroup"><span class="libSectionLabel">云端曲库</span><button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10Z"/></svg> ownCloud</button><button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用仓库那份覆盖">从 GitHub 同步</button></div>
+   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label></div>
+   <div class="libManageGroup"><span class="libSectionLabel">本机存储</span><button id="libGcHist" title="把换谱时留下的历史谱子文件删掉（只删文件，不删项目）。删完就换不回更早的谱子了">清理历史谱子</button><span id="libInfo"></span></div>
   </div>
   <div id="libTools">
    <input id="libQ" type="search" placeholder="搜曲名 / 别名" autocomplete="off" aria-label="搜曲名或别名">
@@ -984,7 +1008,7 @@ body.hidebar #reh{display:flex}
 </div>
 <!-- 四段用 order 排（不隐藏）：粗指针设备把手势提到最前、键盘表沉底，
      桌面反过来——同一份内容，只换顺序。详见上面的 #helpGest/#helpKeys -->
-<div id="help"><div>
+<div id="help" aria-label="操作说明"><div>
  <div id="helpHd"><b>操作说明</b><button id="helpClose" aria-label="关闭">✕ 关闭</button></div>
 
  <section id="helpGest" class="hs">
@@ -1039,7 +1063,8 @@ body.hidebar #reh{display:flex}
   <kbd>[</kbd> <kbd>]</kbd> 打点目标 −1 / +1 个小节<br>
   <kbd>←</kbd> <kbd>→</kbd> 后退 / 前进 2 秒（按住 Shift 为 5 秒）<br>
   <kbd>K</kbd> 播放 / 暂停 &nbsp; <kbd>-</kbd> <kbd>=</kbd> 减速 / 加速 &nbsp; <kbd>0</kbd> 速度归 1<br>
-  <kbd>H</kbd> 或 <kbd>Esc</kbd> 开关本窗口
+  <kbd>H</kbd> 开关帮助 · <kbd>Esc</kbd> 关闭当前弹层<br>
+  弹窗打开时，播放、打点和撤销快捷键暂停；<kbd>Tab</kbd> 在弹窗内切换焦点。
  </section>
 
  <section id="helpLoop" class="hs">
@@ -1057,7 +1082,7 @@ body.hidebar #reh{display:flex}
  </section>
 </div></div>
 
-<div id="instPop"><div>
+<div id="instPop" aria-label="安装到主屏幕"><div>
  <h3>安装到主屏幕</h3>
  <div class="dim">装成 App 后有独立图标、全屏无地址栏、离线也能打开（谱子和音频本来就在本机）。</div>
  <div class="dim" id="instNow" style="display:none">看起来你现在就是从装好的 App 打开的，那就不用再装一次了。</div>
@@ -1075,7 +1100,7 @@ body.hidebar #reh{display:flex}
  </div>
 </div></div>
 
-<div id="davPop"><div>
+<div id="davPop" aria-label="ownCloud 曲库"><div>
  <div id="davHd">
   <b>ownCloud 曲库</b><span id="davPath" class="ginfo"></span>
   <span style="flex:1"></span>
@@ -1111,7 +1136,7 @@ body.hidebar #reh{display:flex}
  <div id="davList"></div>
  <div id="davTip" class="ginfo">点文件名下载并导入；PDF 会新建/接回曲目，音频挂到当前打开的曲目上（先打开一首再下音频）。</div>
 </div></div>
-<div id="gen"><div>
+<div id="gen" aria-label="自动生成时间点"><div>
  <h3>自动生成时间轴</h3>
  <div class="ginfo">只生成<b>时间</b>；小节在纸上的<b>位置</b>仍然要自己标。
    手动卡的时间点会被当成硬锚点保留，生成的时间在锚点之间按比例拉伸对齐。</div>
@@ -1294,19 +1319,78 @@ function doNewMode(name){
    （「新建项目」等名字、切模式等选值都是这个形状）。askText/askMode 共用，
    同一时刻只会有一个开着；dialog 关掉时置回 null */
 let dlgCancel=null;
+// 模态窗口共用焦点栈。嵌套选择框关闭后回到父窗口；背景 inert 阻止键盘和辅助技术穿透。
+const modalStack=[];
+const inertBefore=new Map();
+const visibleUI=el=>!!el&&el.isConnected&&el.getClientRects().length>0;
+function topModal(){return modalStack.at(-1)?.el||null}
+function modalFocusables(el){
+  return [...el.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')]
+    .filter(x=>!x.disabled&&x.tabIndex>=0&&visibleUI(x)&&!x.closest('[inert]'));
+}
+function syncModalBackground(){
+  for(const [el,value] of inertBefore)el.inert=value;
+  inertBefore.clear();
+  const top=topModal();if(!top)return;
+  for(const el of document.body.children){
+    if(el===top||el.contains(top)||/^(SCRIPT|STYLE)$/.test(el.tagName))continue;
+    inertBefore.set(el,el.inert);el.inert=true;
+  }
+}
+function showModal(id){
+  const el=$(id);
+  if(!modalStack.some(x=>x.el===el))modalStack.push({el,opener:document.activeElement});
+  el.style.display='flex';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');
+  el.tabIndex=-1;
+  syncModalBackground();
+  // 默认聚焦容器，不在触屏上无意唤起软键盘；输入型弹窗随后自行聚焦输入框。
+  el.focus({preventScroll:true});
+}
+function hideModal(id){
+  const el=$(id),i=modalStack.findIndex(x=>x.el===el),wasTop=topModal()===el;
+  const entry=i<0?null:modalStack.splice(i,1)[0];
+  el.style.display='none';el.removeAttribute('aria-modal');
+  syncModalBackground();
+  if(!wasTop)return;
+  const parent=topModal(),opener=entry?.opener;
+  const target=visibleUI(opener)&&!opener.closest('[inert]')&&(!parent||parent.contains(opener))
+    ?opener:parent||[ $('libNew'),$('bMenu'),$('barShow') ].find(visibleUI);
+  target?.focus({preventScroll:true});
+}
+// 捕获阶段记住按键来自弹层：Enter 关闭窗口后，冒泡阶段也不能变成一次打点。
+window.addEventListener('keydown',e=>{
+  const top=topModal();
+  const pop=['menu','plPop','loopPop','panel'].some(id=>visibleUI($(id)));
+  if(top||pop)e.uiLayer=true;
+  if(e.key==='Escape'&&(top||pop||!$('libManage').hidden)){
+    e.preventDefault();e.stopImmediatePropagation();closeTopLayer();return;
+  }
+  if(!top)return;
+  if(top.id==='help'&&e.key.toLowerCase()==='h'&&!e.target.closest('input,select,textarea')){
+    e.preventDefault();e.stopImmediatePropagation();toggleHelp(false);return;
+  }
+  if(e.key==='Tab'){
+    const items=modalFocusables(top),first=items[0],last=items.at(-1),active=document.activeElement;
+    if(!items.length){e.preventDefault();top.focus();return}
+    if(!items.includes(active)||(e.shiftKey?active===first:active===last)){
+      e.preventDefault();(e.shiftKey?last:first).focus();
+    }
+  }
+},true);
+
 function askText(msg,def){
   return new Promise(res=>{
     $('dlgMsg').textContent=msg;
     $('dlgInp').value=def||'';
-    $('dlg').style.display='flex';
-    const done=v=>{$('dlg').style.display='none';dlgCancel=null;res(v)};
+    showModal('dlg');
+    const done=v=>{hideModal('dlg');dlgCancel=null;res(v)};
     const ok=()=>done($('dlgInp').value);
     const cancel=()=>done(null);
     dlgCancel=cancel;
     $('dlgOk').onclick=ok;$('dlgCancel').onclick=cancel;
     // 点遮罩关掉（跟 #gen/#help/#davPop 一致）。平板上没有 Esc，只能靠这个和「取消」
     $('dlg').onclick=e=>{if(e.target===$('dlg'))cancel()};
-    $('dlgInp').onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
+    $('dlgInp').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ok()}else if(e.key==='Escape')cancel()};
     $('dlgInp').focus();$('dlgInp').select();
   });
 }
@@ -1317,7 +1401,7 @@ function askPick(msg,options){
   return new Promise(res=>{
     $('dlgPickMsg').textContent=msg;
     const box=$('dlgPickBtns');box.innerHTML='';
-    const done=v=>{$('dlgPick').style.display='none';dlgCancel=null;res(v)};
+    const done=v=>{hideModal('dlgPick');dlgCancel=null;res(v)};
     for(const o of options){
       const b=document.createElement('button');
       b.textContent=o.label;
@@ -1326,7 +1410,7 @@ function askPick(msg,options){
       b.onclick=()=>done(o.v);
       box.appendChild(b);
     }
-    $('dlgPick').style.display='flex';
+    showModal('dlgPick');
     dlgCancel=()=>done(null);
     // 点遮罩关掉（跟 #dlg/#dlgMode 一致）。平板上没有 Esc，只能靠这个和按钮本身
     $('dlgPick').onclick=e=>{if(e.target===$('dlgPick'))done(null)};
@@ -1343,8 +1427,8 @@ function askMode(msg,def){
     const syncNew=()=>{const isNew=sel.value==='__new__';inp.style.display=isNew?'':'none';if(isNew)inp.focus()};
     sel.onchange=syncNew;
     $('dlgModeMsg').textContent=msg;
-    $('dlgMode').style.display='flex';
-    const done=v=>{$('dlgMode').style.display='none';dlgCancel=null;res(v)};
+    showModal('dlgMode');
+    const done=v=>{hideModal('dlgMode');dlgCancel=null;res(v)};
     const ok=()=>{
       if(sel.value==='__new__'){
         const n=(inp.value||'').trim();
@@ -1356,7 +1440,7 @@ function askMode(msg,def){
     dlgCancel=cancel;
     $('dlgModeOk').onclick=ok;$('dlgModeCancel').onclick=cancel;
     $('dlgMode').onclick=e=>{if(e.target===$('dlgMode'))cancel()};
-    inp.onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')cancel()};
+    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ok()}else if(e.key==='Escape')cancel()};
     syncNew();
   });
 }
@@ -1381,7 +1465,7 @@ async function askProj(f,allowNew,preferId){
   // 项目名来自同步文件（别的设备上编辑过），一律 textContent 插，不当 HTML
   return new Promise(res=>{
     const q=$('dlgProjQ'),list=$('dlgProjList'),none=$('dlgProjNone'),okb=$('dlgProjOk');
-    const done=v=>{$('dlgProj').style.display='none';dlgCancel=null;res(v)};
+    const done=v=>{hideModal('dlgProj');dlgCancel=null;res(v)};
     let rows=[];
     const paint=()=>{
       for(const r of rows){
@@ -1405,7 +1489,8 @@ async function askProj(f,allowNew,preferId){
       list.innerHTML='';rows=[];
       for(const x of hits){
         const el=document.createElement('div');
-        el.className='pjRow';el.setAttribute('role','radio');
+        el.className='pjRow';el.setAttribute('role','radio');el.tabIndex=0;
+        el.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();cur=x.p.id;paint()}};
         const dot=document.createElement('span');dot.className='pjDot';
         const bx=document.createElement('span');bx.className='pjTxt';
         const nm=document.createElement('span');nm.className='pjName';
@@ -1435,11 +1520,11 @@ async function askProj(f,allowNew,preferId){
       :'「'+dispName(f.name)+'」要挂到哪个项目？';
     $('dlgProjNew').style.display=allowNew?'':'none';
     q.value='';
-    $('dlgProj').style.display='flex';
+    showModal('dlgProj');
     dlgCancel=()=>done(null);
     render();
     q.oninput=render;
-    q.onkeydown=e=>{if(e.key==='Enter'&&cur)done(cur);else if(e.key==='Escape')done(null)};
+    q.onkeydown=e=>{if(e.key==='Enter'&&cur){e.preventDefault();done(cur)}else if(e.key==='Escape')done(null)};
     okb.onclick=()=>{if(cur)done(cur)};
     $('dlgProjNew').onclick=()=>done('__new__');
     $('dlgProjCancel').onclick=()=>done(null);
@@ -1666,8 +1751,9 @@ async function newProject(){
   const now=Date.now();
   await idbPut(idb,'projects',{id:newId(),name:nm,aka:[],pdf:null,pdfHistory:[],
     audios:[],lastAudio:null,createdAt:now,updatedAt:now});
+  $('libQ').value='';
   showLib(true);
-  msg('已新建项目《'+nm+'》——点它那行的「打开」选一份谱子');
+  msg('已新建项目《'+nm+'》——点「＋ 导入谱子」选一份谱子');
 }
 
 // 曲目加载总入口：先整体重置（否则上一个曲目的标注/渲染/频谱会串过来），再从 Blob 走原有管线。
@@ -3455,10 +3541,11 @@ requestAnimationFrame(tick);
 
 /* ---------- 键盘打点 ---------- */
 window.addEventListener('keydown',e=>{
-  if($('lib').style.display==='flex')return;       // 曲目库开着时别让快捷键穿到谱面
+  if(e.uiLayer||topModal()||$('lib').style.display==='flex')return; // 弹层和曲目库隔离后台快捷键
   if($('help').style.display==='flex'&&(e.key==='Escape'||e.key.toLowerCase()==='h')){toggleHelp(false);return}
   const a=document.activeElement;
-  if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return;
+  if(a&&(a.isContentEditable||/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)))return;
+  if((e.key===' '||e.key==='Enter')&&a?.closest('button,a,summary,[role=button]'))return;
   const k=e.key,timeMode=$('mode').value==='time';
   if(k===' '||k==='Enter'){
     e.preventDefault();
@@ -3897,7 +3984,7 @@ function openGen(){
   const nTap=E.filter(e=>e.src!=='gen').length;
   if(nTap)$('gAncTap').checked=true;else $('gAncMan').checked=true;   // 有实测点就默认用它们
   $('gAncM').value=minM();
-  $('gen').style.display='flex';
+  showModal('gen');
   drawSig();
 }
 function drawSig(){drawTempo();drawMeter();drawStrip();preview()}
@@ -4069,8 +4156,8 @@ function preview(){
   }catch(err){box.className='gerr';box.textContent=err.message}
 }
 $('bGen').onclick=openGen;
-$('gCancel').onclick=()=>$('gen').style.display='none';
-$('gen').onclick=e=>{if(e.target===$('gen'))$('gen').style.display='none'};
+$('gCancel').onclick=()=>hideModal('gen');
+$('gen').onclick=e=>{if(e.target===$('gen'))hideModal('gen')};
 $('gAddT').onclick=()=>{const l=TEMPO[TEMPO.length-1];
   TEMPO.push({m:(l?l.m:1)+1,bpm:l?l.bpm:120});drawSig()};
 $('gAddM').onclick=()=>{METER.push({sig:[4,4],ranges:[]});drawSig()};
@@ -4094,7 +4181,7 @@ $('gRun').onclick=()=>{
     snap();
     E=r.E;tapM=null;lastSeek=null;
     layout();save();
-    $('gen').style.display='none';
+    hideModal('gen');
     if($('mode').value!=='play'){$('mode').value='play';syncMode()}
     msg('已生成 '+r.E.filter(e=>e.src==='gen').length+' 个时间点，'+RUNS.length+' 段，'+
         '锚点 '+r.anc.length+' 个');
@@ -4103,7 +4190,7 @@ $('gRun').onclick=()=>{
 
 function toggleHelp(v){
   const on=(v===undefined?$('help').style.display!=='flex':v);
-  $('help').style.display=on?'flex':'none';
+  if(on)showModal('help');else hideModal('help');
   if(on){const d=$('help').firstElementChild;if(d)d.scrollTop=0}   // 每次从顶部开始看
 }
 // 跟 bInstall 一个惯例：开面板之前先收菜单。#help 的 z-index(20) 比 #menu(25) 低，
@@ -4148,7 +4235,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v25';
+const BUILD='v26';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4161,12 +4248,12 @@ async function forceReload(){
 }
 $('buildTag').onclick=forceReload;
 $('buildTag').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();forceReload()}};
-$('bInstall').onclick=()=>{$('menu').style.display='none';$('instPop').style.display='flex'};
-$('instClose').onclick=()=>{$('instPop').style.display='none'};
-$('instPop').onclick=e=>{if(e.target===$('instPop'))$('instPop').style.display='none'};
+$('bInstall').onclick=()=>{$('menu').style.display='none';showModal('instPop')};
+$('instClose').onclick=()=>{hideModal('instPop')};
+$('instPop').onclick=e=>{if(e.target===$('instPop'))hideModal('instPop')};
 $('instGo').onclick=async()=>{
   if(!installEvt)return;
-  $('instPop').style.display='none';
+  hideModal('instPop');
   installEvt.prompt();
   try{await installEvt.userChoice}catch(e){}
   installEvt=null;$('instGo').style.display='none';
@@ -4932,15 +5019,16 @@ function syncView(v){
 // 返回键要能先关掉最上面那层浮层。用**它们各自的关闭路径**，不是统统 display:none——
 // #dlg/#dlgMode/#dlgProj 是 Promise，藏起来等于把 await 它的那半边代码挂死
 function closeTopLayer(){
-  if($('dlg').style.display==='flex'&&dlgCancel){dlgCancel();return true}
-  if($('dlgMode').style.display==='flex'&&dlgCancel){dlgCancel();return true}
-  if($('dlgProj').style.display==='flex'&&dlgCancel){dlgCancel();return true}
-  if($('gen').style.display==='flex'){$('gen').style.display='none';return true}
-  if($('davPop').style.display==='flex'){$('davPop').style.display='none';return true}
-  if($('instPop').style.display==='flex'){$('instPop').style.display='none';return true}
-  if(getComputedStyle($('help')).display!=='none'){toggleHelp(false);return true}
-  if($('menu').style.display!=='none'){$('menu').style.display='none';return true}
-  if($('plPop').style.display==='block'){$('plPop').style.display='none';return true}
+  const top=topModal();
+  if(top){
+    if(['dlg','dlgMode','dlgProj','dlgPick'].includes(top.id)&&dlgCancel)dlgCancel();
+    else hideModal(top.id);
+    return true;
+  }
+  for(const id of ['menu','plPop','loopPop','panel']){
+    if(visibleUI($(id))){$(id).style.display='none';return true}
+  }
+  if(!$('libManage').hidden){setLibManage(false);$('libMore').focus();return true}
   return false;
 }
 addEventListener('popstate',e=>{
@@ -4953,6 +5041,7 @@ addEventListener('popstate',e=>{
 });
 function showLib(v){
   $('lib').style.display=v?'flex':'none';
+  setLibManage(false);
   if(v){
     drawLib();
     // 桌面上一进库就能直接敲字过滤。触屏不抢焦点：一进库就弹软键盘，列表被顶掉半屏
@@ -4962,6 +5051,13 @@ function showLib(v){
   syncView(v?'lib':'score');
 }
 $('libClose').onclick=()=>showLib(false);
+function setLibManage(open){
+  $('libManage').hidden=!open;$('libMore').setAttribute('aria-expanded',String(open));
+}
+$('libMore').onclick=()=>setLibManage($('libManage').hidden);
+$('libManage').querySelector('label.libBtn').onkeydown=e=>{
+  if(e.key===' '||e.key==='Enter'){e.preventDefault();$('libImpAll').click()}
+};
 /* 搜索 + 排序：只重画 #libList，不重读 IndexedDB（drawLib 就是为这个才拆开的）。
    输入框即时回显、重渲染防抖——照 #zoom 滑杆那处的写法，停顿 120ms 再动 DOM */
 let libQT=null;
@@ -5393,7 +5489,7 @@ async function davDownload(it){
     const pid=await askProj(f,isPdf,davTarget);    // null = 取消；davTarget = 从卡片进来的话预选那个项目
     if(pid===null){msg('已取消，这份没有导入');return}     // 丢弃 blob，不落库，免得留孤儿文件
     // 关面板放在弹窗之后：取消了得让人留在面板里接着挑下一个文件
-    $('davPop').style.display='none';
+    hideModal('davPop');
     if(isPdf){
       // __new__ 要 forceNew：用户明确说了新建，就别再被自动认领挂回某个已有项目——那和他的选择相反
       if(pid==='__new__')await attachPdf(f,null,true);
@@ -5407,7 +5503,7 @@ async function davDownload(it){
 }
 function davOpen(){
   if(!idb)return;
-  $('davPop').style.display='flex';
+  showModal('davPop');
   davRender();                                     // 没配好会自动展开登录区
 }
 // 从某张卡片的「☁」进来：记下要挂到哪个项目，下载完那个弹窗直接预选它——
@@ -5425,11 +5521,11 @@ $('libDav').onclick=()=>{davTarget='';davOpen()};
 $('bDavOpen').onclick=()=>{davTarget='';$('menu').style.display='none';davOpen()};
 $('davCfg').onclick=()=>davCfgShow();
 $('davKind').onchange=()=>davCfgShow(true);
-$('davClose').onclick=()=>{$('davPop').style.display='none'};
+$('davClose').onclick=()=>{hideModal('davPop')};
 $('davUp').onclick=()=>{if(davBusy)return;davCwd=davCwd.split('/').slice(0,-1).join('/');davRender()};
 $('davHome').onclick=()=>{if(davBusy)return;davCwd='';davRender()};
 $('davRefresh').onclick=()=>{if(davBusy)return;davRender()};
-$('davPop').onclick=e=>{if(e.target===$('davPop'))$('davPop').style.display='none'};
+$('davPop').onclick=e=>{if(e.target===$('davPop'))hideModal('davPop')};
 $('davSave').onclick=async()=>{
   davReadForm();
   if(idb)await idbPut(idb,'meta',{hash:'dav',v:DAV});
@@ -5524,7 +5620,7 @@ function syncPL(){
 }
 async function renderPL(box){                       // 渲染一份列表到指定容器（曲目库面板 + 弹层共用）
   if(!box||!idb)return;
-  if(!PL.items.length){box.innerHTML='<div class="plEmpty">列表是空的</div>';return}
+  if(!PL.items.length){box.innerHTML='<div class="plEmpty">从曲目卡片「加入列表」开始</div>';return}
   const rows=[];
   for(const it of PL.items){
     const tr=it&&it.pid?await idbGet(idb,'projects',it.pid):null;
@@ -5559,7 +5655,10 @@ async function renderPL(box){                       // 渲染一份列表到指�
     savePL();syncPL()});
   box.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>plPlay(+b.dataset.play,true));
 }
-function drawPL(){renderPL($('plList'));renderPL($('plPopList'))}
+function drawPL(){
+  $('plPanel').classList.toggle('empty',!PL.items.length);
+  renderPL($('plList'));renderPL($('plPopList'));
+}
 function plMove(i,d){
   const j=i+d;if(j<0||j>=PL.items.length)return;
   const t=PL.items[i];PL.items[i]=PL.items[j];PL.items[j]=t;

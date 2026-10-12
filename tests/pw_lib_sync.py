@@ -46,6 +46,7 @@ async def main():
         await pg.wait_for_function("()=>idb!==null&&$('lib').style.display==='flex'",timeout=15000)
 
         # 首次同步：拉到一个项目（2 小节）。v1 条目没有 id，靠名字建出「等待导入谱子」的项目
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_function("()=>document.querySelectorAll('.libCard').length===1",timeout=10000)
         print(ok("已标 2 小节" in await pg.inner_text(".libCard")), "从 GitHub 同步到 1 个项目（已标 2 小节）")
@@ -57,12 +58,14 @@ async def main():
 
         # 较新数据 → 覆盖
         state["body"]=payload(2000,3)
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_function("()=>document.querySelector('.libCard')?.innerText.includes('已标 3 小节')",timeout=10000)
         print(ok("已标 3 小节" in await pg.inner_text(".libCard")), "时间戳较新 → 覆盖（3 小节）")
 
         # 较旧数据 → 不再静默跳过，而是先问一句「本机较新，要不要用对方那份覆盖」
         state["body"]=payload(500,1)
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_selector("#dlgPick",state="visible",timeout=8000)
         pm=await pg.inner_text("#dlgPickMsg")
@@ -79,6 +82,7 @@ async def main():
         # 同一个弹窗里选「覆盖本机」→ 真的用旧版盖掉（2026-09-23 加的口子：
         # 有时候就是要覆盖，光按时间戳替用户决定不够）
         state["body"]=payload(400,1)
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_selector("#dlgPick",state="visible",timeout=8000)
         await pg.click("#dlgPickBtns button:has-text('覆盖本机')")
@@ -86,10 +90,12 @@ async def main():
         print(ok("已标 1 小节" in await pg.inner_text(".libCard")), "选「覆盖本机」→ 用仓库版盖掉（1 小节）")
         print(ok("导入 1 个项目" in await pg.inner_text("#msg")), "覆盖那次不算跳过: "+await pg.inner_text("#msg"))
         # 覆盖之后两边一样新，再同步一次不该再弹（没有冲突就别打扰）
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync"); await pg.wait_for_timeout(800)
         print(ok(await pg.is_hidden("#dlgPick")), "没有冲突时不再弹窗")
         # 把本机改回 3 小节那份，后面的用例还按 3 小节往下走
         state["body"]=payload(2000,3)
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_function("()=>document.querySelector('.libCard')?.innerText.includes('已标 3 小节')",timeout=10000)
         print(ok("已标 3 小节" in await pg.inner_text(".libCard")), "换回较新的那份（3 小节），继续后面的用例")
@@ -98,6 +104,7 @@ async def main():
         old=await pg.evaluate("(async()=>{const P=(await %s).P;return P[0].id})()"%DB)
         state["body"]=payload2(9000,5,name="测试曲目（改过名）",pid="p-另一台设备",
                                aka=["测试曲目"],phash=PH)
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_function("()=>document.querySelector('.libCard')?.innerText.includes('已标 5 小节')",timeout=10000)
         print(ok(await pg.evaluate("document.querySelectorAll('.libCard').length")==1),
@@ -124,6 +131,7 @@ async def main():
 
         # 404：仓库里还没有文件
         state["status"]=404; state["body"]="404: Not Found"
+        if not await pg.is_visible("#bSync"): await pg.click("#libMore")
         await pg.click("#bSync")
         await pg.wait_for_timeout(800)
         print(ok("annotations.json" in await pg.inner_text("#msg")), "404 给出友好提示: "+await pg.inner_text("#msg"))
