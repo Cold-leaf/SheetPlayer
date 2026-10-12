@@ -3012,7 +3012,12 @@ function detectRowBars(page,sys,rightOfNx,source){
       let hit=0;
       for(const bd2 of bands){
         const off=tiltOn?Math.round(bd2.t.k*ix+bd2.t.b):0;
-        if(seg(ix,bd2.a+off,bd2.bb+off)>=fill)hit++;
+        const a=bd2.a+off,b=bd2.bb+off;
+        // 小节线要抵达谱表上下边缘；音符符干即使跨声部对齐，也常只覆盖中间或一侧。
+        const edge=Math.max(2,Math.round((b-a+1)*.22));
+        const reachesEdges=sys.numbered||sys.continuous||
+          (seg(ix,a,a+edge)>=.85&&seg(ix,b-edge,b)>=.85);
+        if(reachesEdges&&seg(ix,a,b)>=fill)hit++;
       }
       if(hit>=need)cols.push(ix);
     }
@@ -4561,7 +4566,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v33';
+const BUILD='v34';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
