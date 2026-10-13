@@ -4065,30 +4065,29 @@ function buildSpec(mono,dur,my,cacheHash){
 }
 
 /* 谱通量峰值 = 起音。局部最大 + 高于邻域均值 + 最小间距，避免平台期重复出峰 */
-/* 谱通量峰只能定位到「哪一帧」，而帧的窗是 [i*hop, i*hop+SP_N) —— 93ms 宽。
-   时间戳取窗起点会**系统性偏早**：实测点击类素材早 63–85ms（音头是从窗的右缘扫进来的，
-   而 flux 在它刚进来那一帧就跳起来了）。声音比标注早 70ms 是听得出来的，而且这个偏早会
-   经「吸附」传进标注本身（打点吸到音头 → 存下来的时间点偏早 → 播放时扫描线先到）。
-   所以这里在窗内用**时间域包络**精修时间戳：检出哪几帧完全不变（峰挑逻辑照旧），
-   只把时刻挪到真正的起音点——吸附「挑哪一个音头」的行为因此不变，变的只是时间。
-   取「第一个越过峰值 25% 的位置」而不是「斜率最大」：窗里挤进两个音时，
-   斜率最大会挑到后一个音，阈值法挑的是先来的那个（起音点就该是它）。 */
+/* 在候选长窗内用短窗谱增量定位：持续音的总能量不能充当新音的阈值。
+   约 23ms Hann 窗、2ms 步，比较相隔约 8ms 的频谱；增量的时间取两窗中心中点。
+   这样换音或弱音叠在强伴奏上时，不会退回已在发声的长窗左边界。 */
 function refineOnset(mono,sr,o){
-  const step=Math.max(1,Math.round(sr*0.001));        // 1ms 步（11025Hz 下 11 个采样）
-  const w=Math.max(2,Math.round(sr*0.002));           // 2ms 能量窗
-  const end=Math.min(mono.length-w,o+SP_N);
-  let peak=0,peakAt=o;
-  for(let p=o;p<end;p+=step){
-    let e=0;for(let k=p;k<p+w;k++){const v=mono[k];e+=v*v}
-    if(e>peak){peak=e;peakAt=p}
+  const n=256,step=Math.max(1,Math.round(sr*.002)),lag=4;
+  const re=new Float32Array(n),im=new Float32Array(n),win=new Float32Array(n);
+  const history=Array.from({length:lag},()=>new Float32Array(n/2));
+  for(let k=0;k<n;k++)win[k]=.5-.5*Math.cos(2*Math.PI*k/n);
+  const lo=Math.max(1,Math.round(60*n/sr)),hi=Math.min(n/2-1,Math.round(3000*n/sr));
+  let best=0,at=(o+SP_N/2)/sr,frame=0;
+  // 预热比较窗，候选时间仍限定在原来的长窗内。
+  for(let p=o-n/2-lag*step;p<=Math.min(mono.length-n,o+SP_N-n/2);p+=step,frame++){
+    for(let k=0;k<n;k++){re[k]=(mono[p+k]||0)*win[k];im[k]=0}
+    fftIP(re,im);
+    const prev=history[frame%lag];let flux=0;
+    for(let k=lo;k<=hi;k++){
+      const v=Math.log1p(100*Math.hypot(re[k],im[k]));
+      flux+=Math.max(0,v-prev[k]);prev[k]=v;
+    }
+    const t=p+n/2-lag*step/2;
+    if(frame>=lag&&t>=o&&flux>best){best=flux;at=t/sr}
   }
-  if(peak<=0)return o/sr;                             // 窗内全静音：退回窗起点，别给 NaN
-  const th=peak*0.25;
-  for(let p=o;p<peakAt;p+=step){
-    let e=0;for(let k=p;k<p+w;k++){const v=mono[k];e+=v*v}
-    if(e>=th)return p/sr;
-  }
-  return peakAt/sr;
+  return Math.max(0,Math.min(mono.length/sr,at));
 }
 function pickOnsets(flux,frames,hop,sr,mono){
   let mx=0;for(let i=0;i<frames;i++)if(flux[i]>mx)mx=flux[i];
@@ -4566,7 +4565,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v37';
+const BUILD='v38';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5224,7 +5223,10 @@ async function switchAudio(blob,hash){
   loadedAudioHash=hash||''; // 实际加载的文件身份；lastAudio 只是项目的选择记录。
   const my=specSeq;
   let sp=hash?specMem.get(hash):null;
-  if(!sp&&hash&&idb)sp=await idbGet(idb,'spec',hash);
+  if(!sp&&hash&&idb){
+    sp=await idbGet(idb,'spec',hash);
+    if(sp&&sp.version!==2)sp=null; // 旧版音量阈值的起音需要重新分析
+  }
   if(sp&&my===specSeq){
     // IDB 记录 → 重建离屏 canvas；内存缓存里是活对象，直接用。
     // 坏记录（px 长度对不上之类）不能让整个项目打不开——丢掉它，退回重新分析
@@ -5253,7 +5255,7 @@ function cacheSpec(hash){
   try{
     const px=sp.cv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
     if(px.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
-    idbPut(idb,'spec',{hash,px,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
+    idbPut(idb,'spec',{hash,version:2,px,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
       onsets:sp.onsets,onsetStr:sp.onsetStr});
   }catch(err){}
 }
