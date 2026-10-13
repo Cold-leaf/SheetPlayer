@@ -1,4 +1,4 @@
-"""Shared-song sync, local edits, ancestry conflicts, exports, and legacy fallback."""
+"""Shared-song sync, local edits, ancestry conflicts, direct uploads, and directory discovery."""
 import asyncio
 import functools
 import hashlib
@@ -59,8 +59,8 @@ async def main():
         result = await pending
         assert result['conflicts'] == 1
         assert await page.evaluate("(async()=>!!(await idbGet(idb,'projects','p-shared-test')).sharedConflict)()")
-        await page.evaluate("$('libExpChanges').onclick()")
-        assert '处理待定冲突' in await page.inner_text('#msg')
+        await page.evaluate("exportSharedSong('p-shared-test')")
+        assert '处理这首曲目的冲突' in await page.inner_text('#msg')
         pending = asyncio.create_task(sync(remote(song(4), 'r3')))
         await page.wait_for_selector('#dlgPick', state='visible')
         await page.click('#dlgPickBtns button:has-text("保留本机并准备提交")')
@@ -70,19 +70,30 @@ async def main():
         assert await page.evaluate("(async()=>!!(await idbGet(idb,'projects','p-shared-test')).sharedBackup)()")
         print('OK   冲突取消保留双方；明确保留本机后采用新基础版本')
 
-        # Exercise actual download and acknowledgement.
+        # The card downloads the final uploadable file directly, without a bundle or script.
+        await page.evaluate('drawLib()')
         async with page.expect_download() as event:
-            pending = asyncio.create_task(page.evaluate("$('libExpChanges').onclick()"))
-            await page.wait_for_selector('#dlgPick', state='visible')
-            await page.click('#dlgPickBtns button:has-text("导出修改")')
-            await pending
+            await page.click('.share[data-h="p-shared-test"]')
         download = await event.value
-        bundle = json.loads(Path(await download.path()).read_text())
-        assert bundle['app'] == 'sheetplayer-changes' and len(bundle['changes']) == 1
+        filename = download.suggested_filename
+        uploaded_raw = Path(await download.path()).read_text()
+        uploaded = json.loads(uploaded_raw)
+        assert uploaded['app'] == 'sheetplayer-song' and uploaded['baseRevision'] == 'r3'
+        assert filename == 'p-shared-test.json'
+        assert await page.evaluate("sharedFilename({id:'p92af7050-rest',name:'新名字',sharedFile:'斯卡布罗集市--92af7050.json'})") == '斯卡布罗集市.json'
         assert len(await changes()) == 1  # Export is not publishing.
-        await sync(remote(bundle['changes'][0]['item'], 'r4'))
+        await sync([{'item': uploaded['item'], 'revision': 'r4', 'filename': filename}])
         assert await changes() == []
-        print('OK   修改包下载含基础版本；导出不清状态，合并后同步才确认')
+        # Renaming a song must not change its upload destination, even after reloading.
+        await page.evaluate("""async()=>{const p=await idbGet(idb,'projects','p-shared-test');
+          p.name='新曲名';await idbPut(idb,'projects',p)}""")
+        await page.reload(); await page.wait_for_function('idb !== null')
+        async with page.expect_download() as event:
+            await page.evaluate("exportSharedSong('p-shared-test')")
+        renamed = await event.value
+        assert renamed.suggested_filename == filename
+        assert json.loads(Path(await renamed.path()).read_text())['item']['name'] == '新曲名'
+        print('OK   卡片直接导出共享文件；同步确认；改名与刷新后保持原上传文件名')
 
         # Choosing remote preserves a restorable local backup.
         await page.evaluate("""async()=>{const m=await idbGet(idb,'marks','p-shared-test');m.data.M=[];
@@ -107,22 +118,49 @@ async def main():
         assert await page.evaluate("(async()=> (await idbAll(idb,'projects')).length)()") == 2
         print('OK   不同共享 ID 不会因同名被误合并')
 
-        # Actual repository format and SHA hashes via the sync button, in a clean browser.
+        # Emulate GitHub directory uploads, including a newly exported song, without index/script.
         context = await browser.new_context()
         real = await context.new_page()
         real.on('pageerror', lambda e: errors.append(str(e)))
+        files = {p.name: p.read_bytes() for p in (ROOT / 'annotations').glob('*.json')}
+        files[filename] = uploaded_raw.encode()
+        status = [200]
+        async def directory(route):
+            await route.fulfill(status=status[0], content_type='application/json',
+                body=json.dumps([{'type': 'file', 'name': name} for name in files]))
         async def serve(route):
-            name = route.request.url.rsplit('/', 1)[-1]
-            path = ROOT / 'annotations' / name
-            await route.fulfill(status=200 if path.exists() else 404,
-                                content_type='application/json', body=path.read_bytes() if path.exists() else b'{}')
+            from urllib.parse import unquote
+            name = unquote(route.request.url.rsplit('/', 1)[-1])
+            await route.fulfill(status=200 if name in files else 404,
+                content_type='application/json', body=files.get(name, b'{}'))
+        await real.route('**api.github.com/**', directory)
         await real.route('**raw.githubusercontent.com/**', serve)
         await real.goto(URL)
         await real.wait_for_function('idb !== null')
         await real.evaluate("$('bSync').onclick()")
-        assert await real.evaluate("(async()=> (await idbAll(idb,'projects')).length)()") == 14
+        assert await real.evaluate("(async()=> (await idbAll(idb,'projects')).length)()") == 15
         assert await real.evaluate('changedSongs()') == []
-        print('OK   实际 14 首迁移数据通过索引同步，全部建立干净基线')
+        # A receiver re-exports using the exact uploaded name, including Chinese characters.
+        first_name = next(n for n in files if n != filename)
+        first_id = json.loads(files[first_name])['item']['id']
+        async with real.expect_download() as event:
+            await real.evaluate('(id)=>exportSharedSong(id)', first_id)
+        assert (await event.value).suggested_filename == first_name
+        # Upload a replacement to the same path. No index update is involved.
+        replacement = song(8); files[filename] = json.dumps({'app': 'sheetplayer-song', 'v': 1, 'item': replacement}).encode()
+        await real.evaluate("$('bSync').onclick()")
+        assert await real.evaluate("(async()=> (await idbGet(idb,'marks','p-shared-test')).data.M.length)()") == 8
+        assert await real.evaluate('changedSongs()') == []
+        print('OK   14 首原曲目加直接导出的新曲目自动发现；原名覆盖更新无需索引')
+        files['重复下载 (1).json'] = files[filename]
+        await real.evaluate("$('bSync').onclick()")
+        assert '重复文件' in await real.inner_text('#msg')
+        assert await real.evaluate("(async()=> (await idbAll(idb,'projects')).length)()") == 15
+        del files['重复下载 (1).json']
+        status[0] = 403
+        await real.evaluate("$('bSync').onclick()")
+        assert '暂时受限' in await real.inner_text('#msg')
+        print('OK   重复上传不会静默覆盖，GitHub 读取受限时保留本机并提示')
         assert not errors, errors
         await browser.close()
     server.shutdown()

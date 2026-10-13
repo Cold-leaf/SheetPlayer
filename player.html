@@ -898,7 +898,8 @@ button:disabled{cursor:default}
   <button id="bShiftP">应用</button>
  </div>
  <div class="msec">生成 / 数据</div>
- <button id="bExp" title="导出当前这一首的标注（含所有模式），文件名用谱名。整库备份 / 跨设备同步请用曲目库里的「导出全部标注」">导出本曲标注</button>
+ <button id="bExpShared" title="导出可直接上传到 GitHub annotations 文件夹的单曲文件">导出共享标注</button>
+ <button id="bExp" title="导出当前这一首的标注（含所有模式），文件名用谱名。跨设备共享请用「导出共享标注」，整库备份请用曲目库里的「导出全部标注」">导出本曲标注</button>
  <label class="mbtn" title="把这份 JSON 套到当前曲目上——会覆盖当前曲目的标注（替换前存了快照，可撤销）。整库合并请用曲目库里的「导入全部标注」">导入本曲标注（覆盖）<input type="file" id="fMap" hidden accept=".json"></label>
  </div>
 </div>
@@ -990,7 +991,7 @@ button:disabled{cursor:default}
   </div>
   <div id="libManage" hidden>
    <div class="libManageGroup"><span class="libSectionLabel">云端曲库</span><button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10Z"/></svg> ownCloud</button><button id="bSync" title="获取共享曲库的逐曲更新；本机修改会保留，同曲目双方修改时提示冲突">从 GitHub 同步</button></div>
-   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libExpChanges" title="导出有修改的曲目及基础版本，供仓库汇总命令使用">导出本机修改</button><button id="libConflictBackup">导出冲突备份</button><button id="libExpAll" title="把库里所有曲目的标注打包为备份。多人协作请用「导出本机修改」">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label></div>
+   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libConflictBackup">导出冲突备份</button><button id="libExpAll" title="把库里所有曲目的标注打包为备份。共享请用曲目卡片上的「导出共享标注」">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label></div>
    <div class="libManageGroup"><span class="libSectionLabel">本机存储</span><button id="libGcHist" title="把换谱时留下的历史谱子文件删掉（只删文件，不删项目）。删完就换不回更早的谱子了">清理历史谱子</button><span id="libInfo"></span></div>
   </div>
   <div id="libTools">
@@ -4566,7 +4567,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v35';
+const BUILD='v36';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5534,7 +5535,7 @@ function renderLib(rows){
         (p.pdf?'<button class="repl" data-h="'+esc(p.id)+'" title="换一份谱子（比如加完笔记重新导出的那份）。标注原样保留，旧谱子进历史">换谱</button>':'')+
         '<button class="ren" data-h="'+esc(p.id)+'">改名</button>'+
         '<button class="del" data-h="'+esc(p.id)+'">删除</button>'+
-      '</div></div>';
+      '</div><div class="libShare"><button class="share" data-h="'+esc(p.id)+'" title="导出后直接上传到 GitHub annotations 文件夹">导出共享标注</button></div></div>';
   }).join('');
   list.querySelectorAll('[data-sheet-project]').forEach(sel=>sel.onchange=async()=>{
     const p=await idbGet(idb,'projects',sel.dataset.sheetProject);if(!p)return;
@@ -5552,6 +5553,7 @@ function renderLib(rows){
     if(how!=='local')return;
     ensureSheets(p);pendPid=p.id;pendSheet={kind:'replace',sheetId:p.lastSheet};$('fPdf').click();
   });
+  list.querySelectorAll('.share').forEach(b=>b.onclick=()=>exportSharedSong(b.dataset.h));
   list.querySelectorAll('.ren').forEach(b=>b.onclick=()=>renTrack(b.dataset.h));
   list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delTrack(b.dataset.h));
 }
@@ -6169,12 +6171,13 @@ $('libExpAll').onclick=async()=>{
   a.download='sheetplayer-标注-'+(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+
     String(d.getDate()).padStart(2,'0'))+'.json';
   a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  msg('已导出 '+items.length+' 个项目的标注'+(items.length?'（整库备份；协作请用导出本机修改）':''));
+  msg('已导出 '+items.length+' 个项目的标注'+(items.length?'（整库备份；共享请用导出共享标注）':''));
 };
 $('libImpAll').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
-    const j=JSON.parse(await f.text());
+    let j=JSON.parse(await f.text());
+    if(j?.app==='sheetplayer-song'&&j.v===1&&j.item)j={app:'sheetplayer',items:[j.item]};
     if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('不是 SheetPlayer 批量标注文件');
     // 默认按时间戳保留较新的；有「本机较新」的时候才问一句要不要反过来覆盖
     const how=await askSyncConflict(j.items);
@@ -6280,6 +6283,7 @@ async function askSyncConflict(items){
 }
 // Shared identity is independent of old device-local IDs. Only first adoption uses legacy name/hash matching.
 const SHARED_ROOT='https://raw.githubusercontent.com/Cold-leaf/SheetPlayer/main/annotations/';
+const SHARED_DIRECTORY='https://api.github.com/repos/Cold-leaf/SheetPlayer/contents/annotations?ref=main';
 const validSharedId=id=>typeof id==='string'&&id!=='index'&&/^[A-Za-z0-9_-]{1,100}$/.test(id);
 function songItem(p,data){
   return {id:p.sharedId||p.id,name:p.name,aka:p.aka||[],sheets:p.sheets||[],pdf:p.pdf?p.pdf.hash:null,
@@ -6312,48 +6316,68 @@ async function changedSongs(){
   }
   return changes;
 }
-$('libExpChanges').onclick=async()=>{
+function sharedFilename(p){
+  const id=p.sharedId||p.id;
+  const suffix='--'+id.replace(/^p/,'').slice(0,8)+'.json';
+  if(p.sharedFile){
+    return p.sharedFile.endsWith(suffix)?p.sharedFile.slice(0,-suffix.length)+'.json':p.sharedFile;
+  }
+  const title=(splitName(dispName(p.name)).title||'曲目').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/[. ]+$/g,'').slice(0,70)||'曲目';
+  return title+'.json';
+}
+async function exportSharedSong(id){
   try{
-    if((await idbAll(idb,'projects')).some(p=>p.sharedConflict))return msg('请先从 GitHub 同步并处理待定冲突，再导出修改',1);
-    const changes=await changedSongs();
-    if(!changes.length)return msg('没有待提交的标注修改');
-    const names=changes.map(c=>c.item.name).join('\n');
-    const choice=await askPick('导出以下 '+changes.length+' 首曲目的修改：\n'+names+
-      '\n\n导出后仍保留待提交状态，直到从 GitHub 同步到已合并的版本。',
-      [{v:'export',label:'导出修改',primary:true}]);
-    if(choice!=='export')return;
-    downloadJSON({app:'sheetplayer-changes',v:1,changes},'sheetplayer-changes-'+new Date().toISOString().slice(0,10)+'.json');
-    msg('已导出 '+changes.length+' 首曲目的修改，请用仓库汇总命令导入后提交');
+    await flushSave();
+    const p=idb&&await idbGet(idb,'projects',id);
+    const marks=p&&await idbGet(idb,'marks',id);
+    if(!marks)return msg('这首曲目还没有可导出的标注',1);
+    if(p.sharedConflict)return msg('请先从 GitHub 同步并处理这首曲目的冲突',1);
+    p.sharedFile=sharedFilename(p);
+    await idbPut(idb,'projects',p);if(track?.id===p.id)track=p;
+    downloadJSON({app:'sheetplayer-song',v:1,baseRevision:p.sharedBase?.revision||null,
+      item:songItem(p,marks.data)},p.sharedFile);
+    msg('已导出《'+p.name+'》，直接上传到 GitHub 的 annotations 文件夹，覆盖同名文件即可');
   }catch(err){msg('导出失败：'+err.message,1)}
-};
+}
+$('bExpShared').onclick=()=>exportSharedSong(pid);
 async function fetchSharedSongs(){
-  const response=await fetch(SHARED_ROOT+'index.json',{cache:'no-store'});
-  if(response.status===404)return null; // Old repositories can still use the full snapshot.
-  if(!response.ok)throw new Error('曲库索引 HTTP '+response.status);
-  const index=await response.json();
-  if(index.app!=='sheetplayer-index'||index.v!==1||!Array.isArray(index.ids)||
-    !index.ids.every(validSharedId)||new Set(index.ids).size!==index.ids.length)
-    throw new Error('共享曲库索引格式不对');
-  // Fetch and validate everything before changing local records.
-  return Promise.all(index.ids.map(async id=>{
-    const r=await fetch(SHARED_ROOT+id+'.json',{cache:'no-store'});
-    if(!r.ok)throw new Error(id+' HTTP '+r.status);
+  const response=await fetch(SHARED_DIRECTORY,{cache:'no-store'});
+  if(response.status===404)return null; // Repositories predating per-song files.
+  if(response.status===403||response.status===429)throw new Error('GitHub 目录读取暂时受限，请稍后重试');
+  if(!response.ok)throw new Error('共享曲库目录 HTTP '+response.status);
+  const directory=await response.json();
+  if(!Array.isArray(directory))throw new Error('共享曲库目录格式不对');
+  // GitHub Contents returns at most 1000 entries. Refuse a potentially incomplete library.
+  if(directory.length>=1000)throw new Error('曲库目录过大，暂无法完整同步');
+  const files=directory.filter(f=>f.type==='file'&&f.name!=='index.json'&&f.name?.endsWith('.json'));
+  if(files.some(f=>/[\\/]/.test(f.name)))throw new Error('共享曲库文件名不对');
+  // All files are validated before local writes. A duplicate upload must never silently win.
+  const songs=await Promise.all(files.map(async file=>{
+    const r=await fetch(SHARED_ROOT+encodeURIComponent(file.name),{cache:'no-store'});
+    if(!r.ok)throw new Error(file.name+' HTTP '+r.status);
     const raw=await r.text(),song=JSON.parse(raw);
-    if(song.app!=='sheetplayer-song'||song.v!==1||song.item?.id!==id||
-      typeof song.item.name!=='string'||!song.item.data||typeof song.item.data!=='object')
-      throw new Error(id+' 曲目格式不对');
-    return {item:song.item,revision:await sharedHash(raw)};
+    if(song.app!=='sheetplayer-song'||song.v!==1||!validSharedId(song.item?.id)||
+      typeof song.item.name!=='string'||!song.item.data||typeof song.item.data!=='object'||Array.isArray(song.item.data))
+      throw new Error(file.name+' 不是共享标注文件，请使用「导出共享标注」');
+    return {item:song.item,revision:await sharedHash(raw),filename:file.name};
   }));
+  const seen=new Set();
+  for(const song of songs){
+    if(seen.has(song.item.id))throw new Error('《'+song.item.name+'》有重复文件，请在 annotations 中只保留该曲目的一份文件');
+    seen.add(song.item.id);
+  }
+  return songs;
 }
 async function syncSharedSongs(songs){
   await flushSave();let imported=0,kept=0,conflicts=0;
-  for(const {item,revision} of songs){
+  for(const {item,revision,filename} of songs){
     const projects=await idbAll(idb,'projects');
     let p=projects.find(p=>(p.sharedId||p.id)===item.id);
     if(!p){
       const legacy=projects.filter(p=>!p.sharedId);
       p=findByNameIn(legacy,item.name)||legacy.find(p=>item.pdf&&projectPdfRefs(p).has(item.pdf));
     }
+    if(p&&filename){p.sharedFile=filename;await idbPut(idb,'projects',p);if(track?.id===p.id)track=p}
     const marks=p?await idbGet(idb,'marks',p.id):null;
     const current=marks?songSignature(songItem(p,marks.data)):null;
     const base=p?.sharedBase;
@@ -6389,7 +6413,7 @@ async function syncSharedSongs(songs){
       p={id:localId,sharedId:item.id,name:item.name,aka:[],pdf:null,pdfHistory:[],audios:[],lastAudio:null,
         createdAt:Date.now(),updatedAt:0};
     }
-    p.sharedId=item.id;p.name=item.name;
+    p.sharedId=item.id;p.name=item.name;if(filename)p.sharedFile=filename;
     await idbPut(idb,'projects',p);
     await importAnns([{...item,id:localId}],{force:true});
     p=await idbGet(idb,'projects',localId);

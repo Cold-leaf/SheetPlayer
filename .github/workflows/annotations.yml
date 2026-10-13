@@ -14,5 +14,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - run: python3 scripts/annotations.py build --check
+      - run: python3 scripts/annotations.py
       - run: python3 -m unittest discover -s tests -p test_annotations.py

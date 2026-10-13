@@ -39,11 +39,12 @@ async def main():
         pg.on("pageerror",lambda e:errs.append(str(e)))
         state={"status":200,"body":payload(1000,2)}
         async def route_handler(route):
-            if route.request.url.endswith("/annotations/index.json"):
+            if "api.github.com" in route.request.url:
                 return await route.fulfill(status=404, body="Not Found")
             await route.fulfill(status=state["status"],content_type="application/json",
                                 body=json.dumps(state["body"]))
         await pg.route("**raw.githubusercontent.com/**", route_handler)
+        await pg.route("**api.github.com/**", route_handler)
         await pg.goto("http://127.0.0.1:8774/player.html")
         await pg.wait_for_function("()=>idb!==null&&$('lib').style.display==='flex'",timeout=15000)
 
