@@ -751,6 +751,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   </select></label>
   <label title="播放时谱面自动跟着当前小节滚动"><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
   <span class="sep"></span>
+  <label id="lblBeats"><input type="checkbox" id="chkBeats">拍点</label>
   <span id="chipWrap"><span style="color:#999;flex:none">段落</span><span id="chips"></span></span>
   <!-- A–B 循环：行内只留「开关 + 设置入口」两个按钮，起点/终点/清除/区间文字收进 #loopPop。
        原来五件套直接铺在行上，是压成一行最大的障碍；而那四件套是「设一次、之后只用开关」的操作 -->
@@ -778,7 +779,6 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
     <option value="mark">标小节</option>
     <option value="time">打时间</option>
   </select></label>
-  <label id="lblBeats"><input type="checkbox" id="chkBeats">拍点</label>
   <button id="bBeatEdit" style="display:none">编辑拍点</button>
   <!-- 半自动只属于「标小节」：它是标小节的疏密档，不是一个独立的工具。
        只在标小节模式下露面（syncMode 控制），别的模式藏起来 -->
@@ -2529,7 +2529,7 @@ function stat(){
 }
 
 /* ---------- 播放模式的逐拍拍点：位置属于谱面，时间属于模式/演奏遍次 ---------- */
-function beatsOn(){return $('mode').value==='play'&&$('chkBeats').checked}
+function beatsOn(){return $('mode').value!=='mark'&&$('chkBeats').checked}
 function beatCount(mk){
   const [n,d]=meterAt(mk.m);
   return Math.max(1,Math.min(32,Math.round(mk.beatCount||((d===8&&n>=6&&n%3===0)?n/3:n))));
@@ -2670,7 +2670,7 @@ $('bBeatEdit').onclick=()=>{
   if(beatSelection&&M.includes(beatSelection.mk))return openBeatPanel(beatSelection.mk,beatSelection.b,beatSelection.visit);
   const mk=mkByM.get(OCC[occIndex(aud.currentTime)]?.m)||M.find(x=>spanOf(x)===1);
   if(!mk||spanOf(mk)>1)return msg('请先标记一个单独的小节',1);openBeatPanel(mk,1)};
-$('chkBeats').onchange=()=>{syncMode();refresh();if(!$('chkBeats').checked){$('beatPanel').hidden=true;beatSelection=null}};
+$('chkBeats').onchange=()=>{syncMode();refresh();specDirty=true;if(!$('chkBeats').checked){$('beatPanel').hidden=true;beatSelection=null}};
 
 /* ---------- 命中测试（全部用 CSS 像素，缩放无关） ---------- */
 function geo(e){
@@ -4362,6 +4362,27 @@ function fitSpec(){
 const specW=()=>$('specCv').clientWidth||800;
 const specT0=()=>aud.currentTime-(specW()/2)/specPPS;
 
+// 频谱只枚举可见遍次；与谱面共享 BEATS，绝不写入小节级 E 锚点。
+function visibleSpecBeats(t0,t1){
+  if(!beatsOn())return [];
+  const out=[],visits=new Map();
+  for(let i=0;i<OCC.length;i++){
+    const o=OCC[i],visit=visits.get(o.m)||0;visits.set(o.m,visit+1);
+    const mk=mkByM.get(o.m);if(!mk||spanOf(mk)>1)continue;
+    const end=OCC[i+1]?.t??o.t+measDur(o.m);
+    if(end<t0||o.t>t1)continue;
+    for(const point of beatPoints(mk,visit))if(point.t>=t0&&point.t<=t1)out.push({...point,mk,visit});
+  }
+  return out;
+}
+function setDraggedBeat(d,t){
+  const pts=beatPoints(d.mk,d.visit),w=beatWindow(d.mk,d.visit);
+  if(!w)return;
+  const left=pts.find(p=>p.b===d.b-1)?.t??w.start,right=pts.find(p=>p.b===d.b+1)?.t??w.end;
+  if(right-left<=.002)return;
+  t=Math.max(left+.001,Math.min(right-.001,t));
+  BEATS[d.key]={t,src:'tap',start:w.start,end:w.end};dirty=true;specDirty=true;
+}
 function drawSpec(){
   const cv=$('specCv'),ctx=cv.getContext('2d');
   const W=specW(),H=cv.clientHeight||SP_H;
@@ -4421,6 +4442,15 @@ function drawSpec(){
     ctx.beginPath();ctx.moveTo(x,14);ctx.lineTo(x,H-13);ctx.stroke();
   }
   ctx.setLineDash([]);
+  // 拍线使用第二排标签，与小节线区分；虚线为推算，实线为手动校正。
+  let beatLabel=-Infinity;
+  for(const p of visibleSpecBeats(t0,t1).sort((a,b)=>a.t-b.t)){
+    const x=Math.round(X(p.t))+.5,col=p.conflict?'#ff6666':p.manual?'#4ade80':'#9abfff';
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash(p.manual?[]:[3,4]);
+    ctx.beginPath();ctx.moveTo(x,15);ctx.lineTo(x,H-13);ctx.stroke();
+    if(x-beatLabel>35){ctx.fillStyle=col;ctx.font='10px system-ui';ctx.fillText(p.mk.m+'.'+(p.b+1),x+2,24);beatLabel=x}
+  }
+  ctx.setLineDash([]);
   // E 里的点：实测=亮实线，生成=虚线；都可以拖
   let lastLabel=-99;
   const vis=E.map((ev,i)=>({ev,i})).filter(o=>o.ev.t>=t0&&o.ev.t<=t1).sort((a,b)=>a.ev.t-b.ev.t);
@@ -4449,16 +4479,24 @@ const audMax=()=>isFinite(aud.duration)?aud.duration:1e9;
 $('specCv').onpointerdown=e=>{
   const cv=$('specCv'),r=cv.getBoundingClientRect(),x=e.clientX-r.left;
   let best=-1,bd=7;
-  E.forEach((ev,i)=>{const d=Math.abs((ev.t-specT0())*specPPS-x);if(d<bd){bd=d;best=i}});
+  const locked=document.body.classList.contains('perf');
+  if(!locked)E.forEach((ev,i)=>{const d=Math.abs((ev.t-specT0())*specPPS-x);if(d<bd){bd=d;best=i}});
+  let beat=null;
+  if(!locked)for(const p of visibleSpecBeats(specT0()-.1,specT0()+specW()/specPPS+.1)){
+    const d=Math.abs((p.t-specT0())*specPPS-x);if(d<bd){bd=d;beat=p;best=-1}
+  }
   cv.setPointerCapture(e.pointerId);
-  if(best>=0){snap();specDrag={mode:'line',i:best,x0:e.clientX,moved:false}}
+  if(beat){specDrag={mode:'beat',...beat,x0:e.clientX,originalT:beat.t,moved:false,before:BEATS[beat.key]?deepClone(BEATS[beat.key]):null}}
+  else if(best>=0){snap();specDrag={mode:'line',i:best,x0:e.clientX,moved:false}}
   else{specDrag={mode:'scrub',x0:e.clientX,t0:aud.currentTime,moved:false};cv.classList.add('grab')}
 };
 $('specCv').onpointermove=e=>{
   if(!specDrag)return;
   const dx=e.clientX-specDrag.x0;
-  if(!specDrag.moved){if(Math.abs(dx)<3)return;specDrag.moved=true}
-  if(specDrag.mode==='line'){
+  if(!specDrag.moved){if(Math.abs(dx)<3)return;if(specDrag.mode==='beat')snap();specDrag.moved=true}
+  if(specDrag.mode==='beat'){
+    setDraggedBeat(specDrag,specDrag.originalT+dx/specPPS);
+  }else if(specDrag.mode==='line'){
     const r=$('specCv').getBoundingClientRect();
     E[specDrag.i].t=Math.max(0,specT0()+(e.clientX-r.left)/specPPS);
     E[specDrag.i].src='tap';                            // 手拖过 = 实测，重新生成时当锚点
@@ -4472,7 +4510,15 @@ $('specCv').onpointerup=e=>{
   if(!specDrag)return;
   const d=specDrag;specDrag=null;
   $('specCv').classList.remove('grab');
-  if(d.mode==='line'){
+  if(d.mode==='beat'){
+    if(d.moved){
+      const point=BEATS[d.key],w=beatWindow(d.mk,d.visit);
+      const o=point&&w&&$('chkSnap').checked?bestOnset(point.t,Math.min(snapWinFor(d.mk.m),(w.end-w.start)/beatCount(d.mk)*.4)):null;
+      if(o!=null)setDraggedBeat(d,o);
+      refresh();save();
+    }else if(!d.conflict){aud.currentTime=d.t;lastSeek=null;specDirty=true}
+    beatSelection={mk:d.mk,b:d.b,visit:d.visit};
+  }else if(d.mode==='line'){
     if(d.moved){
       const ev=E[d.i],o=$('chkSnap').checked?bestOnset(ev.t,snapWinFor(ev.m)):null;
       if(o!=null){ev.t=o;ev.src='snap'}
@@ -4483,6 +4529,14 @@ $('specCv').onpointerup=e=>{
     aud.currentTime=Math.max(0,Math.min(audMax(),specT0()+(e.clientX-r.left)/specPPS));
     lastSeek=null;specDirty=true;
   }
+};
+$('specCv').onpointercancel=()=>{
+  const d=specDrag;specDrag=null;$('specCv').classList.remove('grab');
+  if(d?.mode==='beat'&&d.moved){
+    if(d.before)BEATS[d.key]=d.before;else delete BEATS[d.key];
+    hist.pop();refresh();
+  }else if(d?.mode==='line')undo();
+  specDirty=true;
 };
 $('specCv').onwheel=e=>{                                // 滚轮/触控板横向也能走带
   if(e.ctrlKey)return;                                  // ctrl+滚轮(捏合)交给全局缩放
@@ -4757,7 +4811,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v41';
+const BUILD='v42';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4825,7 +4879,7 @@ async function importAudioFile(f,projId){
 }
 function syncMode(){
   const m=$('mode').value;
-  $('lblBeats').style.display=m==='play'?'':'none';
+  $('lblBeats').style.display=m!=='mark'?'':'none';
   $('bBeatEdit').style.display=beatsOn()?'':'none';
   if(!beatsOn()){$('beatPanel').hidden=true;beatSelection=null}
   renderBeats();

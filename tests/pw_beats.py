@@ -94,13 +94,61 @@ async def main():
         assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
         assert await page.evaluate('pureM()[0].beatPositions')
         assert abs(await page.evaluate('aud.currentTime'))<.02
-        await page.evaluate('updateProg(1.05,0,OCC[0])')
-        shown=await page.evaluate('sweepEl.style.left')
+        shown=await page.evaluate('(()=>{updateProg(1.05,0,OCC[0]);return sweepEl.style.left})()')
         await page.uncheck('#chkBeats')
-        await page.evaluate('updateProg(1.05,0,OCC[0])')
-        assert await page.evaluate('sweepEl.style.left')==shown
+        assert await page.evaluate('(()=>{updateProg(1.05,0,OCC[0]);return sweepEl.style.left})()')==shown
         await page.check('#chkBeats')
         print('OK    Automatic snap remains inferred; dragging edits only score position')
+        await page.evaluate("aud.currentTime=1;specShow(true);$('chkSnap').checked=false;drawSpec()")
+        assert await page.evaluate('''()=>{
+          const ctx=$('specCv').getContext('2d'),labels=[],original=ctx.fillText;
+          ctx.fillText=function(text,...args){labels.push(String(text));return original.call(this,text,...args)};
+          try{drawSpec()}finally{ctx.fillText=original}
+          return labels.includes('1.2')&&labels.includes('1.3');
+        }''')
+        await page.screenshot(path='/tmp/sheetplayer-beat-spectrum.png')
+        async def drag_spec(target, delta):
+            rect=await page.locator('#specCv').bounding_box()
+            x=await page.evaluate('(t)=>(t-specT0())*specPPS',target)
+            await page.mouse.move(rect['x']+x,rect['y']+40)
+            await page.mouse.down()
+            await page.mouse.move(rect['x']+x+delta,rect['y']+40,steps=5)
+            await page.mouse.up()
+        event_data=await page.evaluate('JSON.stringify(E)')
+        old_pos=await page.evaluate('beatRatio(M[0],1)')
+        old_hist=await page.evaluate('hist.length')
+        await drag_spec(before,32)
+        assert abs(await page.evaluate('beatPoints(M[0],0)[0].t')-(before+.2))<.005
+        assert await page.evaluate('beatPoints(M[0],0)[0].manual')
+        assert await page.evaluate('beatPoints(M[0],1)[0].t')==7
+        assert await page.evaluate('beatRatio(M[0],1)')==old_pos
+        assert await page.evaluate('JSON.stringify(E)')==event_data
+        assert await page.evaluate('hist.length')==old_hist+1
+        await page.evaluate('undo()')
+        assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
+        await drag_spec(before,300)
+        assert 1.99<await page.evaluate('beatPoints(M[0],0)[0].t')<2
+        await page.evaluate('undo()')
+        await page.evaluate("SPEC={onsets:Float32Array.from([1.3]),onsetStr:Float32Array.from([1])};$('chkSnap').checked=true")
+        await drag_spec(before,32)
+        assert abs(await page.evaluate('beatPoints(M[0],0)[0].t')-1.3)<.001
+        await page.evaluate('undo();SPEC=null')
+        # Cancel a live drag without adding history or saving a partial edit.
+        rect=await page.locator('#specCv').bounding_box()
+        x=await page.evaluate('(t)=>(t-specT0())*specPPS',before)
+        await page.mouse.move(rect['x']+x,rect['y']+40);await page.mouse.down()
+        await page.mouse.move(rect['x']+x+25,rect['y']+40)
+        await page.locator('#specCv').dispatch_event('pointercancel')
+        await page.mouse.up()
+        assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
+        await page.evaluate('setPerf(true)')
+        await page.uncheck('#chkBeats');assert await page.locator('.beatMark').count()==0
+        await page.check('#chkBeats');assert await page.locator('.beatMark').count()>0
+        await page.evaluate('aud.currentTime=1')
+        await drag_spec(before,32)
+        assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
+        await page.evaluate('setPerf(false);aud.currentTime=0;specShow(false)')
+        print('OK    Spectrum beat drag edits only this visit; bounds, snapping, undo, cancel and performance toggle/lock work')
         await page.evaluate('window.savedBeatData=annotationData();BEATS={};M=[];applySave(savedBeatData);layout()')
         assert await page.evaluate('beatRatio(M[0],1)')>1/3
         assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
@@ -141,8 +189,12 @@ async def main():
         assert abs(await page.evaluate('aud.currentTime')-.5)<.02
         assert await page.locator('#beatPanel').is_hidden()
         await page.evaluate("setPerf(false);$('mode').value='time';syncMode()")
-        assert await page.locator('.beatMark').count()==0
+        assert await page.locator('.beatMark').count()>0
         await page.set_viewport_size({'width':390,'height':844})
+        await page.evaluate("$('mode').value='play';syncMode();setPerf(true)")
+        await page.uncheck('#chkBeats');assert await page.locator('.beatMark').count()==0
+        await page.check('#chkBeats');assert await page.locator('.beatMark').count()>0
+        await page.evaluate('setPerf(false)')
         await page.evaluate("$('mode').value='play';syncMode();openBeatPanel(M[0],1,0)")
         rect=await page.locator('#beatPanel').bounding_box()
         assert rect['x']>=0 and rect['x']+rect['width']<=390
