@@ -3,6 +3,7 @@
 # 所以这里 grep 输出里的 FAIL 作为唯一失败信号，任一失败 exit 1。
 cd "$(dirname "$0")"
 FAILED=0
+python3 -m unittest discover -s . -p test_annotations.py || FAILED=1
 LOG=/tmp/sheetplayer-tests.log
 : > "$LOG"
 

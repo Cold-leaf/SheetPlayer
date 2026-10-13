@@ -989,8 +989,8 @@ button:disabled{cursor:default}
    <button id="libClose" title="回到谱面" aria-label="回到谱面">✕</button>
   </div>
   <div id="libManage" hidden>
-   <div class="libManageGroup"><span class="libSectionLabel">云端曲库</span><button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10Z"/></svg> ownCloud</button><button id="bSync" title="从 GitHub 仓库拉取 annotations.json 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用仓库那份覆盖">从 GitHub 同步</button></div>
-   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libExpAll" title="把库里所有曲目的标注打包成一个 JSON。提交到仓库根目录存成 annotations.json，其它设备就能一键同步">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label></div>
+   <div class="libManageGroup"><span class="libSectionLabel">云端曲库</span><button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10Z"/></svg> ownCloud</button><button id="bSync" title="获取共享曲库的逐曲更新；本机修改会保留，同曲目双方修改时提示冲突">从 GitHub 同步</button></div>
+   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libExpChanges" title="导出有修改的曲目及基础版本，供仓库汇总命令使用">导出本机修改</button><button id="libConflictBackup">导出冲突备份</button><button id="libExpAll" title="把库里所有曲目的标注打包为备份。多人协作请用「导出本机修改」">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label></div>
    <div class="libManageGroup"><span class="libSectionLabel">本机存储</span><button id="libGcHist" title="把换谱时留下的历史谱子文件删掉（只删文件，不删项目）。删完就换不回更早的谱子了">清理历史谱子</button><span id="libInfo"></span></div>
   </div>
   <div id="libTools">
@@ -4566,7 +4566,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v34';
+const BUILD='v35';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -6158,7 +6158,7 @@ $('libExpAll').onclick=async()=>{
   for(const p of ps){
     // 不跳过「等待导入谱子」的项目：跳过的话它们的标注永远没有备份
     const a=await idbGet(idb,'marks',p.id);
-    if(a)items.push({id:p.id,name:p.name,aka:p.aka||[],sheets:p.sheets||[],pdf:p.pdf?p.pdf.hash:null,
+    if(a)items.push({id:p.sharedId||p.id,name:p.name,aka:p.aka||[],sheets:p.sheets||[],pdf:p.pdf?p.pdf.hash:null,
       pdfHistory:(p.pdfHistory||[]).map(h=>({hash:h.hash,name:h.name||''})),data:a.data});
   }
   if(!items.length)return msg('没有可导出的标注',1);
@@ -6169,7 +6169,7 @@ $('libExpAll').onclick=async()=>{
   a.download='sheetplayer-标注-'+(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+
     String(d.getDate()).padStart(2,'0'))+'.json';
   a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  msg('已导出 '+items.length+' 个项目的标注'+(items.length?'（提交到仓库存成 annotations.json）':''));
+  msg('已导出 '+items.length+' 个项目的标注'+(items.length?'（整库备份；协作请用导出本机修改）':''));
 };
 $('libImpAll').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
@@ -6208,7 +6208,7 @@ async function importAnns(items,{force=false,dry=false}={}){
           (pH&&projs.find(x=>projectPdfRefs(x).has(pH)))||null;
     if(!p){
       const now=Date.now();
-      p={id:newId(),name:(it.name||'').trim()||String(pH).slice(0,8),
+      p={id:validSharedId(id)?id:newId(),name:(it.name||'').trim()||String(pH).slice(0,8),
          aka:[],pdf:null,pdfHistory:[],audios:[],lastAudio:null,
          createdAt:now,updatedAt:+it.data.ts||now};
     }
@@ -6278,12 +6278,158 @@ async function askSyncConflict(items){
     '本机这些改动会丢。',
     [{v:'force',label:'覆盖本机',danger:true},{v:'keep',label:'保留本机',primary:true}]);
 }
+// Shared identity is independent of old device-local IDs. Only first adoption uses legacy name/hash matching.
+const SHARED_ROOT='https://raw.githubusercontent.com/Cold-leaf/SheetPlayer/main/annotations/';
+const validSharedId=id=>typeof id==='string'&&id!=='index'&&/^[A-Za-z0-9_-]{1,100}$/.test(id);
+function songItem(p,data){
+  return {id:p.sharedId||p.id,name:p.name,aka:p.aka||[],sheets:p.sheets||[],pdf:p.pdf?p.pdf.hash:null,
+    pdfHistory:(p.pdfHistory||[]).map(h=>({hash:h.hash,name:h.name||''})),data};
+}
+// Compare content rather than save timestamps. Device selections and local file availability are not edits.
+function songSignature(item){
+  const data=deepClone(item.data);
+  delete data.ts;delete data.activeMode;delete data.activeSheet;
+  if(data.sheets)delete data.M;
+  const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?
+    Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+  return JSON.stringify(stable({name:item.name,data}));
+}
+async function sharedHash(text){
+  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+  return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function downloadJSON(value,name){
+  const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function changedSongs(){
+  await flushSave();const changes=[];
+  for(const p of await idbAll(idb,'projects')){
+    const marks=await idbGet(idb,'marks',p.id);if(!marks)continue;
+    const item=songItem(p,marks.data);
+    if(!p.sharedBase||songSignature(item)!==p.sharedBase.signature)
+      changes.push({item,baseRevision:p.sharedBase?.revision||null});
+  }
+  return changes;
+}
+$('libExpChanges').onclick=async()=>{
+  try{
+    if((await idbAll(idb,'projects')).some(p=>p.sharedConflict))return msg('请先从 GitHub 同步并处理待定冲突，再导出修改',1);
+    const changes=await changedSongs();
+    if(!changes.length)return msg('没有待提交的标注修改');
+    const names=changes.map(c=>c.item.name).join('\n');
+    const choice=await askPick('导出以下 '+changes.length+' 首曲目的修改：\n'+names+
+      '\n\n导出后仍保留待提交状态，直到从 GitHub 同步到已合并的版本。',
+      [{v:'export',label:'导出修改',primary:true}]);
+    if(choice!=='export')return;
+    downloadJSON({app:'sheetplayer-changes',v:1,changes},'sheetplayer-changes-'+new Date().toISOString().slice(0,10)+'.json');
+    msg('已导出 '+changes.length+' 首曲目的修改，请用仓库汇总命令导入后提交');
+  }catch(err){msg('导出失败：'+err.message,1)}
+};
+async function fetchSharedSongs(){
+  const response=await fetch(SHARED_ROOT+'index.json',{cache:'no-store'});
+  if(response.status===404)return null; // Old repositories can still use the full snapshot.
+  if(!response.ok)throw new Error('曲库索引 HTTP '+response.status);
+  const index=await response.json();
+  if(index.app!=='sheetplayer-index'||index.v!==1||!Array.isArray(index.ids)||
+    !index.ids.every(validSharedId)||new Set(index.ids).size!==index.ids.length)
+    throw new Error('共享曲库索引格式不对');
+  // Fetch and validate everything before changing local records.
+  return Promise.all(index.ids.map(async id=>{
+    const r=await fetch(SHARED_ROOT+id+'.json',{cache:'no-store'});
+    if(!r.ok)throw new Error(id+' HTTP '+r.status);
+    const raw=await r.text(),song=JSON.parse(raw);
+    if(song.app!=='sheetplayer-song'||song.v!==1||song.item?.id!==id||
+      typeof song.item.name!=='string'||!song.item.data||typeof song.item.data!=='object')
+      throw new Error(id+' 曲目格式不对');
+    return {item:song.item,revision:await sharedHash(raw)};
+  }));
+}
+async function syncSharedSongs(songs){
+  await flushSave();let imported=0,kept=0,conflicts=0;
+  for(const {item,revision} of songs){
+    const projects=await idbAll(idb,'projects');
+    let p=projects.find(p=>(p.sharedId||p.id)===item.id);
+    if(!p){
+      const legacy=projects.filter(p=>!p.sharedId);
+      p=findByNameIn(legacy,item.name)||legacy.find(p=>item.pdf&&projectPdfRefs(p).has(item.pdf));
+    }
+    const marks=p?await idbGet(idb,'marks',p.id):null;
+    const current=marks?songSignature(songItem(p,marks.data)):null;
+    const base=p?.sharedBase;
+    const same=current===songSignature(item);
+    // After our export has been merged, acknowledge it even if save timestamps differ.
+    if(same){
+      p.sharedId=item.id;p.sharedBase={revision,signature:current};delete p.sharedConflict;
+      await idbPut(idb,'projects',p);if(track?.id===p.id)track=p;kept++;continue;
+    }
+    if(base?.revision===revision){
+      if(p.sharedConflict){delete p.sharedConflict;await idbPut(idb,'projects',p);if(track?.id===p.id)track=p}
+      kept++;continue;
+    } // Remote unchanged: leave local edits intact.
+    const dirty=marks&&(!base||current!==base.signature);
+    if(dirty){
+      // Persist the remote alternative before asking. Cancel/reload never loses either side.
+      p.sharedId=item.id;p.sharedConflict={item,revision};
+      await idbPut(idb,'projects',p);if(track?.id===p.id)track=p;
+      const how=await askPick('《'+p.name+'》本机与共享曲库都有不同的标注。\n'+
+        '请选择本次保留哪一份；另一份会保存在本机冲突备份中。\n'+
+        '保留本机表示下次提交将用本机内容替换当前共享版本。',
+        [{v:'remote',label:'使用共享版本'},{v:'local',label:'保留本机并准备提交',primary:true}]);
+      if(!how){conflicts++;continue;}
+      p.sharedBackup={item:songItem(p,marks.data),base:base||null,remote:{item,revision}};
+      if(how==='local'){
+        p.sharedBase={revision,signature:songSignature(item)};delete p.sharedConflict;
+        await idbPut(idb,'projects',p);if(track?.id===p.id)track=p;kept++;continue;
+      }
+    }
+    const localId=p?.id||item.id;
+    // Force only after checking ancestry / explicit conflict resolution. Never match another shared song by name/hash.
+    if(!p){
+      p={id:localId,sharedId:item.id,name:item.name,aka:[],pdf:null,pdfHistory:[],audios:[],lastAudio:null,
+        createdAt:Date.now(),updatedAt:0};
+    }
+    p.sharedId=item.id;p.name=item.name;
+    await idbPut(idb,'projects',p);
+    await importAnns([{...item,id:localId}],{force:true});
+    p=await idbGet(idb,'projects',localId);
+    const saved=await idbGet(idb,'marks',localId);
+    p.sharedBase={revision,signature:songSignature(songItem(p,saved.data))};delete p.sharedConflict;
+    await idbPut(idb,'projects',p);if(track?.id===p.id)track=p;imported++;
+  }
+  return {imported,kept,conflicts};
+}
+$('libConflictBackup').onclick=async()=>{
+  const projects=(await idbAll(idb,'projects')).filter(p=>p.sharedBackup||p.sharedConflict);
+  if(!projects.length)return msg('没有冲突备份');
+  const side=await askPick('导出冲突时的哪一份标注？文件可通过「导入全部标注」恢复。',
+    [{v:'local',label:'本机版本',primary:true},{v:'remote',label:'共享版本'}]);
+  if(!side)return;
+  const items=[];
+  for(const p of projects){
+    if(p.sharedConflict){
+      const marks=await idbGet(idb,'marks',p.id);
+      if(side==='remote')items.push(p.sharedConflict.item);
+      else if(marks)items.push(songItem(p,marks.data));
+    }else items.push(side==='local'?p.sharedBackup.item:p.sharedBackup.remote.item);
+  }
+  downloadJSON({app:'sheetplayer',v:3,items},'sheetplayer-conflicts-'+side+'.json');
+  msg('已导出可恢复的冲突备份');
+};
+
 // 从 GitHub 仓库拉取 annotations.json（公开 raw 地址，免鉴权可读；写靠桌面导出后人工提交）
 const SYNC_URL='https://raw.githubusercontent.com/Cold-leaf/SheetPlayer/main/annotations.json';
 $('bSync').onclick=async()=>{
-  if(!idb)return;
+  if(!idb||$('bSync').disabled)return;
+  $('bSync').disabled=true;
   try{
     msg('正在从 GitHub 同步…');
+    const songs=await fetchSharedSongs();
+    if(songs){
+      const r=await syncSharedSongs(songs);drawLib();
+      msg('同步完成：更新 '+r.imported+' 首，保留 '+r.kept+' 首'+(r.conflicts?'，待处理冲突 '+r.conflicts+' 首':''));
+      return;
+    }
     const r=await fetch(SYNC_URL,{cache:'no-store'});
     if(!r.ok)throw new Error(r.status===404?'仓库里还没有 annotations.json（先在桌面导出并提交一次）':'HTTP '+r.status);
     const j=await r.json();
@@ -6294,6 +6440,7 @@ $('bSync').onclick=async()=>{
     drawLib();
     msg('同步完成：导入 '+res.imported+' 个项目'+(res.skipped?'，跳过 '+res.skipped+' 个（本机较新）':''));
   }catch(err){msg('同步失败：'+err.message,1)}
+  finally{$('bSync').disabled=false}
 };
 function applyAnn(s){
   snap();
