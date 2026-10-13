@@ -746,8 +746,10 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   </span>
   <span class="sep"></span>
   <label>速度<select id="rate">
+    <option>0.1</option><option>0.2</option><option>0.3</option><option>0.4</option>
     <option>0.5</option><option>0.6</option><option>0.7</option><option>0.8</option>
     <option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option>
+    <option>1.75</option><option>2</option><option>2.5</option><option>3</option><option>3.5</option><option>4</option>
   </select></label>
   <label title="播放时谱面自动跟着当前小节滚动"><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
   <span class="sep"></span>
@@ -4093,11 +4095,19 @@ function bumpRate(d){
   const i=opts.indexOf(aud.playbackRate);
   setRate(opts[Math.min(opts.length-1,Math.max(0,(i<0?opts.indexOf(1):i)+d))]);
 }
-function setRate(r){aud.playbackRate=r;$('rate').value=String(r);syncRate();msg('速度 '+r+'x')}
-$('rate').onchange=()=>{aud.playbackRate=+$('rate').value;syncRate()};
+// load() 会把 playbackRate 重置为 defaultPlaybackRate，两者必须同时更新。
+function applyRate(r){
+  if(!Number.isFinite(r)||r<.1||r>4)return;
+  try{aud.playbackRate=r;aud.defaultPlaybackRate=r}catch(err){msg('当前浏览器不支持这个倍率',1);return}
+  $('rate').value=String(r);syncRate();
+}
+function setRate(r){applyRate(r);msg('速度 '+aud.playbackRate+'x')}
+$('rate').onchange=()=>applyRate(+$('rate').value);
 // 速度万一被别的途径改了（某些浏览器的原生控件仍有速度菜单），把下拉同步过来，
 // 免得显示 1x 实际在 1.5x，也免得 bumpRate 因为对不上选项而跳回 1
-aud.onratechange=()=>{const v=String(aud.playbackRate);
+aud.onratechange=()=>{
+  if(aud.defaultPlaybackRate!==aud.playbackRate)aud.defaultPlaybackRate=aud.playbackRate;
+  const v=String(aud.playbackRate);
   if([...$('rate').options].some(o=>o.value===v))$('rate').value=v;
   syncRate()};
 // 音频解码/加载失败（文件损坏、格式不支持）：给出明确提示，而不是只留个 0:00 灰三角
@@ -4831,7 +4841,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v43';
+const BUILD='v44';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
