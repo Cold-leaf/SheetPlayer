@@ -1472,24 +1472,12 @@ function askMode(msg,def){
     syncNew();
   });
 }
-// 选项目弹窗：ownCloud 下载完之后问「这份文件挂到哪个项目」。
-// resolve 成项目 id、'__new__'（新建）或 null（取消 = 丢弃这次下载，一个字节都不落库）。
-// 列表按名字相似度排序、预选自动认领的结果——预选走的是 claimProjFor，和真导入同一份规则。
-// 名字相似度只用来排序，认领仍是 nameKeys 精确键（拿相似度去认领会变成"看着像就吞"）。
+// 文件归属由用户选择；名字只用于列表排序，内容指纹不参与选择。
 async function askProj(f,allowNew,preferId){
   const projs=(idb?await idbAll(idb,'projects'):[])||[];
-  const H=(await resolveFileKey(f)).hash;          // 只取键，不落库：用户还没点确认
-  const hit=claimProjFor(projs,H,f.name);
-  // 音频那一侧：哈希永远撞不上某份谱子（① ② 只可能命中 PDF），所以预选退到「当前打开的项目」，
-  // 也就是以前那条路的行为，只是现在能改。没有谱子的项目（pdf===null）照样列出来——
-  // ownCloud 列表那边「已隐藏 N 个」就是这么办的：藏掉用户自己建的东西，他会以为项目没了，
-  // 而不是"这个暂时用不了"。行里写一句「等待导入谱子」说明状态就够了
   const pool=projs;
-  // ③ 从某张卡片的「☁」进来时，用户已经指明要挂到哪个项目（preferId）→ 直接预选它。
-  //    它压过按哈希认领的结果：那种情况后面 attachPdf 还会问一句"两个项目共用一份谱子"，
-  //    不会静默挂错
   let cur=(preferId&&projs.some(p=>p.id===preferId)?preferId:'')||
-          (hit.p&&hit.p.id)||(!allowNew&&track?track.id:'');
+          (!allowNew&&track?track.id:'');
   // 项目名来自同步文件（别的设备上编辑过），一律 textContent 插，不当 HTML
   return new Promise(res=>{
     const q=$('dlgProjQ'),list=$('dlgProjList'),none=$('dlgProjNone'),okb=$('dlgProjOk');
@@ -1508,9 +1496,7 @@ async function askProj(f,allowNew,preferId){
       const hits=pool.map(p=>({p,s:nameSim(p.name,f.name)}))
         .filter(x=>!kw||[x.p.name,...(x.p.aka||[]),splitName(dispName(x.p.name)).title]
           .some(s=>String(s||'').toLowerCase().includes(kw)));
-      // 认领命中的那个永远排第一（哈希/历史命中时它跟名字可能毫无相似度，例如换了简谱版），
-      // 其余按相似度降序——同一首歌的各个版本就排到一起了。同分按名字排，顺序才稳定
-      hits.sort((a,b)=>(b.p===hit.p)-(a.p===hit.p)||b.s-a.s||a.p.name.localeCompare(b.p.name));
+      hits.sort((a,b)=>b.s-a.s||a.p.name.localeCompare(b.p.name));
       // 高亮的东西必须看得见：搜索把原来的选中项滤掉了就改选第一行，
       // 否则会出现「确定」提交一个列表里根本没显示的项目
       if(!hits.some(x=>x.p.id===cur))cur=hits.length?hits[0].p.id:'';
@@ -1526,8 +1512,6 @@ async function askProj(f,allowNew,preferId){
         bx.appendChild(nm);
         const sub=[];
         if(!x.p.pdf)sub.push('等待导入谱子');
-        if(x.p===hit.p)sub.push({hash:'就是这份谱子在用的',hist:'用过的谱子（换回去）',
-                                 name:'文件名对得上'}[hit.why]);
         if(sub.length){
           const s=document.createElement('span');s.className='pjSub';
           s.textContent=sub.join('　');bx.appendChild(s);
@@ -1672,9 +1656,10 @@ async function mergeSheetCatalog(p,data,catalog){
     if(!sh){sh={id:src.id,name:src.name||sheetFileName(src.pdf?.name),pdf:src.pdf||null,pdfHistory:src.pdfHistory||[]};p.sheets.push(sh)}
     else{
       sh.name=src.name||sh.name;
-      // 同步的位置必须对应同步的 PDF；本机选哪版仍保留。
-      if(src.pdf)sh.pdf=deepClone(src.pdf);
-      if(src.pdfHistory)sh.pdfHistory=deepClone(src.pdfHistory);
+      // 同一谱面允许各设备使用自己的笔记 PDF；同步标注不覆盖本机文件绑定。
+      const local=sh.pdf?.hash?await idbGet(idb,'files',sh.pdf.hash):null;
+      if(src.pdf&&!local?.blob)sh.pdf=deepClone(src.pdf);
+      if(src.pdfHistory&&!local?.blob)sh.pdfHistory=deepClone(src.pdfHistory);
     }
   }
   bindSheet(p,p.lastSheet);
@@ -1724,11 +1709,6 @@ async function switchSheet(id){
 $('sheetSel').onchange=()=>switchSheet($('sheetSel').value);
 async function addSheetFile(p,file,H,name){
   ensureSheets(p);
-  const same=p.sheets.find(x=>x.pdf?.hash===H);
-  if(same){
-    if(pid===p.id)return switchSheet(same.id);
-    bindSheet(p,same.id);await idbPut(idb,'projects',p);return openTrack(p.id);
-  }
   await openPdf(file); // 校验 PDF，失败不增加空版本。
   const nm=(name||'').trim()||sheetFileName(file.name);
   if(p.sheets.some(x=>x.name===nm))return msg('谱面名称已存在，请换一个名字',1);
@@ -1797,72 +1777,44 @@ $('fPdf').onchange=async e=>{
   const t=pendPid,action=pendSheet;pendPid='';pendSheet=null;
   await attachPdf(f,t,false,action);
 };
-// PDF 导入总入口：本机「PDF」按钮 /「＋ 导入谱子」/「打开」没谱子的项目 / ownCloud 下载共用。
-// projId 给定时直接挂到那个项目；否则按 ① 内容哈希 → ② 历史谱子 → ③ 名字 → ④ 新建项目 的顺序认领
-//（①②③ 就是 claimProjFor 那一份规则）。forceNew 跳过 ①②③ 直接走 ④：
-// ownCloud 下载弹窗里用户选了「新建项目」，就不能再被自动认领挂回某个已有项目——那和他的选择相反。
+// 所有 PDF 导入先明确项目、谱面；指纹只用于文件存储去重。
 async function attachPdf(f,projId,forceNew,sheetAction){
   await flushSave();
-  // 不在开头 resetTrack：每条路径最后都会走 loadPdfBlob / replacePdf，它们自己会清零。
-  // 提前清的话，用户在任何一个确认框上点「取消」，或者撞名没改成，当前正看着的谱面就白了。
   try{
-    if(!idb){await loadPdfBlob(f,f.name,'','','');return}   // 传统模式：没有项目，按文件名存档
+    if(!idb){await loadPdfBlob(f,f.name,'','','');return}
+    if(!projId&&!forceNew){
+      const choice=await askProj(f,true);
+      if(choice===null)return;
+      if(choice==='__new__')forceNew=true;else projId=choice;
+    }
+    const projs=await idbAll(idb,'projects');
+    const p=projId?projs.find(x=>x.id===projId):null;
+    if(projId&&!p)return msg('这个项目不在了，请从曲目库重新打开',1);
+    if(p){
+      ensureSheets(p);
+      if(!sheetAction){
+        const choice=await askPick('《'+p.name+'》：选择这份 PDF 对应的谱面。已有谱面沿用标注；不同分页或排版请新增谱面。',[
+          ...p.sheets.map(sh=>({v:sh.id,label:sh.name})),
+          {v:'__new__',label:'＋ 新增谱面'}]);
+        if(choice===null)return;
+        sheetAction=choice==='__new__'?{kind:'add'}:{kind:'attach',sheetId:choice};
+      }
+      if(sheetAction.sheetId&&!p.sheets.some(sh=>sh.id===sheetAction.sheetId))
+        return msg('谱面版本已不存在',1);
+    }
     // 文件按内容指纹入库去重（老记录也认，见 resolveFileKey）；一份谱子可以被多个项目合法共用
     const found=await resolveFileKey(f),H=found.hash;
     if(!found.rec)await idbPut(idb,'files',{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f});
     const rec=found.rec||{hash:H,kind:'pdf',name:f.name,size:f.size,blob:f};   // 刚入库的那份
-    const projs=await idbAll(idb,'projects');
-    if(projId){                                  // 显式指定（点了那个项目的「打开」或「换谱」）
-      const p=projs.find(x=>x.id===projId);
-      if(!p)return msg('这个项目不在了，请从曲目库重新打开',1);
-      ensureSheets(p);
-      if(sheetAction?.kind==='add')return addSheetFile(p,f,H,sheetAction.name);
-      if(sheetAction?.sheetId){
-        const target=p.sheets.find(x=>x.id===sheetAction.sheetId);
-        if(!target)return msg('谱面版本已不存在',1);
-        if(sheetAction.kind==='attach'&&target.pdf?.hash!==H)return msg('文件与所选谱面不一致，请选择对应 PDF；更新 PDF 请用「替换当前谱面」',1);
-        bindSheet(p,target.id);
-        await idbPut(idb,'projects',p);
-      }else{
-        const existing=p.sheets.find(x=>x.pdf?.hash===H);
-        if(existing){bindSheet(p,existing.id);await idbPut(idb,'projects',p)}
-      }
-      if(p.pdf&&p.pdf.hash!==H&&!sheetAction){
-        const how=await askPick('《'+p.name+'》已有谱面。这份 PDF 是另一种排版，还是当前谱面的文件更新？',[
-          {v:'add',label:'新增谱面版本',primary:true},{v:'replace',label:'替换当前谱面 PDF'}]);
-        if(how==null)return;
-        if(how==='add')return addSheetFile(p,f,H,dispName(f.name));
-      }
-      if(p.pdf&&p.pdf.hash!==H){                 // 原本就有别的谱子 → 换谱，标注一个都不动
-        const other=projs.find(x=>x.id!==projId&&x.pdf&&x.pdf.hash===H);
-        if(other&&!confirm('这份谱子是《'+other.name+'》在用着的。\n仍然用它换掉《'+p.name+'》的谱子？（两个项目共用一份谱子）'))return;
-        return replacePdf(projId,f);
-      }
+    if(p){
+      if(sheetAction.kind==='add')return addSheetFile(p,f,H,sheetAction.name);
+      bindSheet(p,sheetAction.sheetId||p.lastSheet);
+      await idbPut(idb,'projects',p);
+      if(p.pdf&&p.pdf.hash!==H)
+        return replacePdf(p.id,f,sheetAction.kind==='attach');
       return attachToProject(p,rec.blob,f.name,H,'');
     }
-    const hit=forceNew?{p:null,why:''}:claimProjFor(projs,H,f.name);
-    // ① 内容哈希就是某个项目的当前谱子 → 就是它。不改名、不新建、不动历史
-    if(hit.why==='hash')return attachToProject(hit.p,rec.blob,f.name,H,
-      '这份谱子就是《'+hit.p.name+'》在用的');
-    // ② 是某个项目用过的历史谱子 → 直接换回去，别当新项目。
-    //    这里已经问过一次了（还带"取消=当新项目"的出路），replacePdf 不用再问一遍。
-    //    取消 = 当成新项目，所以照旧往下走 ③④（跟改之前一样，不是直接掉到新建）
-    if(hit.why==='hist'){
-      ensureSheets(hit.p);
-      const sh=hit.p.sheets.find(x=>(x.pdfHistory||[]).some(h=>h.hash===H));
-      if(sh)bindSheet(hit.p,sh.id);
-      if(!hit.p.pdf)return attachToProject(hit.p,rec.blob,f.name,H,'按用过的谱子认回《'+hit.p.name+'》');
-      if(confirm('这份谱子是《'+hit.p.name+'》用过的（后来换掉了）。\n用它换回《'+hit.p.name+'》现在的谱子？\n（取消 = 当成一个新项目导入）')){
-        await idbPut(idb,'projects',hit.p);return replacePdf(hit.p.id,f,true);
-      }
-    }
-    // ③ 名字对得上 → 挂上去。文件名命中不是改名，项目的名字一个字母都不动
-    if(hit.why==='name'&&hit.p.pdf&&hit.p.pdf.hash!==H)return attachPdf(f,hit.p.id);
-    if(hit.why==='name')return attachToProject(hit.p,rec.blob,f.name,H,
-      hit.p.pdf?'按文件名认回《'+hit.p.name+'》，旧谱子已存进历史（时间点与竖线照旧）'
-               :'已按文件名认回等待导入谱子的《'+hit.p.name+'》');
-    // ④ 全新的：用文件名（去扩展名/尾缀）当项目名。撞名就停下来让用户改——
-    //    重名硬拦，不能让同名的两个项目悄悄分叉
+    // 新项目由用户明确选择，不按文件名或内容合并。
     let nm=dispName(f.name)||f.name;
     if(nameTaken(projs,nm,null)){
       const t=await askText('曲目库里已经有叫「'+nm+'」的项目了。给这份谱子另起一个名字？',nm+' 2');
@@ -1872,17 +1824,15 @@ async function attachPdf(f,projId,forceNew,sheetAction){
       if(nameTaken(projs,nm,null))return msg('还是撞名了。请从曲目库「＋ 新建项目」里手动建一个再导入',1);
     }
     const now=Date.now();
-    const p={id:newId(),name:nm,aka:[],pdf:{hash:H,name:f.name},pdfHistory:[],
+    const created={id:newId(),name:nm,aka:[],pdf:{hash:H,name:f.name},pdfHistory:[],
       audios:[],lastAudio:null,createdAt:now,updatedAt:now};
-    await idbPut(idb,'projects',p);
-    await loadPdfBlob(rec.blob,f.name,p.id,H,'');
+    await idbPut(idb,'projects',created);
+    await loadPdfBlob(rec.blob,f.name,created.id,H,'');
   }catch(err){msg('PDF加载失败：'+err.message,1)}
 }
 // 把一份 PDF 挂到项目上（旧谱子进历史）并打开它。已经是当前这份就什么都不动，直接打开。
 async function attachToProject(p,blob,fileName,H,pre){
   ensureSheets(p);
-  const existing=p.sheets.find(x=>x.pdf?.hash===H);
-  if(existing)bindSheet(p,existing.id);
   if(!p.pdf||p.pdf.hash!==H){
     if(p.pdf)p.pdfHistory=[{hash:p.pdf.hash,name:p.pdf.name||'',at:Date.now()},...(p.pdfHistory||[])];
     p.pdf={hash:H,name:fileName};p.updatedAt=Date.now();
@@ -4842,7 +4792,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v45';
+const BUILD='v46';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5224,21 +5174,8 @@ function findByNameIn(projs,name){
   for(const p of (projs||[]))if(nameKeys(p).some(k=>ks.includes(k)))return p;
   return null;
 }
-// 给一份谱子（内容哈希 H + 文件名 name）找出它属于哪个项目。why 说命中哪一步——
-// 三步的后续处理不一样（①③ 直接挂上去、② 可能要先问一句换谱），调用方得分开。
-// 这是认领规则的**唯一**一份：attachPdf 的真导入和下载弹窗的预选都走它，
-// 不会出现「问的时候算一套、真导入时算另一套」。
-function claimProjFor(projs,H,name){
-  const byHash=(projs||[]).find(x=>(x.pdf&&x.pdf.hash===H)||(x.sheets||[]).some(sh=>sh.pdf?.hash===H));
-  if(byHash)return {p:byHash,why:'hash'};
-  const byHist=(projs||[]).find(x=>projectPdfRefs(x).has(H));
-  if(byHist)return {p:byHist,why:'hist'};
-  const byName=findByNameIn(projs,name);
-  if(byName)return {p:byName,why:'name'};
-  return {p:null,why:''};
-}
 // 名字相似度 0..1，只用于弹窗排序（把同一首歌的各个版本排到一起）。
-// 不参与认领——认领走 nameKeys 精确键；拿相似度去合并会变成「看着像就吞」。
+// 只辅助用户查找，不能决定文件归属。
 // 排序键是 splitName 拆出来的曲名：ZG_志愿军战歌[线][TTBB] 和 [简][TB+NA+WO] 都归到「志愿军战歌」，
 // 整串比就一个字符都对不上（前缀和方括号里每个字都不一样）。
 function nameSim(a,b){
@@ -6141,8 +6078,7 @@ async function davDownload(it){
       $('davTip').textContent='下载中 '+fmtSize(got)+(total?(' / '+fmtSize(total)+'（'+Math.round(got/total*100)+'%）'):'')+'　'+it.name;
     });
     $('davTip').textContent='下载完成，选项目…';
-    // 弹窗在**下载之后**：预选靠内容哈希和历史谱子，那是认领里最靠得住的两个信号，
-    // 下载前根本算不出来。代价是取消会白下这一次——取消是少数情况，认了
+    // 下载后明确选择项目，随后选择谱面。
     const pid=await askProj(f,isPdf,davTarget);    // null = 取消；davTarget = 从卡片进来的话预选那个项目
     if(pid===null){msg('已取消，这份没有导入');return}     // 丢弃 blob，不落库，免得留孤儿文件
     // 关面板放在弹窗之后：取消了得让人留在面板里接着挑下一个文件
