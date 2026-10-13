@@ -2584,12 +2584,13 @@ function renderBeats(){
       el.tabIndex=0;el.setAttribute('role','button');
       el.setAttribute('aria-label','小节 '+mk.m+' 第 '+(b+1)+' 拍');
       el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();el.click()}};
-      el.innerHTML='<b></b><i>'+(b+1)+'</i>';el.title='第 '+(b+1)+' 拍：点击编辑时间，拖动调整谱面位置';
+      el.innerHTML='<b></b><i>'+(b+1)+'</i>';el.title='第 '+(b+1)+' 拍：点击跳转，再点换下一遍；拖动调整位置，时间从「编辑拍点」修改';
       el.onclick=e=>{e.stopPropagation();if(el.dataset.dragged){delete el.dataset.dragged;return}
-        if(document.body.classList.contains('perf')){const p=beatPoints(mk,beatVisitNow(mk)).find(p=>p.b===b);if(p&&!p.conflict)aud.currentTime=p.t;return}
-        openBeatPanel(mk,b)};
+        if(arm){setAB(arm,mk.m);return}
+        seekScorePoint(mk.m,b,e.shiftKey)};
       el.onpointerdown=e=>{
-        e.stopPropagation();if(document.body.classList.contains('perf')||e.button!==0)return;
+        e.stopPropagation();delete el.dataset.dragged;
+        if(document.body.classList.contains('perf')||e.button!==0)return;
         const start=e.clientX,old=beatRatio(mk,b),rect=boxes[mk.page].getBoundingClientRect();let moved=false;
         el.setPointerCapture(e.pointerId);
         el.onpointermove=ev=>{
@@ -2631,6 +2632,7 @@ function openBeatPanel(mk,b,visit=beatVisitNow(mk)){
   el.innerHTML='<strong>小节 '+mk.m+(beatCount(mk)>1?' · 第 '+(b+1)+' 拍':' · 单拍小节')+'</strong> <button id="beatClose">关闭</button>'+
     '<div class="row"><label>小节 <select id="beatMeasure">'+M.filter(x=>spanOf(x)===1).map(x=>'<option value="'+x.m+'" '+(x===mk?'selected':'')+'>'+x.m+'</option>').join('')+'</select></label></div>'+
     '<div class="row"><label>本小节拍数 <input id="beatCountInput" type="number" min="1" max="32" value="'+beatCount(mk)+'"></label>'+
+    '<label>拍点 <select id="beatNumber" '+(beatCount(mk)===1?'disabled':'')+'>'+Array.from({length:beatCount(mk)-1},(_,i)=>'<option value="'+(i+1)+'" '+(i+1===b?'selected':'')+'>第 '+(i+2)+' 拍</option>').join('')+'</select></label>'+
     '<label>遍次 <select id="beatVisit">'+vs.map((_,k)=>'<option value="'+k+'" '+(k===visit?'selected':'')+'>'+(k+1)+'</option>').join('')+'</select></label></div>'+
     '<div class="row"><label>时间（秒） <input id="beatTime" type="number" min="0" step="0.001" '+(!p?'disabled':'')+' value="'+(p?p.t.toFixed(3):'')+'"></label>'+
     '<button id="beatNow">记当前时间</button><button id="beatSeek">跳转</button></div>'+
@@ -2638,6 +2640,7 @@ function openBeatPanel(mk,b,visit=beatVisitNow(mk)){
     '<small>'+(p?(p.conflict?'时间冲突：超出小节或与邻拍次序不符，请修正。':(p.manual?'手动校正':p.adjusted?'自动吸附（推算）':'推算时间')+(p.estimated?'；末小节结束时间按速度估算。':'')):beatCount(mk)===1?'单拍小节没有内部拍线，可调整拍数。':'请先为小节建立时间点。')+' 拖线仅调整谱面位置。</small>';
   $('beatClose').onclick=()=>{el.hidden=true;beatSelection=null};
   $('beatMeasure').onchange=()=>{const next=mkByM.get(+$('beatMeasure').value);if(next)openBeatPanel(next,1)};
+  $('beatNumber').onchange=()=>openBeatPanel(mk,+$('beatNumber').value,visit);
   $('beatVisit').onchange=()=>openBeatPanel(mk,b,+$('beatVisit').value);
   $('beatCountInput').onchange=()=>{
     const n=+$('beatCountInput').value;
@@ -2663,15 +2666,11 @@ function openBeatPanel(mk,b,visit=beatVisitNow(mk)){
   $('beatResetTime').onclick=()=>{if(!p)return;snap();delete BEATS[p.key];refresh();save();openBeatPanel(mk,b,visit)};
   $('beatResetPos').onclick=()=>{snap();delete mk.beatPositions?.[beatCount(mk)+':'+b];refresh();save();openBeatPanel(mk,b,visit)};
 }
-$('bBeatEdit').onclick=()=>{const mk=mkByM.get(OCC[occIndex(aud.currentTime)]?.m)||M.find(x=>spanOf(x)===1);
+$('bBeatEdit').onclick=()=>{
+  if(beatSelection&&M.includes(beatSelection.mk))return openBeatPanel(beatSelection.mk,beatSelection.b,beatSelection.visit);
+  const mk=mkByM.get(OCC[occIndex(aud.currentTime)]?.m)||M.find(x=>spanOf(x)===1);
   if(!mk||spanOf(mk)>1)return msg('请先标记一个单独的小节',1);openBeatPanel(mk,1)};
 $('chkBeats').onchange=()=>{syncMode();refresh();if(!$('chkBeats').checked){$('beatPanel').hidden=true;beatSelection=null}};
-// 单拍小节也能从小节线打开面板，重新设置拍数。
-pagesEl.addEventListener('dblclick',e=>{
-  if(!beatsOn()||document.body.classList.contains('perf'))return;
-  const el=e.target.closest('.mk');const mk=el&&mkByM.get(+el.dataset.m);
-  if(mk&&spanOf(mk)===1){e.stopPropagation();openBeatPanel(mk,1)};
-});
 
 /* ---------- 命中测试（全部用 CSS 像素，缩放无关） ---------- */
 function geo(e){
@@ -3356,14 +3355,7 @@ pagesEl.onclick=async e=>{
     refresh();save();
     return;
   }
-  // play：默认落在当前段落的那一遍；2 秒内再点同一个点 = 循环切到下一遍（触摸端替代 Shift）
-  const p=pickOcc(best.m);
-  if(!p)return msg('小节 '+best.m+' 还没有时间信息',1);
-  const now=performance.now(),again=lastSeek&&lastSeek.m===best.m&&now-lastSeek.at<2000;
-  let i=(again||e.shiftKey)?((lastSeek&&lastSeek.m===best.m?lastSeek.i+1:0)%p.c.length):p.i;
-  lastSeek={m:best.m,i,at:now};
-  aud.currentTime=p.c[i].t;
-  if(p.c.length>1)msg('小节 '+best.m+' · 第 '+(i+1)+'/'+p.c.length+' 遍（再点一下换下一遍）');
+  seekScorePoint(best.m,null,e.shiftKey);
 };
 
 /* 编辑模式：拖动改位置，单击开面板。用 Pointer Events，鼠标和触屏同一套 */
@@ -3604,6 +3596,28 @@ function pickOcc(m){
   let i=c.findIndex(o=>o.run===r);
   if(i<0){let bd=1/0;i=0;c.forEach((o,k)=>{const d=Math.abs(o.t-aud.currentTime);if(d<bd){bd=d;i=k}})}
   return {c,i};
+}
+
+// 小节线和拍线共用跳转规则：保持播放/暂停状态，当前遍优先，重复点击循环遍次。
+// 记忆包含拍点编号，点同一小节的另一拍不应被误当成“再点一次”。
+function seekScorePoint(m,beat=null,shift=false){
+  const p=pickOcc(m);
+  if(!p)return msg('小节 '+m+' 还没有时间信息',1);
+  const same=lastSeek&&lastSeek.m===m&&(lastSeek.beat??null)===beat;
+  const now=performance.now(),again=same&&now-lastSeek.at<2000;
+  const i=(again||shift)?((same?lastSeek.i+1:0)%p.c.length):p.i;
+  let t=p.c[i].t;
+  if(beat!=null){
+    const mk=mkByM.get(m),point=mk&&beatPoints(mk,i).find(p=>p.b===beat);
+    if(!point)return msg('这一拍还没有时间信息',1);
+    beatSelection={mk,b:beat,visit:i};
+    if(point.conflict)return msg('这一拍时间有冲突，请在「编辑拍点」中修正',1);
+    t=point.t;
+  }else beatSelection=null;
+  $('beatPanel').hidden=true;
+  lastSeek={m,beat,i,at:now};aud.currentTime=t;dirty=true;specDirty=true;
+  if(p.c.length>1)msg('小节 '+m+(beat==null?'':' · 第 '+(beat+1)+' 拍')+
+    ' · 第 '+(i+1)+'/'+p.c.length+' 遍（再点一下换下一遍）');
 }
 
 function drawChips(){
@@ -4001,10 +4015,11 @@ function updateProg(t,i,o){
   // 判据用「下一根的时间得和当前这一遍同段」，不成立就退回「这一小节该走多久」。
   if(t0!=null&&(t1==null||t1<=t0||runAt(t1)!==o.run))t1=t0+estMeasDur(o,i,mk);
   let p=(t0!=null&&t1!=null&&t1>t0)?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;
-  if(beatsOn()&&mk.m===o.m&&spanOf(mk)===1){
+  if(mk.m===o.m&&spanOf(mk)===1){
     const visit=beatVisits(mk.m).findIndex(v=>v.i===i),w=beatWindow(mk,visit),pts=beatPoints(mk,visit);
     if(w&&pts.every(p=>!p.conflict)){
       const nodes=[{t:w.start,r:0},...pts.map(p=>({t:p.t,r:beatRatio(mk,p.b)})),{t:w.end,r:1}];
+      if(t>=w.end)p=1;
       for(let k=1;k<nodes.length;k++)if(t<=nodes[k].t){
         const a=nodes[k-1],b=nodes[k];p=a.r+(b.r-a.r)*Math.max(0,Math.min(1,(t-a.t)/(b.t-a.t)));break;
       }
@@ -4742,7 +4757,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v40';
+const BUILD='v41';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

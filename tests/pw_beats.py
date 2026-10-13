@@ -1,5 +1,5 @@
 """Beat layer: production UI, independent timing, repeat visits, persistence and undo."""
-import asyncio, functools, http.server, pathlib, threading
+import asyncio, base64, functools, http.server, io, pathlib, threading, wave
 from playwright.async_api import async_playwright
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PDF = ROOT.parent / '线谱合集/SK_斯卡布罗集市[线][TTBB+NA+WO].pdf'
@@ -10,7 +10,7 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 async def main():
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(args=['--autoplay-policy=no-user-gesture-required'])
         page = await browser.new_page(viewport={'width':1400,'height':1000})
         errors=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
@@ -24,11 +24,45 @@ async def main():
           METER=[{sig:[3,4],ranges:[]}];BEATS={};hist=[];layout();
           $('mode').value='play';syncMode();
         }""")
+        audio=io.BytesIO()
+        with wave.open(audio,'wb') as f:
+            f.setnchannels(1);f.setsampwidth(2);f.setframerate(8000);f.writeframes(b'\0\0'*8000*20)
+        await page.evaluate('(src)=>{aud.src=src;aud.load()}', 'data:audio/wav;base64,'+base64.b64encode(audio.getvalue()).decode())
+        await page.wait_for_function('()=>aud.readyState>=2')
         await page.check('#chkBeats')
         assert await page.locator('.beatMark').count()==6
         assert await page.evaluate('beatPoints(M[0],0).map(p=>p.t)')==[1,2]
         assert await page.evaluate('beatPoints(M[0],1).map(p=>p.t)')==[7,8]
         print('OK    3/4 creates two internal lines; repeat visits have independent times')
+        first=page.locator('.beatMark[data-m="1"][data-beat="1"]')
+        third=page.locator('.beatMark[data-m="1"][data-beat="2"]')
+        await first.click()
+        assert abs(await page.evaluate('aud.currentTime')-1)<.02
+        assert await page.evaluate('aud.paused') and await page.locator('#beatPanel').is_hidden()
+        await first.click()
+        assert abs(await page.evaluate('aud.currentTime')-7)<.02
+        await third.click()
+        assert abs(await page.evaluate('aud.currentTime')-8)<.02
+        await page.click('#bBeatEdit')
+        assert await page.input_value('#beatNumber')=='2'
+        assert await page.input_value('#beatVisit')=='1'
+        await page.select_option('#beatNumber','1')
+        assert await page.input_value('#beatTime')=='7.000'
+        await page.click('#beatClose')
+        await page.evaluate('lastSeek=null;aud.currentTime=0;aud.play()')
+        await third.click()
+        assert not await page.evaluate('aud.paused')
+        assert 2<=await page.evaluate('aud.currentTime')<2.5
+        await page.evaluate('aud.pause();aud.currentTime=0;lastSeek=null')
+        await page.locator('.mk[data-m="1"]').dblclick()
+        assert abs(await page.evaluate('aud.currentTime')-6)<.02
+        assert await page.locator('#beatPanel').is_hidden()
+        await first.click()
+        assert abs(await page.evaluate('aud.currentTime')-7)<.02
+        await page.locator('.mk[data-m="1"]').click()
+        assert abs(await page.evaluate('aud.currentTime')-6)<.02
+        await page.evaluate('aud.currentTime=0;lastSeek=null')
+        print('OK    Beat clicks seek without editing, cycle visits, preserve playback, and select the editor target')
         await page.evaluate('openBeatPanel(M[0],1,0)')
         await page.fill('#beatTime','1.2');await page.locator('#beatTime').dispatch_event('change')
         assert await page.evaluate('beatPoints(M[0],0)[0].manual')
@@ -59,6 +93,13 @@ async def main():
         assert await page.evaluate('beatRatio(M[0],1)')>1/3
         assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
         assert await page.evaluate('pureM()[0].beatPositions')
+        assert abs(await page.evaluate('aud.currentTime'))<.02
+        await page.evaluate('updateProg(1.05,0,OCC[0])')
+        shown=await page.evaluate('sweepEl.style.left')
+        await page.uncheck('#chkBeats')
+        await page.evaluate('updateProg(1.05,0,OCC[0])')
+        assert await page.evaluate('sweepEl.style.left')==shown
+        await page.check('#chkBeats')
         print('OK    Automatic snap remains inferred; dragging edits only score position')
         await page.evaluate('window.savedBeatData=annotationData();BEATS={};M=[];applySave(savedBeatData);layout()')
         assert await page.evaluate('beatRatio(M[0],1)')>1/3
@@ -87,13 +128,17 @@ async def main():
         await page.evaluate('openBeatPanel(M[0],1,0)')
         await page.screenshot(path='/tmp/sheetplayer-beats-desktop.png')
         assert await page.evaluate('beatPoints(M[2],0).every(p=>p.estimated)')
+        assert await page.evaluate('''()=>{const w=beatWindow(M[2],0),i=OCC.length-1;
+          updateProg(w.end+.1,i,OCC[i]);
+          return Math.abs(parseFloat(sweepEl.style.left)-beatRight(M[2])*100)<.001}''')
         await page.evaluate('M[1].ny=.6;refresh()')
         assert await page.evaluate('Array.from(document.querySelectorAll(\'.beatMark[data-m="1"]\')).every(e=>parseFloat(e.style.top)===20)')
         print('OK    4/4, compound-meter subdivisions, pickup override, undo, final estimate and row end')
         await page.uncheck('#chkBeats');assert await page.locator('.beatMark').count()==0
         await page.check('#chkBeats');assert await page.locator('.beatMark').count()>0
-        await page.evaluate('setPerf(true)')
+        await page.evaluate('setPerf(true);aud.currentTime=0;lastSeek=null')
         await page.locator('.beatMark[data-m="1"]').first.click()
+        assert abs(await page.evaluate('aud.currentTime')-.5)<.02
         assert await page.locator('#beatPanel').is_hidden()
         await page.evaluate("setPerf(false);$('mode').value='time';syncMode()")
         assert await page.locator('.beatMark').count()==0
