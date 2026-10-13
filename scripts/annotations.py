@@ -15,7 +15,7 @@ def validate_directory(folder):
             continue  # Ignore old indexes; the app discovers files through GitHub.
         song = json.loads(path.read_bytes())
         if not isinstance(song, dict) or song.get('app') != 'sheetplayer-song' or song.get('v') != 1:
-            raise ValueError(f'{path.name}: 请上传「导出共享标注」生成的文件')
+            raise ValueError(f'{path.name}: 请上传「导出本曲标注」生成的文件')
         item = song.get('item')
         if not isinstance(item, dict):
             raise ValueError(f'{path.name}: 缺少曲目数据')

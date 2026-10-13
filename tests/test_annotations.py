@@ -37,7 +37,7 @@ class UploadedSongsTests(unittest.TestCase):
 
     def test_old_plain_export_rejected(self):
         (self.folder / '曲目.json').write_text('{"v": 6, "M": []}')
-        with self.assertRaisesRegex(ValueError, '导出共享标注'):
+        with self.assertRaisesRegex(ValueError, '导出本曲标注'):
             a.validate_directory(self.folder)
 
     def test_invalid_ids_rejected(self):

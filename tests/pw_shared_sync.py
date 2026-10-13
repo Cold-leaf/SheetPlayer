@@ -161,6 +161,35 @@ async def main():
         await real.evaluate("$('bSync').onclick()")
         assert '暂时受限' in await real.inner_text('#msg')
         print('OK   重复上传不会静默覆盖，GitHub 读取受限时保留本机并提示')
+        # Unified menu export also works without IndexedDB; new and historic imports remain valid.
+        direct = await browser.new_page()
+        direct.on('pageerror', lambda e: errors.append(str(e)))
+        await direct.goto(URL + '?direct=1')
+        await direct.wait_for_function("typeof annotationData==='function'")
+        await direct.evaluate("pdfName='测试曲目.pdf'")
+        assert await direct.locator('#bExpShared').count() == 0
+        cases = [
+            uploaded,
+            song(3)['data'],
+            {'v': 5, 'M': song(2)['data']['M'], 'E': [{'m': 1, 't': 2}]},
+            [{'page': 1, 'nx': .1, 'ny': .2, 'm': 1, 't': 3}],
+            {'1': 4, '2': 8},
+        ]
+        for value in cases:
+            await direct.set_input_files('#fMap', {'name': '标注.json', 'mimeType': 'application/json',
+                'buffer': json.dumps(value).encode()})
+            await direct.wait_for_function("$('fMap').value === ''")
+            assert '已导入' in await direct.inner_text('#msg')
+        async with direct.expect_download() as event:
+            await direct.evaluate("$('bExp').onclick()")
+        menu_export = json.loads(Path(await (await event.value).path()).read_text())
+        assert menu_export['app'] == 'sheetplayer-song'
+        assert menu_export['item']['data']['modes']['标准']['E'] == [{'m': 1, 't': 4}, {'m': 2, 't': 8}]
+        async with direct.expect_download() as event:
+            await direct.evaluate("$('bExp').onclick()")
+        repeated = json.loads(Path(await (await event.value).path()).read_text())
+        assert repeated['item']['id'] == menu_export['item']['id']
+        print('OK   菜单统一导出；新格式和四种历史格式可恢复；降级模式 ID 稳定')
         assert not errors, errors
         await browser.close()
     server.shutdown()
