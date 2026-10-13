@@ -689,6 +689,17 @@ body.hidebar #reh{display:flex}
 button:disabled{cursor:default}
 .libSheet{display:flex;align-items:center;gap:8px;color:var(--text-dim);font-size:13px}
 .libSheet select{min-width:0;max-width:100%;flex:1;background:var(--bg-soft);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px}
+.beatMark{position:absolute;width:22px;transform:translateX(-50%);z-index:3;touch-action:none;cursor:ew-resize}
+.beatMark>b{position:absolute;left:50%;height:100%;border-left:1px dashed #4584d8;pointer-events:none}
+.beatMark>i{position:absolute;left:50%;top:-11px;font:10px system-ui;color:#3267b0;pointer-events:none}
+.beatMark.manual>b{border-left-style:solid;border-color:#159659}
+.beatMark.active>b{border-color:#f80;border-left-width:3px}
+.beatMark.conflict>b{border-color:#e33}
+#beatPanel{position:fixed;right:12px;top:calc(var(--barH,120px) + 12px);z-index:90;background:#20242b;color:#eee;padding:14px;border:1px solid #677;border-radius:10px;max-width:min(440px,calc(100vw - 24px));box-sizing:border-box;max-height:65vh;overflow:auto}
+#beatPanel button,#beatPanel input,#beatPanel select{font:inherit;color:inherit;background:#29323d;border:1px solid #4a596a;border-radius:5px;padding:5px 7px}
+#beatPanel button{cursor:pointer;min-height:32px}#beatPanel button:hover{background:#364558}
+#beatPanel input{width:95px}#beatPanel .row{margin-top:10px;flex-wrap:wrap}#beatPanel small{display:block;margin-top:10px}
+body.perf .beatMark{touch-action:auto;cursor:pointer}
 </style>
 </head>
 <body>
@@ -767,6 +778,8 @@ button:disabled{cursor:default}
     <option value="mark">标小节</option>
     <option value="time">打时间</option>
   </select></label>
+  <label id="lblBeats"><input type="checkbox" id="chkBeats">拍点</label>
+  <button id="bBeatEdit" style="display:none">编辑拍点</button>
   <!-- 半自动只属于「标小节」：它是标小节的疏密档，不是一个独立的工具。
        只在标小节模式下露面（syncMode 控制），别的模式藏起来 -->
   <label id="lblAutoRow" style="display:none" title="点在空白处（比如行首），自动检测这一行剩下的印刷小节线、一次补齐整行。关掉就是点一下加一个。压在竖线上仍是编辑它"><input type="checkbox" id="chkAutoRow">整行补齐</label>
@@ -1183,6 +1196,7 @@ button:disabled{cursor:default}
  <div style="margin-top:16px"><button id="gRun" class="pri">生成</button><button id="gCancel">取消</button></div>
 </div></div>
 
+<div id="beatPanel" hidden role="region" aria-label="拍点编辑"></div>
 <script>
 const $=id=>document.getElementById(id);
 const CDN='lib/';
@@ -1190,6 +1204,7 @@ const DPR=Math.min(2,window.devicePixelRatio||1);
 pdfjsLib.GlobalWorkerOptions.workerSrc=CDN+'pdf.worker.min.js';
 
 let pdf=null,pdfName='',pageObj=[],pageVP=[],boxes=[],cvs=[];
+let BEATS={};
 let M=[],E=[],OCC=[],RUNS=[],nextM=1,offset=0,zoom=1.3,repeats=0;
 // 速度和拍号变化频率差着量级（BPM 常常全曲一个，拍号可能每小节都变），所以分成两张表。
 // METER 一行 = 一个拍号 + 它管的小节区间（写法同播放顺序）；ranges 留空的那行兜底管"其余全部"。
@@ -1213,19 +1228,22 @@ let msgT=null;
 function msg(s,err){const e=$('msg');e.textContent=s;e.className=err?'err':'';
   clearTimeout(msgT);msgT=setTimeout(()=>{e.textContent=''},err?8000:2600)}   // 报错要留够阅读时间
 function pureM(){return M.map(x=>{const o={page:x.page,nx:x.nx,ny:x.ny,m:x.m,h:hOf(x)};
-  if(x.span>1)o.span=x.span;return o})}          // 剥掉可能挂上的引用再序列化
+  if(x.span>1)o.span=x.span;if(x.beatCount)o.beatCount=x.beatCount;
+  if(x.beatPositions)o.beatPositions=deepClone(x.beatPositions);return o})}          // 剥掉可能挂上的引用再序列化
 function maxM(){return M.reduce((a,x)=>x.m>a?x.m:a,0)}
 function syncNext(){nextM=maxM()+1;$('nextN').value=nextM}           // 永远由 M 推导，不做 ++/--
 
 /* ---------- 音频模式：多套时间点 ---------- */
 const deepClone=x=>JSON.parse(JSON.stringify(x));
-function defaultModeData(){return {E:[],TEMPO:[{m:1,bpm:120}],METER:[{sig:[4,4],ranges:[]}],FORM:[],offset:0}}
+function defaultModeData(){return {E:[],BEATS:{},TEMPO:[{m:1,bpm:120}],METER:[{sig:[4,4],ranges:[]}],FORM:[],offset:0}}
 // 当前全局（E/TEMPO/METER/FORM/offset）写回 MODES[activeMode]（深拷贝，避免和全局互相别名）
-function modeSnapshot(){MODES[activeMode]={E:deepClone(E),TEMPO:deepClone(TEMPO),
+function modeSnapshot(){MODES[activeMode]={E:deepClone(E),BEATS:deepClone(BEATS),TEMPO:deepClone(TEMPO),
   METER:deepClone(METER),FORM:deepClone(FORM),offset}}
 // 切换到某模式：把该模式的数据装进全局。新建/缺失时给默认空数据。
 function loadMode(name){
+  $('beatPanel').hidden=true;
   const d=MODES[name]||defaultModeData();
+  BEATS=deepClone(d.BEATS||{});
   E=deepClone(d.E||[]);TEMPO=deepClone(d.TEMPO||[{m:1,bpm:120}]);
   METER=deepClone(d.METER||[{sig:[4,4],ranges:[]}]);FORM=deepClone(d.FORM||[]);
   offset=d.offset||0;$('off').value=offset;
@@ -1367,7 +1385,7 @@ function hideModal(id){
 // 捕获阶段记住按键来自弹层：Enter 关闭窗口后，冒泡阶段也不能变成一次打点。
 window.addEventListener('keydown',e=>{
   const top=topModal();
-  const pop=['menu','plPop','loopPop','panel'].some(id=>visibleUI($(id)));
+  const pop=['menu','plPop','loopPop','panel','beatPanel'].some(id=>visibleUI($(id)));
   if(top||pop)e.uiLayer=true;
   if(e.key==='Escape'&&(top||pop||!$('libManage').hidden)){
     e.preventDefault();e.stopImmediatePropagation();closeTopLayer();return;
@@ -1575,12 +1593,13 @@ $('bDelMode').onclick=()=>{
 };
 
 /* ---------- 撤销：整体快照，覆盖所有改动路径 ---------- */
-function snap(){hist.push(JSON.stringify({M:pureM(),E,sheets:SHEET_MARKS,activeSheet}));if(hist.length>200)hist.shift()}
+function snap(){hist.push(JSON.stringify({M:pureM(),E,BEATS,activeMode,sheets:SHEET_MARKS,activeSheet}));if(hist.length>200)hist.shift()}
 function undo(){
   if(!hist.length)return msg('没有可撤销的操作',1);
   const s=JSON.parse(hist.pop());
   if(s.activeSheet&&s.activeSheet!==activeSheet)return msg('不能跨谱面撤销',1);
-  M=s.M;E=s.E;if(s.sheets)SHEET_MARKS=s.sheets;
+  if(s.activeMode&&s.activeMode!==activeMode)return msg('不能跨音频模式撤销',1);
+  BEATS=s.BEATS||{};M=s.M;E=s.E;if(s.sheets)SHEET_MARKS=s.sheets;
   syncNext();if(tapM!=null&&!M.some(x=>x.m===tapM))tapM=null;
   layout();save();
 }
@@ -2022,12 +2041,12 @@ function resetPdfDerived(keepAudio=false){
     SPEC=null;specSeq++;specDirty=true;specDrag=null;specMsg('');
   }
   pagesEl.innerHTML='';
-  panel.style.display='none';
+  panel.style.display='none';$('beatPanel').hidden=true;beatSelection=null;
   updLoop();stat();syncReh();
 }
 // 「标注和项目身份」：切到另一个项目才清。换谱子绝不能调它
 function resetAnnotations(){
-  M=[];E=[];SHEET_MARKS={};activeSheet='default';nextM=1;offset=0;repeats=0;
+  M=[];E=[];BEATS={};SHEET_MARKS={};activeSheet='default';nextM=1;offset=0;repeats=0;
   TEMPO=[{m:1,bpm:120}];METER=[{sig:[4,4],ranges:[]}];FORM=[];
   MODES={};activeMode='标准';modeSnapshot();          // 保证始终有个「标准」模式
   loop={a:null,b:null,on:false};arm=null;lastIdx=-2;lastRun=-2;
@@ -2312,6 +2331,7 @@ function setPerf(v){
   if(v&&$('mode').value!=='play'){$('mode').value='play';syncMode()}
   if(v&&arm){arm=null;updLoop()}                 // 待命中的 A/B 落点也一起取消
   if(v)closeLoopPop();
+  if(v){$('beatPanel').hidden=true;beatSelection=null}
   syncModeSel();                                 // 「＋ 新建模式…」跟着演奏/编辑显隐
   syncBarH();                                    // 行数变了，--barH 要跟上（菜单/弹层都钉在它下面）
 }
@@ -2497,6 +2517,8 @@ function refresh(){                      // 只改状态，不重建 DOM
     d.classList.toggle('calc',!meas.has(mk.m)&&comp.has(mk.m));
     d.classList.toggle('tap',mk.m===tapM);
   }
+  $('beatPanel').hidden=true;beatSelection=null;
+  renderBeats();
   dirty=true;lastIdx=-2;drawChips();updLoop();stat();
 }
 function stat(){
@@ -2505,6 +2527,151 @@ function stat(){
   $('statMenu').textContent='已标 '+M.length+' 小节 / 已打 '+E.length+' 时间点'
     +(RUNS.length>1?' / '+RUNS.length+' 段':'');
 }
+
+/* ---------- 播放模式的逐拍拍点：位置属于谱面，时间属于模式/演奏遍次 ---------- */
+function beatsOn(){return $('mode').value==='play'&&$('chkBeats').checked}
+function beatCount(mk){
+  const [n,d]=meterAt(mk.m);
+  return Math.max(1,Math.min(32,Math.round(mk.beatCount||((d===8&&n>=6&&n%3===0)?n/3:n))));
+}
+function beatRight(mk){
+  const nk=M.filter(x=>x.m>mk.m).sort((a,b)=>a.m-b.m)[0];
+  if(nk&&nk.page===mk.page&&Math.abs(nk.ny-mk.ny)<.03&&nk.nx>mk.nx)return nk.nx;
+  const edge=rowRightEdge(mk);
+  return edge!=null&&edge>mk.nx+.005?edge:Math.min(1,mk.nx+lineSpan(mk));
+}
+function beatVisits(m){return OCC.map((o,i)=>({o,i})).filter(v=>v.o.m===m)}
+function beatWindow(mk,visit){
+  const v=beatVisits(mk.m)[visit];if(!v)return null;
+  const next=OCC[v.i+1];
+  const known=next&&next.t>v.o.t;
+  return {start:v.o.t,end:known?next.t:v.o.t+measDur(mk.m),estimated:!known};
+}
+function beatKey(mk,visit,b){return [mk.m,visit,meterAt(mk.m).join('/'),beatCount(mk),b].join(':')}
+function beatPoints(mk,visit){
+  const w=beatWindow(mk,visit);if(!w)return [];
+  const n=beatCount(mk),points=[];
+  for(let b=1;b<n;b++){
+    const key=beatKey(mk,visit,b),saved=BEATS[key];
+    const edit=saved&&(saved.src==='tap'||(saved.start===w.start&&saved.end===w.end))?saved:null;
+    const t=edit&&Number.isFinite(edit.t)?edit.t:w.start+(w.end-w.start)*b/n;
+    points.push({b,key,t,manual:edit?.src==='tap',adjusted:!!edit,estimated:w.estimated});
+  }
+  points.forEach((p,i)=>p.conflict=p.t<=w.start||p.t>=w.end||
+    (i>0&&p.t<=points[i-1].t)||(i+1<points.length&&p.t>=points[i+1].t));
+  return points;
+}
+function beatRatio(mk,b){return mk.beatPositions?.[beatCount(mk)+':'+b]??b/beatCount(mk)}
+function beatVisitNow(mk){
+  const vs=beatVisits(mk.m);let best=0,dist=Infinity;
+  vs.forEach((v,k)=>{const w=beatWindow(mk,k),t=aud.currentTime;
+    const d=t<w.start?w.start-t:t>=w.end?t-w.end:0;if(d<dist){dist=d;best=k}});
+  return best;
+}
+function renderBeats(){
+  pagesEl.querySelectorAll('.beatMark').forEach(e=>e.remove());
+  if(!beatsOn())return;
+  for(const mk of M){
+    if(spanOf(mk)>1||!boxes[mk.page])continue;
+    const n=beatCount(mk),right=beatRight(mk),pts=beatPoints(mk,beatVisitNow(mk));
+    if(right<=mk.nx)continue;
+    for(let b=1;b<n;b++){
+      const el=document.createElement('div');el.className='beatMark';
+      el.dataset.m=mk.m;el.dataset.beat=b;
+      const point=pts.find(p=>p.b===b);
+      el.classList.toggle('manual',!!point?.manual);el.classList.toggle('conflict',!!point?.conflict);
+      el.style.cssText='left:'+((mk.nx+(right-mk.nx)*beatRatio(mk,b))*100)+'%;top:'+(mk.ny*100)+'%;height:'+(hOf(mk)*100)+'%';
+      el.tabIndex=0;el.setAttribute('role','button');
+      el.setAttribute('aria-label','小节 '+mk.m+' 第 '+(b+1)+' 拍');
+      el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();el.click()}};
+      el.innerHTML='<b></b><i>'+(b+1)+'</i>';el.title='第 '+(b+1)+' 拍：点击编辑时间，拖动调整谱面位置';
+      el.onclick=e=>{e.stopPropagation();if(el.dataset.dragged){delete el.dataset.dragged;return}
+        if(document.body.classList.contains('perf')){const p=beatPoints(mk,beatVisitNow(mk)).find(p=>p.b===b);if(p&&!p.conflict)aud.currentTime=p.t;return}
+        openBeatPanel(mk,b)};
+      el.onpointerdown=e=>{
+        e.stopPropagation();if(document.body.classList.contains('perf')||e.button!==0)return;
+        const start=e.clientX,old=beatRatio(mk,b),rect=boxes[mk.page].getBoundingClientRect();let moved=false;
+        el.setPointerCapture(e.pointerId);
+        el.onpointermove=ev=>{
+          if(!moved&&Math.abs(ev.clientX-start)<4)return;
+          if(!moved){snap();moved=true}
+          const lower=b===1?0:beatRatio(mk,b-1),upper=b===n-1?1:beatRatio(mk,b+1);
+          const r=Math.max(lower+.005,Math.min(upper-.005,old+(ev.clientX-start)/rect.width/(right-mk.nx)));
+          (mk.beatPositions??={})[n+':'+b]=r;
+          el.style.left=((mk.nx+(right-mk.nx)*r)*100)+'%';dirty=true;
+        };
+        const finish=()=>{el.onpointermove=null;el.onpointerup=null;el.onpointercancel=null;
+          if(moved){el.dataset.dragged='1';save();dirty=true}};
+        el.onpointerup=finish;el.onpointercancel=finish;
+      };
+      boxes[mk.page].appendChild(el);
+    }
+  }
+  updateBeatStyles();
+}
+function updateBeatStyles(){
+  if(!beatsOn())return;
+  const current=OCC[occIndex(aud.currentTime)];
+  const mk=current&&mkByM.get(current.m);
+  const pts=mk?beatPoints(mk,beatVisitNow(mk)):[];
+  let active=0;for(const p of pts)if(!p.conflict&&p.t<=aud.currentTime)active=p.b;
+  for(const el of pagesEl.querySelectorAll('.beatMark.active'))
+    if(+el.dataset.m!==current?.m||+el.dataset.beat!==active)el.classList.remove('active');
+  if(!mk)return;
+  for(const el of pagesEl.querySelectorAll('.beatMark[data-m="'+mk.m+'"]')){
+    const p=pts.find(p=>p.b===+el.dataset.beat);
+    el.classList.toggle('manual',!!p?.manual);el.classList.toggle('conflict',!!p?.conflict);
+    el.classList.toggle('active',active===+el.dataset.beat);
+  }
+}
+let beatSelection=null;
+function openBeatPanel(mk,b,visit=beatVisitNow(mk)){
+  beatSelection={mk,b,visit};const el=$('beatPanel'),vs=beatVisits(mk.m),pts=beatPoints(mk,visit),p=pts.find(p=>p.b===b);
+  el.hidden=false;
+  el.innerHTML='<strong>小节 '+mk.m+(beatCount(mk)>1?' · 第 '+(b+1)+' 拍':' · 单拍小节')+'</strong> <button id="beatClose">关闭</button>'+
+    '<div class="row"><label>小节 <select id="beatMeasure">'+M.filter(x=>spanOf(x)===1).map(x=>'<option value="'+x.m+'" '+(x===mk?'selected':'')+'>'+x.m+'</option>').join('')+'</select></label></div>'+
+    '<div class="row"><label>本小节拍数 <input id="beatCountInput" type="number" min="1" max="32" value="'+beatCount(mk)+'"></label>'+
+    '<label>遍次 <select id="beatVisit">'+vs.map((_,k)=>'<option value="'+k+'" '+(k===visit?'selected':'')+'>'+(k+1)+'</option>').join('')+'</select></label></div>'+
+    '<div class="row"><label>时间（秒） <input id="beatTime" type="number" min="0" step="0.001" '+(!p?'disabled':'')+' value="'+(p?p.t.toFixed(3):'')+'"></label>'+
+    '<button id="beatNow">记当前时间</button><button id="beatSeek">跳转</button></div>'+
+    '<div class="row"><button id="beatSnap">吸附起音</button><button id="beatResetTime">恢复推算时间</button><button id="beatResetPos">恢复等分位置</button></div>'+
+    '<small>'+(p?(p.conflict?'时间冲突：超出小节或与邻拍次序不符，请修正。':(p.manual?'手动校正':p.adjusted?'自动吸附（推算）':'推算时间')+(p.estimated?'；末小节结束时间按速度估算。':'')):beatCount(mk)===1?'单拍小节没有内部拍线，可调整拍数。':'请先为小节建立时间点。')+' 拖线仅调整谱面位置。</small>';
+  $('beatClose').onclick=()=>{el.hidden=true;beatSelection=null};
+  $('beatMeasure').onchange=()=>{const next=mkByM.get(+$('beatMeasure').value);if(next)openBeatPanel(next,1)};
+  $('beatVisit').onchange=()=>openBeatPanel(mk,b,+$('beatVisit').value);
+  $('beatCountInput').onchange=()=>{
+    const n=+$('beatCountInput').value;
+    if(!Number.isInteger(n)||n<1||n>32)return msg('拍数须为 1–32 的整数',1);
+    if(mk.beatCount===n)return;
+    snap();mk.beatCount=n;refresh();save();openBeatPanel(mk,Math.max(1,Math.min(b,n-1)),visit);
+  };
+  const setTime=(t,src)=>{
+    if(!p||!Number.isFinite(t)||t<0)return msg('需要有效的小节时间和非负秒数',1);
+    const w=beatWindow(mk,visit),left=pts.find(q=>q.b===b-1)?.t??w.start,right=pts.find(q=>q.b===b+1)?.t??w.end;
+    if(t<=left||t>=right)return msg('拍点必须位于前后拍之间，不能跨越小节',1);
+    if(BEATS[p.key]?.t===t&&BEATS[p.key]?.src===src&&
+      (src==='tap'||(BEATS[p.key].start===w.start&&BEATS[p.key].end===w.end)))return;
+    snap();BEATS[p.key]={t,src,start:w.start,end:w.end};refresh();save();openBeatPanel(mk,b,visit);
+  };
+  $('beatTime').onchange=()=>setTime($('beatTime').value===''?NaN:+$('beatTime').value,'tap');
+  $('beatNow').onclick=()=>setTime(stamp(),'tap');
+  $('beatSeek').onclick=()=>{if(p&&!p.conflict)aud.currentTime=p.t};
+  $('beatSnap').onclick=()=>{
+    if(!p)return;const t=bestOnset(p.t,Math.min(snapWinFor(mk.m),(beatWindow(mk,visit).end-beatWindow(mk,visit).start)/beatCount(mk)*.4));
+    if(t==null)return msg('附近没有可吸附的起音',1);setTime(t,p.manual?'tap':'gen');
+  };
+  $('beatResetTime').onclick=()=>{if(!p)return;snap();delete BEATS[p.key];refresh();save();openBeatPanel(mk,b,visit)};
+  $('beatResetPos').onclick=()=>{snap();delete mk.beatPositions?.[beatCount(mk)+':'+b];refresh();save();openBeatPanel(mk,b,visit)};
+}
+$('bBeatEdit').onclick=()=>{const mk=mkByM.get(OCC[occIndex(aud.currentTime)]?.m)||M.find(x=>spanOf(x)===1);
+  if(!mk||spanOf(mk)>1)return msg('请先标记一个单独的小节',1);openBeatPanel(mk,1)};
+$('chkBeats').onchange=()=>{syncMode();refresh();if(!$('chkBeats').checked){$('beatPanel').hidden=true;beatSelection=null}};
+// 单拍小节也能从小节线打开面板，重新设置拍数。
+pagesEl.addEventListener('dblclick',e=>{
+  if(!beatsOn()||document.body.classList.contains('perf'))return;
+  const el=e.target.closest('.mk');const mk=el&&mkByM.get(+el.dataset.m);
+  if(mk&&spanOf(mk)===1){e.stopPropagation();openBeatPanel(mk,1)};
+});
 
 /* ---------- 命中测试（全部用 CSS 像素，缩放无关） ---------- */
 function geo(e){
@@ -3833,7 +4000,16 @@ function updateProg(t,i,o){
   // 才唱的 —— 往后找会跳到 19-67 那一遍里去，t1 远在天边。两种都会让扫描线冻在行的左端。
   // 判据用「下一根的时间得和当前这一遍同段」，不成立就退回「这一小节该走多久」。
   if(t0!=null&&(t1==null||t1<=t0||runAt(t1)!==o.run))t1=t0+estMeasDur(o,i,mk);
-  const p=(t0!=null&&t1!=null&&t1>t0)?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;
+  let p=(t0!=null&&t1!=null&&t1>t0)?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;
+  if(beatsOn()&&mk.m===o.m&&spanOf(mk)===1){
+    const visit=beatVisits(mk.m).findIndex(v=>v.i===i),w=beatWindow(mk,visit),pts=beatPoints(mk,visit);
+    if(w&&pts.every(p=>!p.conflict)){
+      const nodes=[{t:w.start,r:0},...pts.map(p=>({t:p.t,r:beatRatio(mk,p.b)})),{t:w.end,r:1}];
+      for(let k=1;k<nodes.length;k++)if(t<=nodes[k].t){
+        const a=nodes[k-1],b=nodes[k];p=a.r+(b.r-a.r)*Math.max(0,Math.min(1,(t-a.t)/(b.t-a.t)));break;
+      }
+    }
+  }
   const top=mk.ny*100,hh=hOf(mk)*100;
   bandEl.style.cssText='display:block;left:'+(x0*100)+'%;width:'+((x1-x0)*100)+
     '%;top:'+top+'%;height:'+hh+'%';
@@ -3855,6 +4031,7 @@ function tick(){
     const d=isFinite(aud.duration)?aud.duration:0;
     $('rehFill').style.width=(d>0?Math.min(100,t/d*100):0)+'%';
   }
+  updateBeatStyles();
   syncSeek();                                 // 工具栏那行的时间（进度条在胶囊上，见上面）
   const i=occIndex(t),o=i<0?null:OCC[i],m=o?o.m:null;
   updateProg(t,i,o);                      // 每帧都要动，不能等小节切换
@@ -4565,7 +4742,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v39';
+const BUILD='v40';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4633,14 +4810,18 @@ async function importAudioFile(f,projId){
 }
 function syncMode(){
   const m=$('mode').value;
+  $('lblBeats').style.display=m==='play'?'':'none';
+  $('bBeatEdit').style.display=beatsOn()?'':'none';
+  if(!beatsOn()){$('beatPanel').hidden=true;beatSelection=null}
+  renderBeats();
   // 标小节模式下竖线可以直接拖着改（见 canEditMk）；touch-action 只在这一档禁掉。
   // 「整行补齐」不再参与：那两档都能编辑竖线，是否禁滚也就跟着一样
   pagesEl.classList.toggle('dragmk',m==='mark');
   // 实测/推算的配色只在打时间模式拉开，播放时太花（见 .mk.calc 那条注释）
   pagesEl.classList.toggle('timemode',m==='time');
-  $('bUndo').style.display=(m!=='play')?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
+  $('bUndo').style.display=(m!=='play'||beatsOn())?'':'none';   // 编辑类工具才有撤销；自动生成/频谱是打时间流程的
   $('bGen').style.display=(m==='time')?'':'none';
-  $('bSpec').style.display=(m==='time')?'':'none';
+  $('bSpec').style.display=(m==='time'||beatsOn())?'':'none';
   $('lblAutoRow').style.display=(m==='mark')?'':'none';   // 整行补齐只属于标小节
 }
 $('mode').onchange=()=>{
@@ -4673,7 +4854,7 @@ $('off').onchange=()=>{offset=+$('off').value||0;save()};
 $('chkNum').onchange=()=>pagesEl.classList.toggle('noNum',!$('chkNum').checked);
 $('chkProg').onchange=()=>{if(!$('chkProg').checked)hideProg();dirty=true};
 $('bUndo').onclick=undo;
-$('bClr').onclick=()=>{if(!E.length)return;snap();E=[];refresh();save();msg('时间点已清空（可撤销）')};
+$('bClr').onclick=()=>{if(!E.length)return;snap();E=[];BEATS={};refresh();save();msg('时间点已清空（可撤销）')};
 $('bShift').onclick=()=>{
   const d=(+$('shift').value||0)/1000;
   if(!d||!E.length)return;
@@ -4786,12 +4967,12 @@ $('fMap').onchange=async e=>{
       if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
       loadMode(activeMode);loadStruct(MODES[activeMode]);
     }else if(j.M&&j.E){                         // v5 及更早：单套，包进「标准」
-      M=j.M;E=j.E;if(j.offset!=null){offset=j.offset;$('off').value=offset}
+      BEATS={};M=j.M;E=j.E;if(j.offset!=null){offset=j.offset;$('off').value=offset}
       loadStruct(j);if(j.FORM)FORM=j.FORM;
       modeSnapshot();
     }
-    else if(Array.isArray(j)){M=j;E=j.filter(x=>x.t!=null).map(x=>({m:x.m,t:x.t}));modeSnapshot()}   // 老格式：点上直接带 t
-    else{E=Object.keys(j).map(k=>({m:+k,t:j[k]}));modeSnapshot()}                                     // 老格式：{小节:时间}
+    else if(Array.isArray(j)){BEATS={};M=j;E=j.filter(x=>x.t!=null).map(x=>({m:x.m,t:x.t}));modeSnapshot()}   // 老格式：点上直接带 t
+    else{BEATS={};E=Object.keys(j).map(k=>({m:+k,t:j[k]}));modeSnapshot()}                                     // 老格式：{小节:时间}
     M=M.filter(x=>x&&x.page&&x.m!=null);
     E=E.filter(x=>x&&x.m!=null&&isFinite(x.t));
     modeSnapshot();
@@ -5378,6 +5559,7 @@ function closeTopLayer(){
     else hideModal(top.id);
     return true;
   }
+  if(!$('beatPanel').hidden){$('beatPanel').hidden=true;beatSelection=null;return true}
   for(const id of ['menu','plPop','loopPop','panel']){
     if(visibleUI($(id))){$(id).style.display='none';return true}
   }
