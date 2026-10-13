@@ -79,16 +79,24 @@ async def main():
         await pg.click("#bAlign"); await asyncio.sleep(0.5)
         m=await pg.inner_text("#msg")
         after=await pg.evaluate("E.map(e=>({t:e.t,src:e.src}))")
-        nsnap=sum(1 for e in after if e["src"]=="snap")
-        shifts=[abs(a["t"]-bt) for a,bt in zip(after,before) if a["src"]=="snap"]
+        nsnap=sum(1 for e,bt in zip(after,before) if e["t"]!=bt)
+        shifts=[abs(a["t"]-bt) for a,bt in zip(after,before) if a["t"]!=bt]
         print(ok(nsnap>0), f"全部对齐: {m}")
         print(ok(all(s<=0.121 for s in shifts)), f"移动量都在窗口内: 最大 {max(shifts)*1000:.0f}ms, 中位 {statistics.median(shifts)*1000:.0f}ms")
         # 对齐后每个点确实落在某个音头上
-        onerr=await pg.evaluate("""()=>{const O=[...SPEC.onsets];
-          return E.filter(e=>e.src==='snap').map(e=>Math.min(...O.map(o=>Math.abs(o-e.t))))}""")
+        onerr=await pg.evaluate("""(before)=>{const O=[...SPEC.onsets];
+          return E.filter((e,i)=>e.t!==before[i]).map(e=>Math.min(...O.map(o=>Math.abs(o-e.t))))}""",before)
         print(ok(max(onerr)<1e-6), f"对齐后每个点都精确落在音头上（最大偏差 {max(onerr)*1000:.4f}ms）")
+        print(ok(all(e["src"]=="gen" for e in after)), "批量对齐保留所有推算点身份")
+        print(ok(await pg.evaluate("E.filter(e=>e.src!=='gen').length")==0), "批量对齐不增加实测锚点")
         await pg.evaluate("undo()"); await asyncio.sleep(0.3)
-        print(ok(await pg.evaluate("E.filter(e=>e.src==='snap').length")==0), "对齐可撤销")
+        print(ok(await pg.evaluate("E.map(e=>e.t)")==before), "对齐可撤销，恢复原时间")
+        await pg.click("#bAlign"); await asyncio.sleep(0.2)
+        await pg.click("#bAlign"); await asyncio.sleep(0.2)
+        print(ok("已对齐" in await pg.inner_text("#msg")), "推算点允许重复对齐")
+        await pg.evaluate("$('bGen').click()"); await asyncio.sleep(0.2)
+        await pg.click("#gRun"); await asyncio.sleep(0.3)
+        print(ok(await pg.evaluate("E.every(e=>e.src==='gen') && E.length===30")), "对齐后重新生成仍全部为推算点")
 
         # 没有可对齐的点
         await pg.evaluate("E=[{m:1,t:1,src:'tap'}];refresh()")

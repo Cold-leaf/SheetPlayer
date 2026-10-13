@@ -4144,7 +4144,7 @@ function alignToOnsets(){
   for(const ev of cand){
     const o=bestOnset(ev.t,snapWinFor(ev.m));
     if(o==null)continue;
-    sh.push(o-ev.t);ev.t=o;ev.src='snap';moved++;
+    sh.push(o-ev.t);ev.t=o;moved++; // 自动对齐只修正时间，仍是推算点，不升级为实测锚点
   }
   if(!moved){hist.pop();return msg('窗口内没找到可吸附的起音，试试放大窗口',1)}
   sh.sort((a,b)=>a-b);
@@ -4565,7 +4565,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v38';
+const BUILD='v39';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
