@@ -9,6 +9,7 @@
 <link rel="icon" href="icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="icon-180.png">
 <script src="lib/pdf.min.js"></script>
+<script src="lib/fflate.min.js"></script>
 <style>
 :root{
   --bg:#0e1116;--bg-soft:#151a21;--surface:#1d232c;--surface-2:#252d37;
@@ -1005,7 +1006,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   </div>
   <div id="libManage" hidden>
    <div class="libManageGroup"><span class="libSectionLabel">云端曲库</span><button id="libDav" title="从 ownCloud（WebDAV）浏览并下载谱子/音频，只读"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10Z"/></svg> ownCloud</button><button id="bSync" title="获取共享曲库的逐曲更新；本机修改会保留，同曲目双方修改时提示冲突">从 GitHub 同步</button></div>
-   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libConflictBackup">导出冲突备份</button><button id="libExpAll" title="把库里所有曲目的标注打包为备份。共享请用曲目卡片上的「导出本曲标注」">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="从另一个设备导出的批量标注 JSON 合并进来。默认按时间戳保留较新的；本机较新时会问你要不要改成用对方那份覆盖">导入全部标注<input type="file" id="libImpAll" hidden accept=".json"></label></div>
+   <div class="libManageGroup"><span class="libSectionLabel">标注备份</span><button id="libConflictBackup">导出冲突备份</button><button id="libExpAll" title="导出 annotations.zip，每首曲目一个 JSON，解压后可上传仓库">导出全部标注</button><label class="libBtn" role="button" tabindex="0" title="导入 annotations ZIP、整仓库 ZIP 或旧版 JSON，预览后合并">导入全部标注<input type="file" id="libImpAll" hidden accept=".zip,.json,application/zip,application/json"></label></div>
    <div class="libManageGroup"><span class="libSectionLabel">本机存储</span><button id="libGcHist" title="把换谱时留下的历史谱子文件删掉（只删文件，不删项目）。删完就换不回更早的谱子了">清理历史谱子</button><span id="libInfo"></span></div>
   </div>
   <div id="libTools">
@@ -4841,7 +4842,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v44';
+const BUILD='v45';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -6430,40 +6431,115 @@ async function delTrack(id){
 /* ---------- 批量导出 / 导入（跨设备同步标注，不搬文件） ----------
    条目形状：{id, name, aka, pdf, pdfHistory, data}。name / data 两个字段名是老格式的约定，
    动不得（tests/pw_autobar.py 和 eval_autobar*.py 直接读仓库里那份 annotations.json）。 */
-$('libExpAll').onclick=async()=>{
-  await flushSave();
-  const ps=await idbAll(idb,'projects');
-  const items=[];
-  for(const p of ps){
-    // 不跳过「等待导入谱子」的项目：跳过的话它们的标注永远没有备份
-    const a=await idbGet(idb,'marks',p.id);
-    if(a)items.push({id:p.sharedId||p.id,name:p.name,aka:p.aka||[],sheets:p.sheets||[],pdf:p.pdf?p.pdf.hash:null,
-      pdfHistory:(p.pdfHistory||[]).map(h=>({hash:h.hash,name:h.name||''})),data:a.data});
+async function annotationArchive(){
+  await flushSave();const files={},used=new Set();let count=0;
+  for(const p of await idbAll(idb,'projects')){
+    const rec=await idbGet(idb,'marks',p.id);if(!rec)continue;
+    let name=sharedFilename(p).replace(/[\\/]/g,'_');
+    const stem=name.replace(/\.json$/i,'');let n=2;
+    while(used.has(name.toLowerCase()))name=stem+'--'+(n++)+'.json';
+    used.add(name.toLowerCase());
+    files['annotations/'+name]=fflate.strToU8(JSON.stringify({app:'sheetplayer-song',v:1,
+      baseRevision:p.sharedBase?.revision||null,item:songItem(p,rec.data)},null,2));count++;
   }
-  if(!items.length)return msg('没有可导出的标注',1);
-  const b=new Blob([JSON.stringify({app:'sheetplayer',v:3,ts:Date.now(),items},null,1)],{type:'application/json'});
-  const a=document.createElement('a');
-  const d=new Date();
-  a.href=URL.createObjectURL(b);
-  a.download='sheetplayer-标注-'+(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+
-    String(d.getDate()).padStart(2,'0'))+'.json';
-  a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  msg('已导出 '+items.length+' 个项目的标注'+(items.length?'（整库备份；共享请用导出本曲标注）':''));
+  if(!count)throw new Error('没有可导出的标注');
+  return {bytes:await new Promise((resolve,reject)=>fflate.zip(files,{level:6},(err,data)=>err?reject(err):resolve(data))),count};
+}
+function validateAnnotationItems(items){
+  if(!items.length)throw new Error('没有找到标注文件');
+  const ids=new Set();
+  for(const it of items){
+    if(!it||typeof it.name!=='string'||!it.name.trim()||!it.data||typeof it.data!=='object'||Array.isArray(it.data))throw new Error('曲目名称或标注数据格式不正确');
+    if(it.id){if(!validSharedId(it.id)||ids.has(it.id))throw new Error('曲目 ID 无效或重复：'+it.name);ids.add(it.id)}
+    if(it.aka!=null&&(!Array.isArray(it.aka)||it.aka.some(x=>typeof x!=='string')))throw new Error('曲目别名格式不正确');
+    if(it.sheets!=null&&(!Array.isArray(it.sheets)||it.sheets.some(sh=>!sh||typeof sh.id!=='string'||!sh.id)))throw new Error('谱面目录格式不正确');
+    if(it.pdfHistory!=null&&(!Array.isArray(it.pdfHistory)||it.pdfHistory.some(h=>typeof h!=='string'&&(!h||typeof h.hash!=='string'))))throw new Error('谱面历史格式不正确');
+    const d=it.data;
+    if(d.sheets!=null&&(typeof d.sheets!=='object'||Array.isArray(d.sheets)||Object.values(d.sheets).some(sh=>!sh||!Array.isArray(sh.M))))throw new Error('多谱面位置格式不正确');
+    const marks=[...(d.M||[]),...Object.values(d.sheets||{}).flatMap(sh=>sh.M)];
+    if(marks.some(m=>!m||!Number.isFinite(m.m)||!Number.isInteger(m.page)||m.page<1||!Number.isFinite(m.nx)||!Number.isFinite(m.ny)))throw new Error('小节坐标无效');
+    if(d.M!=null&&!Array.isArray(d.M))throw new Error('小节位置格式不正确');
+    if(d.modes!=null&&(typeof d.modes!=='object'||Array.isArray(d.modes)))throw new Error('时间模式格式不正确');
+    for(const mode of Object.values(d.modes||{})){
+      if(!mode||!Array.isArray(mode.E)||mode.E.some(e=>!e||!Number.isFinite(e.m)||!Number.isFinite(e.t)))throw new Error('时间点格式不正确');
+      if(mode.BEATS!=null&&(typeof mode.BEATS!=='object'||Array.isArray(mode.BEATS)||Object.values(mode.BEATS).some(p=>!p||!Number.isFinite(p.t))))throw new Error('拍点格式不正确');
+    }
+    if(d.E!=null&&!Array.isArray(d.E))throw new Error('时间点格式不正确');
+  }
+  return items;
+}
+async function readAnnotationPackage(file){
+  if(file.size>100*1024*1024)throw new Error('标注包超过 100MB');
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  const items=[];
+  const read=(raw,zip=false)=>{
+    const j=JSON.parse(raw);
+    if(j?.app==='sheetplayer-song'&&j.v===1&&validSharedId(j.item?.id))items.push(j.item);
+    else if(!zip&&j?.app==='sheetplayer'&&Array.isArray(j.items))items.push(...j.items);
+    else throw new Error('不是有效的 SheetPlayer 标注文件');
+  };
+  if(bytes[0]===80&&bytes[1]===75){
+    let total=0,count=0;
+    const files=await new Promise((resolve,reject)=>{
+      try{fflate.unzip(bytes,{filter:f=>{
+        const path=f.name;
+        if(!/(^|\/)annotations\/[^/]+\.json$/i.test(path)||/\/index\.json$/i.test(path))return false;
+        if(path.split('/').some(x=>x==='..')||path.includes('\\')||path.startsWith('/'))throw new Error('压缩包路径不正确');
+        total+=f.originalSize;count++;
+        if(count>2000||total>50*1024*1024)throw new Error('标注文件数量或解压大小超过限制');
+        return true;
+      }},(err,data)=>err?reject(err):resolve(data))}catch(err){reject(err)}
+    });
+    for(const [name,data] of Object.entries(files)){
+      try{read(fflate.strFromU8(data),true)}catch(err){throw new Error(name+'：'+err.message)}
+    }
+  }else read(fflate.strFromU8(bytes));
+  return validateAnnotationItems(items);
+}
+function matchAnnotationProject(projs,it){
+  const id=it.id||it.pid,pH=it.pdf||it.pdfHash;
+  const legacy=id?projs.filter(p=>!p.sharedId):projs;
+  return (id&&projs.find(p=>(p.sharedId||p.id)===id||p.id===id))||
+    (it.name&&findByNameIn(legacy,it.name))||(pH&&legacy.find(p=>projectPdfRefs(p).has(pH)))||null;
+}
+async function previewAnnotationPackage(items){
+  await flushSave();const projs=await idbAll(idb,'projects'),rows=[],targets=new Set();
+  for(const item of items){
+    const p=matchAnnotationProject(projs,item);
+    if(p&&targets.has(p.id))throw new Error('多份标注指向同一曲目：'+item.name);
+    if(p)targets.add(p.id);
+    const local=p&&await idbGet(idb,'marks',p.id);
+    let state='新增';
+    if(local){
+      if(songSignature(songItem(p,local.data))===songSignature(item))state='相同';
+      else state=(+item.data.ts||0)>(+local.data.ts||0)?'更新':'冲突';
+    }
+    rows.push({item,state});
+  }
+  return rows;
+}
+$('libExpAll').onclick=async()=>{
+  try{
+    const {bytes,count}=await annotationArchive(),url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'}));
+    const a=document.createElement('a');a.href=url;a.download='annotations.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    msg('已导出 '+count+' 首标注，解压后可上传 annotations 文件夹');
+  }catch(err){msg('导出失败：'+err.message,1)}
 };
 $('libImpAll').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
+  const file=e.target.files[0];if(!file)return;
   try{
-    let j=JSON.parse(await f.text());
-    if(j?.app==='sheetplayer-song'&&j.v===1&&j.item)j={app:'sheetplayer',items:[j.item]};
-    if(!(j&&j.app==='sheetplayer'&&Array.isArray(j.items)))throw new Error('不是 SheetPlayer 批量标注文件');
-    // 默认按时间戳保留较新的；有「本机较新」的时候才问一句要不要反过来覆盖
-    const how=await askSyncConflict(j.items);
-    if(how===null)return;
-    const r=await importAnns(j.items,{force:how==='force'});
-    drawLib();
-    msg('已导入 '+r.imported+' 个项目'+(r.skipped?'，跳过 '+r.skipped+' 个（本机较新）':''));
-  }catch(err){msg('导入失败：'+err.message,1)}
-  finally{e.target.value=''}
+    const rows=await previewAnnotationPackage(await readAnnotationPackage(file));
+    const counts=['新增','更新','相同','冲突'].map(s=>s+' '+rows.filter(r=>r.state===s).length).join(' · ');
+    const conflicts=rows.some(r=>r.state==='冲突');
+    const how=await askPick('导入预览：'+counts+'\n'+rows.map(r=>r.state+' · '+r.item.name).join('\n')+
+      '\n相同曲目跳过，包中缺少的曲目保留。本机较新或时间相同但内容不同的标注列为冲突。',[
+      {v:'keep',label:conflicts?'导入并保留本机冲突':'确认导入',primary:true},
+      ...(conflicts?[{v:'force',label:'导入并覆盖冲突',danger:true}]:[])]);
+    if(how==null)return;
+    const selected=rows.filter(r=>r.state!=='相同'&&(r.state!=='冲突'||how==='force')).map(r=>r.item);
+    const r=await importAnns(selected,{force:how==='force'});drawLib();
+    msg('已导入 '+r.imported+' 首，保留／跳过 '+(rows.length-r.imported)+' 首');
+  }catch(err){msg('导入失败：'+err.message,1)}finally{e.target.value=''}
 };
 // 历史谱子字段兼容：老版本/手写文件里可能直接是哈希字符串
 const normHist=h=>(h||[]).map(x=>typeof x==='string'?{hash:x,name:''}:x).filter(x=>x&&x.hash);
@@ -6483,12 +6559,10 @@ async function importAnns(items,{force=false,dry=false}={}){
     const id=it.id||it.pid||'';
     // v2 条目里当前谱子叫 pdf，v1 条目里叫 pdfHash——两个都要认
     const pH=it.pdf||it.pdfHash||'';
-    let p=(id&&projs.find(x=>x.id===id))||
-          (it.name&&findByNameIn(projs,it.name))||
-          (pH&&projs.find(x=>projectPdfRefs(x).has(pH)))||null;
+    let p=matchAnnotationProject(projs,it);
     if(!p){
       const now=Date.now();
-      p={id:validSharedId(id)?id:newId(),name:(it.name||'').trim()||String(pH).slice(0,8),
+      p={id:validSharedId(id)?id:newId(),...(validSharedId(id)?{sharedId:id}:{}),name:(it.name||'').trim()||String(pH).slice(0,8),
          aka:[],pdf:null,pdfHistory:[],audios:[],lastAudio:null,
          createdAt:now,updatedAt:+it.data.ts||now};
     }
