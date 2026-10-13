@@ -99,7 +99,7 @@ async def main():
         print(ok(await pg.evaluate("E.every(e=>e.src==='gen') && E.length===30")), "对齐后重新生成仍全部为推算点")
 
         # 没有可对齐的点
-        await pg.evaluate("E=[{m:1,t:1,src:'tap'}];refresh()")
+        await pg.evaluate("E=[{m:1,t:1,src:'tap'}];M.forEach(m=>m.beatCount=1);refresh()")
         await pg.click("#bAlign"); await asyncio.sleep(0.3)
         print(ok("没有推算出来的点" in await pg.inner_text("#msg")), f'无可对齐时提示: "{await pg.inner_text("#msg")}"')
 

@@ -4305,13 +4305,14 @@ function pickOnsets(flux,frames,hop,sr,mono){
   return {t:Float32Array.from(ts),s:Float32Array.from(ss)};
 }
 // 窗口内综合"强度 × 离预测位置的近度"挑一个，纯挑最近的容易吸到旁边的弱音头
-function bestOnset(t,win){
+function bestOnset(t,win,min=-Infinity,max=Infinity){
   const O=SPEC&&SPEC.onsets;
   if(!O||!O.length||!(win>0))return null;
   let lo=0,hi=O.length-1,i=O.length;
   while(lo<=hi){const m=(lo+hi)>>1;if(O[m]>=t-win){i=m;hi=m-1}else lo=m+1}
   let best=null,bs=-1;
   for(let k=i;k<O.length&&O[k]<=t+win;k++){
+    if(O[k]<=min||O[k]>=max)continue;
     const d=(O[k]-t)/(win*0.6),sc=SPEC.onsetStr[k]*Math.exp(-0.5*d*d);
     if(sc>bs){bs=sc;best=O[k]}
   }
@@ -4326,24 +4327,43 @@ function maybeSnap(t,m){
   const o=bestOnset(t,snapWinFor(m));
   return o==null?t:o;
 }
-// 第 3 层：把推算出来的点整体吸到最近的音头上
+// 批量对齐包含隐藏的拍点；先调整小节边界，再按新边界推算各遍拍点。
 function alignToOnsets(){
   if(!SPEC||!SPEC.onsets.length)return msg('还没有起音数据，先选音频',1);
   const cand=E.filter(e=>e.src==='gen');
-  if(!cand.length)return msg('没有推算出来的点可以对齐（先「自动生成」）',1);
   snap();
-  let moved=0;const sh=[];
+  let measures=0,beats=0,beatCandidates=0;const sh=[];
   for(const ev of cand){
     const o=bestOnset(ev.t,snapWinFor(ev.m));
     if(o==null)continue;
-    sh.push(o-ev.t);ev.t=o;moved++; // 自动对齐只修正时间，仍是推算点，不升级为实测锚点
+    sh.push(o-ev.t);ev.t=o;measures++; // 保留推算身份
   }
-  if(!moved){hist.pop();return msg('窗口内没找到可吸附的起音，试试放大窗口',1)}
+  buildOcc();
+  const seen=new Set();
+  for(const mk of M){
+    if(spanOf(mk)>1||seen.has(mk.m))continue;seen.add(mk.m);
+    for(let visit=0;visit<beatVisits(mk.m).length;visit++){
+      const w=beatWindow(mk,visit),pts=beatPoints(mk,visit);
+      const win=Math.min(snapWinFor(mk.m),(w.end-w.start)/beatCount(mk)*.4);
+      for(let i=0;i<pts.length;i++){
+        const p=pts[i];if(p.manual)continue;
+        beatCandidates++;
+        // 手动冲突留给用户处理，自动对齐不能穿越它或把两个拍吸到同一个起音。
+        if(p.conflict)continue;
+        const left=i?pts[i-1].t:w.start,right=i+1<pts.length?pts[i+1].t:w.end;
+        const o=bestOnset(p.t,win,left,right);if(o==null)continue;
+        sh.push(o-p.t);p.t=o;
+        BEATS[p.key]={t:o,src:'gen',start:w.start,end:w.end};beats++;
+      }
+    }
+  }
+  const total=cand.length+beatCandidates,moved=measures+beats;
+  if(!moved){hist.pop();return msg(total?'窗口内没找到可吸附的起音，试试放大窗口':'没有推算出来的点可以对齐（先「自动生成」）',1)}
   sh.sort((a,b)=>a-b);
   const med=sh[Math.floor(sh.length/2)];
-  layout();save();
-  msg('已对齐 '+moved+'/'+cand.length+' 个点，'+(cand.length-moved)+' 个窗口内没有起音；'+
-      '中位偏移 '+(med*1000>=0?'+':'')+Math.round(med*1000)+'ms');
+  layout();save();specDirty=true;
+  msg('已对齐 '+measures+'/'+cand.length+' 条小节线、'+beats+'/'+beatCandidates+' 条拍点线；'+
+      (total-moved)+' 个点未匹配；中位偏移 '+(med>=0?'+':'')+Math.round(med*1000)+'ms');
 }
 
 function specOn(){return $('specBox').classList.contains('on')}
@@ -4811,7 +4831,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v42';
+const BUILD='v43';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

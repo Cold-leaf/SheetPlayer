@@ -149,6 +149,33 @@ async def main():
         assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
         await page.evaluate('setPerf(false);aud.currentTime=0;specShow(false)')
         print('OK    Spectrum beat drag edits only this visit; bounds, snapping, undo, cancel and performance toggle/lock work')
+        await page.evaluate('''()=>{
+          window.bulkBefore=JSON.stringify({E,BEATS});
+          E[1].src='gen';
+          BEATS[beatKey(M[0],0,2)]={t:2.1,src:'tap'};
+          refresh();window.bulkFixture=JSON.stringify({E,BEATS});
+          SPEC={onsets:Float32Array.from([1.08,2.08,3.06,7.07,8.06]),onsetStr:Float32Array.from([1,1,1,1,1])};
+          $('chkBeats').checked=false;
+          alignToOnsets();
+        }''')
+        assert abs(await page.evaluate('E[1].t')-3.06)<.001
+        assert abs(await page.evaluate('beatPoints(M[0],0)[0].t')-1.08)<.001
+        assert await page.evaluate('beatPoints(M[0],0)[1].t')==2.1
+        assert abs(await page.evaluate('beatPoints(M[0],1)[0].t')-7.07)<.001
+        assert await page.evaluate("BEATS[beatKey(M[0],1,1)].src==='gen' && E[1].src==='gen'")
+        assert await page.evaluate('beatPoints(M[0],0).every(p=>!p.conflict)')
+        assert '拍点线' in await page.inner_text('#msg')
+        await page.evaluate('undo()')
+        assert await page.evaluate('JSON.stringify({E,BEATS})===bulkFixture')
+        # All measure boundaries can be manual; inferred beats must still be eligible.
+        await page.evaluate("E.forEach(e=>e.src='tap');refresh();alignToOnsets()")
+        assert await page.evaluate('beatPoints(M[0],1)[0].adjusted')
+        await page.evaluate('''()=>{
+          const saved=JSON.parse(bulkBefore);E=saved.E;BEATS=saved.BEATS;SPEC=null;
+          $('chkBeats').checked=true;refresh();
+        }''')
+        print('OK    Bulk alignment includes hidden/repeated beats, preserves manual edits and provenance, and undoes atomically')
+
         await page.evaluate('window.savedBeatData=annotationData();BEATS={};M=[];applySave(savedBeatData);layout()')
         assert await page.evaluate('beatRatio(M[0],1)')>1/3
         assert await page.evaluate('beatPoints(M[0],0)[0].t')==before
