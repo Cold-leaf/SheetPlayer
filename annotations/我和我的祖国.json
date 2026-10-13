@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "paee39180-703b-475a-a2f0-473a879d5022",
     "name": "WH_我和我的祖国[线][SATB+NA+Pn]标注.pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "WH_我和我的祖国[线][SATB+NA+Pn]标注",
+        "pdf": {
+          "hash": "ddca930534aeaa0a3ae53a9906f51048fbf6a5b986be0d80ae97a0570450ab65",
+          "name": "WH_我和我的祖国[线][SATB+NA+Pn]标注.pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "ddca930534aeaa0a3ae53a9906f51048fbf6a5b986be0d80ae97a0570450ab65",
     "pdfHistory": [],
     "data": {

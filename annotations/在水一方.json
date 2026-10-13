@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p6a7b8e6a-fff6-4273-a97d-71adf3c994e5",
     "name": "ZS_在水一方[线][SATB+NA+Pn][金巍].pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "ZS_在水一方[线][SATB+NA+Pn][金巍]",
+        "pdf": {
+          "hash": "cf20194a1c854bba6caaab364725940d4dd3da6556fad7b9877e12cd7a2805b2",
+          "name": "ZS_在水一方[线][SATB+NA+Pn][金巍].pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "cf20194a1c854bba6caaab364725940d4dd3da6556fad7b9877e12cd7a2805b2",
     "pdfHistory": [],
     "data": {

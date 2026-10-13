@@ -1,11 +1,23 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "pe32d450a-efc3-4322-8245-868d52e2d59e",
     "name": "天路[Pn]",
     "aka": [
       "天路"
+    ],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "TL_天路[线][SATB+NA+Pn][鄂矛]",
+        "pdf": {
+          "hash": "6cad8001a1bc3ea1ec8512c168ae41007e972874c186cfa05c330e70e1c9cc0b",
+          "name": "TL_天路[线][SATB+NA+Pn][鄂矛].pdf"
+        },
+        "pdfHistory": []
+      }
     ],
     "pdf": "6cad8001a1bc3ea1ec8512c168ae41007e972874c186cfa05c330e70e1c9cc0b",
     "pdfHistory": [],

@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p92af7050-b7fa-4c54-9e3d-daa40c46b082",
     "name": "SK_斯卡布罗集市[线][TTBB+NA+WO]标注",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "SK_斯卡布罗集市[线][TTBB+NA+WO]_0_1787155482878",
+        "pdf": {
+          "hash": "8563fe0d6ff62a2573acbbef1008810877c6d174b7eda2721351b1e9dfdc1269",
+          "name": "SK_斯卡布罗集市[线][TTBB+NA+WO]_0_1787155482878.pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "8563fe0d6ff62a2573acbbef1008810877c6d174b7eda2721351b1e9dfdc1269",
     "pdfHistory": [],
     "data": {

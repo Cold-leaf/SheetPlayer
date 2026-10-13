@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "pdb6571e5-f3f8-4109-91b0-3be107cc876c",
     "name": "DN_当那一天来临[线][SATB+ST+Pn].pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "DN_当那一天来临[线][SATB+ST+Pn]",
+        "pdf": {
+          "hash": "95db740bf8e1fc9ac8add4945a25ad2e4bbb69a79cfb13f4a777bae57b9aa382",
+          "name": "DN_当那一天来临[线][SATB+ST+Pn].pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "95db740bf8e1fc9ac8add4945a25ad2e4bbb69a79cfb13f4a777bae57b9aa382",
     "pdfHistory": [],
     "data": {

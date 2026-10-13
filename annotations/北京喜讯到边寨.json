@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p55be4c6f-03ea-45c8-bdd0-62eb9caa14d7",
     "name": "BJ_北京喜讯到边寨[线][SATB+ST+Pn].pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "BJ_北京喜讯到边寨[线][SATB+ST+Pn]",
+        "pdf": {
+          "hash": "6ed2a2533e8acd2dc85022c092deafe189543b6831442ee4273ae68c24c51659",
+          "name": "BJ_北京喜讯到边寨[线][SATB+ST+Pn].pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "6ed2a2533e8acd2dc85022c092deafe189543b6831442ee4273ae68c24c51659",
     "pdfHistory": [],
     "data": {

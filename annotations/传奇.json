@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p7bac6f03-e39f-42b2-a8bc-10c4694e75f2",
     "name": "CQ_传奇[线][SATB+NA+Pn]标注.pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "CQ_传奇[线][SATB+NA+Pn]标注",
+        "pdf": {
+          "hash": "3ed890ec2626b15378b95744475548b8fdf4b12cfa374ebb7ee60db0b2220a0e",
+          "name": "CQ_传奇[线][SATB+NA+Pn]标注.pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "3ed890ec2626b15378b95744475548b8fdf4b12cfa374ebb7ee60db0b2220a0e",
     "pdfHistory": [],
     "data": {

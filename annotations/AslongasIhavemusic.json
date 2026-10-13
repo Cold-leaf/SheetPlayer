@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p9a09bf1b-38df-46c9-b68e-2f98bc80574d",
     "name": "AL_AslongasIhavemusic[线][SATB+NA+Pn]标注.pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "AL_AslongasIhavemusic[线][SATB+NA+Pn]标注",
+        "pdf": {
+          "hash": "fe6306c5ba549879252740f8ab087c8215be5fdb59315d40bad931c4b38de038",
+          "name": "AL_AslongasIhavemusic[线][SATB+NA+Pn]标注.pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "fe6306c5ba549879252740f8ab087c8215be5fdb59315d40bad931c4b38de038",
     "pdfHistory": [],
     "data": {

@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p2b03fc4f-ce63-413a-b423-e65c1fa3a3e9",
     "name": "MT_明天会更好[线][SATB+S+Pn].pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "MT_明天会更好[线][SATB+S+Pn]",
+        "pdf": {
+          "hash": "6635ccc82f9c6dd040b1d0f1b5c1da015507cf4c8e46fe328132066d7d310f87",
+          "name": "MT_明天会更好[线][SATB+S+Pn].pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "6635ccc82f9c6dd040b1d0f1b5c1da015507cf4c8e46fe328132066d7d310f87",
     "pdfHistory": [],
     "data": {

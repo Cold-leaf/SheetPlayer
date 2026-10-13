@@ -1,10 +1,22 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "p1db5f83b-7d8b-41e2-868a-10050e316ad0",
     "name": "SH_松花江上[线][SATB+T+Pn]标注.pdf",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "SH_松花江上[线][SATB+T+Pn]标注",
+        "pdf": {
+          "hash": "55bb58b6c828719069b60aed5b13f2de8332809bb181ab99a6183d3103cb66ca",
+          "name": "SH_松花江上[线][SATB+T+Pn]标注.pdf"
+        },
+        "pdfHistory": []
+      }
+    ],
     "pdf": "55bb58b6c828719069b60aed5b13f2de8332809bb181ab99a6183d3103cb66ca",
     "pdfHistory": [],
     "data": {

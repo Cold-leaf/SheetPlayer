@@ -1,10 +1,28 @@
 {
   "app": "sheetplayer-song",
   "v": 1,
+  "baseRevision": null,
   "item": {
     "id": "pced35f9d-31f1-4e1e-9383-0e29b613cef1",
     "name": "十送红军",
     "aka": [],
+    "sheets": [
+      {
+        "id": "default",
+        "name": "10_SS_十送红军[线][SATB+NA+Pn]",
+        "pdf": {
+          "hash": "8d10f14ce050e6655485aee1816d6f581abef43fcc60b68a9d2a1f4b53ae0227",
+          "name": "10_SS_十送红军[线][SATB+NA+Pn].pdf"
+        },
+        "pdfHistory": [
+          {
+            "hash": "92b3a8fd777c88f3f52da49448356cd210b5a495da2e47bfac42df75db7f56ed",
+            "name": "10_SS_十送红军[线][SATB+NA+Pn]_0_1790008968059.pdf",
+            "at": 1790232178918
+          }
+        ]
+      }
+    ],
     "pdf": "8d10f14ce050e6655485aee1816d6f581abef43fcc60b68a9d2a1f4b53ae0227",
     "pdfHistory": [
       {
