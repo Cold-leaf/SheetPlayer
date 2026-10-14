@@ -1792,7 +1792,7 @@ async function attachPdf(f,projId,forceNew,sheetAction){
     if(projId&&!p)return msg('这个项目不在了，请从曲目库重新打开',1);
     if(p){
       ensureSheets(p);
-      if(!sheetAction){
+      if(sheetAction?.kind!=='add'){
         const choice=await askPick('《'+p.name+'》：选择这份 PDF 对应的谱面。已有谱面沿用标注；不同分页或排版请新增谱面。',[
           ...p.sheets.map(sh=>({v:sh.id,label:sh.name})),
           {v:'__new__',label:'＋ 新增谱面'}]);
@@ -4792,7 +4792,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v46';
+const BUILD='v47';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5645,7 +5645,7 @@ document.querySelectorAll('#libTools button').forEach(b=>b.onclick=()=>{
 // 换谱 设好 pendPid 之后触发的——那两种要保留指定的项目，不能被清成空
 $('lblPdf').onclick=e=>{
   if(e.target!==$('lblPdf'))return;
-  pendPid='';pendSheet=null;              // 从菜单导 = 没指定项目，走"按文件名认领/新建"
+  pendPid='';pendSheet=null;              // 从菜单导 = 没指定项目，选择项目和谱面
   $('menu').style.display='none';        // 收起菜单，选完文件直接看结果
 };
 $('libNew').onclick=()=>newProject();

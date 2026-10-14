@@ -75,8 +75,31 @@ async def main():
         await page.evaluate('()=>{pendPid="ptest";pendSheet={kind:"attach",sheetId:"numbered"}}')
         upload['buffer'] += b'\n% member notes\n'
         await page.set_input_files('#fPdf', upload)
+        await page.get_by_role('button', name='简谱', exact=True).click()
         await page.wait_for_function('(old)=>activeSheet==="numbered" && pdfHash!==old && M[0].nx===.6', arg=local_hash)
         print('OK   从已有谱面补文件不再校验原 PDF 指纹')
+        # Actual library replacement entry: current numbered score must not be overwritten.
+        numbered_hash = await page.evaluate('pdfHash')
+        await page.evaluate('async()=>{showLib(true);await drawLib()}')
+        await page.locator('.libCard .repl').click()
+        async with page.expect_file_chooser() as chooser:
+            await page.get_by_role('button', name='从本机选一份…', exact=True).click()
+        replacement = dict(upload, name='线谱笔记.pdf', buffer=pdf_bytes()+b'\n% staff notes\n')
+        await (await chooser.value).set_files(replacement)
+        await page.wait_for_selector('#dlgPick', state='visible')
+        assert await page.evaluate('pdfHash') == numbered_hash
+        await page.keyboard.press('Escape')
+        assert await page.evaluate('pdfHash') == numbered_hash
+        assert await page.evaluate('(async()=> (await idbGet(idb,"projects","ptest")).sheets.find(s=>s.id==="numbered").pdf.hash)()') == numbered_hash
+        print('OK   曲目库换谱先选目标，取消不改简谱绑定')
+        # Menu replacement also must allow choosing a sheet other than the active one.
+        await page.evaluate('()=>{showLib(false);$("bReplaceSheet").click()}')
+        await page.set_input_files('#fPdf', replacement)
+        await page.get_by_role('button', name='五线谱', exact=True).click()
+        await page.wait_for_function('()=>activeSheet==="default" && M[0].nx===.2 && pdfName==="线谱笔记.pdf"')
+        assert await page.evaluate('track.sheets.find(s=>s.id==="numbered").pdf.hash') == numbered_hash
+        assert await page.evaluate('SHEET_MARKS.numbered[0].nx===.6 && E[0].t===2')
+        print('OK   当前简谱时换入线谱，只更新所选线谱，简谱文件和标注保留')
         await page.set_input_files('#fPdf', upload)
         await page.click('#dlgProjOk')
         await page.get_by_role('button', name='＋ 新增谱面', exact=True).click()
