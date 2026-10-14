@@ -1715,7 +1715,7 @@ async function addSheetFile(p,file,H,name){
   const sh={id:newId(),name:nm,pdf:{hash:H,name:file.name},pdfHistory:[]};
   // 新版本从空位置开始，不能复制旧谱的页码坐标。
   if(pid===p.id){save();await flushSave()}
-  p.sheets.push(sh);p.updatedAt=Date.now();
+  p.sheets.push(sh);p.mediaUpdatedAt=p.updatedAt=Date.now();
   await idbPut(idb,'projects',p);
   if(pid===p.id){
     track=p;SHEET_MARKS[sh.id]=[];save();await flushSave();await switchSheet(sh.id);
@@ -1825,7 +1825,7 @@ async function attachPdf(f,projId,forceNew,sheetAction){
     }
     const now=Date.now();
     const created={id:newId(),name:nm,aka:[],pdf:{hash:H,name:f.name},pdfHistory:[],
-      audios:[],lastAudio:null,createdAt:now,updatedAt:now};
+      audios:[],lastAudio:null,createdAt:now,updatedAt:now,mediaUpdatedAt:now};
     await idbPut(idb,'projects',created);
     await loadPdfBlob(rec.blob,f.name,created.id,H,'');
   }catch(err){msg('PDF加载失败：'+err.message,1)}
@@ -1835,11 +1835,12 @@ async function attachToProject(p,blob,fileName,H,pre){
   ensureSheets(p);
   if(!p.pdf||p.pdf.hash!==H){
     if(p.pdf)p.pdfHistory=[{hash:p.pdf.hash,name:p.pdf.name||'',at:Date.now()},...(p.pdfHistory||[])];
-    p.pdf={hash:H,name:fileName};p.updatedAt=Date.now();
+    p.pdf={hash:H,name:fileName};p.mediaUpdatedAt=p.updatedAt=Date.now();
     updateBoundSheet(p);
     await idbPut(idb,'projects',p);
     await prunePdfHistory(p);
   }
+  p.mediaUpdatedAt=Date.now();
   updateBoundSheet(p);await idbPut(idb,'projects',p);
   if(pid===p.id&&pdf&&activeSheet!==p.lastSheet){track=p;return switchSheet(p.lastSheet)}
   await loadPdfBlob(blob,fileName,p.id,H,pre);
@@ -1895,7 +1896,7 @@ async function replacePdf(projId,file,confirmed){
     hist=[];                                   // 跨换谱的撤销语义混乱，明确定为清空
     pid=p.id;pdf=np;pdfName=file.name;pdfHash=H;track=p;
     p.pdfHistory=[{hash:p.pdf.hash,name:p.pdf.name||'',at:Date.now()},...(p.pdfHistory||[])];
-    p.pdf={hash:H,name:file.name};p.updatedAt=Date.now();
+    p.pdf={hash:H,name:file.name};p.mediaUpdatedAt=p.updatedAt=Date.now();
     updateBoundSheet(p);activeSheet=p.lastSheet;
     await idbPut(idb,'projects',p);
     await prunePdfHistory(p);
@@ -4792,7 +4793,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v47';
+const BUILD='v48';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4847,7 +4848,7 @@ async function importAudioFile(f,projId){
       if(!MODES[mode])newMode(mode,true);       // 输入的新名字就新建（结构沿用当前模式）
       const ex=p.audios.find(a=>a.hash===H);
       if(ex)ex.mode=mode;else p.audios.push({hash:H,name:f.name,mode});
-      p.lastAudio=H;p.updatedAt=Date.now();
+      p.lastAudio=H;p.mediaUpdatedAt=p.updatedAt=Date.now();
       await idbPut(idb,'projects',p);
       // 挂到**别的**项目上：落完库说一声就完了，绝不碰当前界面。selectAudio 在下面那个 if
       // 的外面，直接往下走会换掉当前谱面的音频、还会跟着切模式——ownCloud 面板正开着，
@@ -4959,8 +4960,24 @@ async function flushSave(){
   clearTimeout(saveT);const p=pendingSave;pendingSave=null;
   if(p)await storeSave(p.key,p.payload);
 }
-function storeSave(key,payloadStr){
-  if(idb)return idbPut(idb,'marks',{pid:key,data:JSON.parse(payloadStr)});
+// Compare shared annotation content, excluding local PDF files and current selections.
+function annotationContent(data){
+  const sheets=data.sheets||{default:{M:data.M||[]}};
+  const positions=Object.fromEntries(Object.entries(sheets).filter(([,sh])=>sh.M?.length)
+    .map(([id,sh])=>[id,sh.M.map(m=>({...m,h:hOf(m)}))]));
+  const modes=data.modes||{'标准':{E:data.E||[],BEATS:data.BEATS||{},TEMPO:data.TEMPO,
+    METER:data.METER,SIG:data.SIG,FORM:data.FORM,offset:data.offset||0}};
+  const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?
+    Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
+  const normalizedModes=Object.fromEntries(Object.entries(modes).map(([name,m])=>[name,{...defaultModeData(),...m}]));
+  return JSON.stringify(stable({positions,modes:normalizedModes}));
+}
+async function storeSave(key,payloadStr){
+  if(idb){
+    const data=JSON.parse(payloadStr),old=await idbGet(idb,'marks',key);
+    if(old&&annotationContent(old.data)===annotationContent(data))data.ts=old.data.ts||0;
+    return idbPut(idb,'marks',{pid:key,data});
+  }
   if(LS){try{LS.setItem('player:'+key,payloadStr)}catch(err){warnLS()}return}
   memStore.set(key,payloadStr);
   warnLS();
@@ -5557,7 +5574,7 @@ $('bDelAud').onclick=async()=>{
   if(!confirm('删除音频《'+a.name+'》？它在本机的文件会一并删除（标注不受影响）。'))return;
   track.audios=track.audios.filter(x=>x.hash!==h);
   if(track.lastAudio===h)track.lastAudio=null;
-  track.updatedAt=Date.now();
+  track.mediaUpdatedAt=track.updatedAt=Date.now();
   await idbPut(idb,'projects',track);
   // 全表扫描引用：项目之间可以共用同一个音频文件。原来比的是 t.hash，
   // 换成项目模型之后 t.hash 全是 undefined，undefined!==undefined 为 false → 判断失效 → 会误删别人的音频
@@ -5698,7 +5715,7 @@ const effTs=(p,d)=>Math.max((p&&p.updatedAt)||0,(d&&d.ts)||0);
 function tsShort(ts){
   if(!ts)return{short:'—',full:''};
   const t=new Date(ts);
-  return {short:(t.getMonth()+1)+'/'+t.getDate(),full:t.toLocaleString()};
+  return {short:(t.getMonth()+1)+'/'+t.getDate()+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'),full:t.toLocaleString()};
 }
 // 搜索范围 = 匹配键（原名/别名/去尾缀显示名）+ 卡片上真正显示的那两行。
 // 后两者不能省：曲名是「删掉标记后剩下的」，未必是原串的子串
@@ -5729,7 +5746,7 @@ function renderLib(rows){
                        :(d&&d.E?[['',d.E.length]]:[]);
     const total=ms.reduce((a,x)=>a+x[1],0);
     const neTxt=ms.length>1?ms.map(([n,c])=>esc(n)+' '+c).join(' / '):String(total);
-    const nm=splitName(dispName(p.name)),ts=tsShort(effTs(p,d));
+    const nm=splitName(dispName(p.name)),annTs=tsShort(d?.ts),mediaTs=tsShort(p.mediaUpdatedAt);
     return '<div class="libCard'+(p.pdf?'':' legacy')+(p.id===pid?' cur':'')+'">'+
       // 完整名字留在 title 和匹配键里，卡片上只铺「曲名 + 一行标记」
       '<div class="nm" title="'+esc(p.name)+'">'+
@@ -5738,7 +5755,9 @@ function renderLib(rows){
         (p.pdf?'':'<small>等待导入谱子</small>')+
       '</div>'+
       '<div class="meta">已标 '+nb+' 小节 · 已打 '+neTxt+' 时间点 · 音频 '+(p.audios?p.audios.length:0)+
-        ' · <span class="upd" title="'+esc(ts.full)+'">更新 '+ts.short+'</span></div>'+
+        '</div><div class="meta updateTimes">'+
+        '<span class="upd annotationUpdated" title="'+esc(annTs.full)+'">标注／时间点 '+annTs.short+'</span> · '+
+        '<span class="upd mediaUpdated" title="'+esc(mediaTs.full||'旧数据未单独记录本机文件更新时间')+'">本机谱子／音频 '+mediaTs.short+'</span></div>'+
       ((p.sheets||[]).length>1?'<label class="libSheet">谱面 <select aria-label="谱面版本" data-sheet-project="'+esc(p.id)+'">'+
         p.sheets.map(sh=>'<option value="'+esc(sh.id)+'"'+(sh.id===p.lastSheet?' selected':'')+'>'+esc(sh.name)+'</option>').join('')+'</select></label>':'')+
       '<div class="acts">'+

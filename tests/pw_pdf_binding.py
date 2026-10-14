@@ -51,6 +51,10 @@ async def main():
         await page.wait_for_function('()=>pdf && activeSheet==="numbered" && M.length===1')
         assert await page.evaluate('pid==="ptest" && M[0].nx===.6 && E[0].t===2')
         local_hash = await page.evaluate('pdfHash')
+        await page.evaluate('flushSave()')
+        ann_time = await page.evaluate('(async()=> (await idbGet(idb,"marks","ptest")).data.ts)()')
+        media_time = await page.evaluate('track.mediaUpdatedAt')
+        assert media_time > 0
         print('OK   新设备不同文件名、不同内容接回所选谱面的坐标和时间轴')
         await page.evaluate('(it)=>importAnns([it],{force:true})', item)
         assert await page.evaluate('pdfHash') == local_hash
@@ -100,6 +104,17 @@ async def main():
         assert await page.evaluate('track.sheets.find(s=>s.id==="numbered").pdf.hash') == numbered_hash
         assert await page.evaluate('SHEET_MARKS.numbered[0].nx===.6 && E[0].t===2')
         print('OK   当前简谱时换入线谱，只更新所选线谱，简谱文件和标注保留')
+        await page.evaluate('flushSave()')
+        assert await page.evaluate('(async()=> (await idbGet(idb,"marks","ptest")).data.ts)()') == ann_time
+        assert await page.evaluate('track.mediaUpdatedAt') > media_time
+        media_time = await page.evaluate('track.mediaUpdatedAt')
+        await page.evaluate('async()=>{M[0].nx=.25;save();await flushSave()}')
+        assert await page.evaluate('(async()=> (await idbGet(idb,"marks","ptest")).data.ts)()') > ann_time
+        assert await page.evaluate('track.mediaUpdatedAt') == media_time
+        await page.evaluate('drawLib()')
+        assert '标注／时间点' in await page.locator('.annotationUpdated').inner_text()
+        assert '本机谱子／音频' in await page.locator('.mediaUpdated').inner_text()
+        print('OK   文件更新不刷新标注时间，编辑标注不刷新文件时间，曲目库分开展示')
         await page.set_input_files('#fPdf', upload)
         await page.click('#dlgProjOk')
         await page.get_by_role('button', name='＋ 新增谱面', exact=True).click()
