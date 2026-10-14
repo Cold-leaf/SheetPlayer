@@ -37,14 +37,11 @@ async def main():
           $('mode').value='play';$('chkBeats').checked=true;syncMode();refresh();
         }""")
         await page.wait_for_function("()=>document.querySelector('.mk.cur')")
-        assert await page.evaluate("getComputedStyle(document.querySelector('.mk:not(.cur)>b')).height==='6px'")
         assert await page.evaluate("getComputedStyle(document.querySelector('.mk')).width==='44px'")
-        assert await page.evaluate("getComputedStyle(document.querySelector('.beatMark[data-m=\"2\"]>b')).opacity==='0'")
-        assert await page.evaluate("getComputedStyle(document.querySelector('.beatMark[data-m=\"1\"]>b')).height==='7px'")
-        await page.check('#chkFullLines')
-        assert await page.evaluate("!pagesEl.classList.contains('cleanPlay')")
-        assert await page.evaluate("getComputedStyle(document.querySelector('.beatMark[data-m=\"2\"]>b')).opacity==='1'")
-        await page.uncheck('#chkFullLines')
+        assert await page.evaluate("""()=>[...document.querySelectorAll('.mk>b,.beatMark>b')].every(b=>
+          Math.abs(b.getBoundingClientRect().height-b.parentElement.getBoundingClientRect().height)<1 &&
+          +getComputedStyle(b).opacity>0 && +getComputedStyle(b).opacity<=.4)""")
+        assert await page.locator('#chkFullLines').count()==0
         await page.evaluate("()=>{setPerf(false);$('mode').value='mark';syncMode()}")
         assert await page.evaluate("!pagesEl.classList.contains('cleanPlay')")
         await page.evaluate("()=>{$('mode').value='play';syncMode();setPerf(true)}")
@@ -53,7 +50,7 @@ async def main():
           await page.set_viewport_size({'width':width,'height':900})
           assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         assert not errors,errors
-        print('OK clean playback strokes, retained hit areas, current-measure beats, full-line toggle, edit mode and mobile layout')
+        print('OK clean playback strokes, retained hit areas, full-length translucent lines, edit mode and mobile layout')
         await browser.close()
     finally:server.shutdown()
 asyncio.run(main())

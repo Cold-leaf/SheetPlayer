@@ -701,14 +701,14 @@ button:disabled{cursor:default}
 #beatPanel button{cursor:pointer;min-height:32px}#beatPanel button:hover{background:#364558}
 #beatPanel input{width:95px}#beatPanel .row{margin-top:10px;flex-wrap:wrap}#beatPanel small{display:block;margin-top:10px}
 body.perf .beatMark{touch-action:auto;cursor:pointer}
-/* Playback keeps the original hit areas; only the visible strokes are shortened. */
-#pages.cleanPlay .mk>b{top:-6px;height:6px;width:1px;opacity:.4;box-shadow:none}
-#pages.cleanPlay .mk>i{top:-17px;font-size:9px;color:#587080;opacity:.65}
+/* Playback keeps the original hit areas; full-length strokes use lower opacity. */
+#pages.cleanPlay .mk>b{top:0;height:100%;width:1px;opacity:.25;box-shadow:none}
+#pages.cleanPlay .mk>i{top:-13px;font-size:9px;color:#587080;opacity:.65}
 #pages.cleanPlay .mk.cur>b{top:0;height:100%;width:1px;opacity:.35;background:#f80;box-shadow:none}
 #pages.cleanPlay .mk.cur>i{color:#d65b00;opacity:1;font-weight:700}
-#pages.cleanPlay .beatMark>b,#pages.cleanPlay .beatMark>i{opacity:0}
-#pages.cleanPlay .beatMark.currentMeasure>b{top:-7px;height:7px;border-left:1px dashed #587080;opacity:.35}
-#pages.cleanPlay .beatMark.currentMeasure.active>b{border-color:#e87500;opacity:.65}
+#pages.cleanPlay .beatMark>b{top:0;height:100%;border-left-width:1px;opacity:.2}
+#pages.cleanPlay .beatMark>i{opacity:.45}
+#pages.cleanPlay .beatMark.active>b{border-color:#e87500;opacity:.4}
 #pages.cleanPlay .beatMark:focus-visible{outline:1px dotted #587080}
 #pages.cleanPlay #band{background:transparent;border:0}
 #pages.cleanPlay #sweep{width:1.5px;box-shadow:none;opacity:.85}
@@ -765,7 +765,6 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   </select></label>
   <label title="播放时谱面自动跟着当前小节滚动"><input type="checkbox" id="chkFollow" checked>跟随滚动</label>
   <span class="sep"></span>
-  <label id="lblFullLines" title="播放时显示完整小节线和拍点线"><input type="checkbox" id="chkFullLines">完整标线</label>
   <label id="lblBeats"><input type="checkbox" id="chkBeats">拍点</label>
   <span id="chipWrap"><span style="color:#999;flex:none">段落</span><span id="chips"></span></span>
   <!-- A–B 循环：行内只留「开关 + 设置入口」两个按钮，起点/终点/清除/区间文字收进 #loopPop。
@@ -2580,8 +2579,6 @@ function updateBeatStyles(){
   if(!beatsOn())return;
   const current=OCC[occIndex(aud.currentTime)];
   const mk=current&&mkByM.get(current.m);
-  for(const el of pagesEl.querySelectorAll('.beatMark'))
-    el.classList.toggle('currentMeasure',!!mk&&+el.dataset.m===mk.m);
   const pts=mk?beatPoints(mk,beatVisitNow(mk)):[];
   let active=0;for(const p of pts)if(!p.conflict&&p.t<=aud.currentTime)active=p.b;
   for(const el of pagesEl.querySelectorAll('.beatMark.active'))
@@ -2638,7 +2635,6 @@ $('bBeatEdit').onclick=()=>{
   if(beatSelection&&M.includes(beatSelection.mk))return openBeatPanel(beatSelection.mk,beatSelection.b,beatSelection.visit);
   const mk=mkByM.get(OCC[occIndex(aud.currentTime)]?.m)||M.find(x=>spanOf(x)===1);
   if(!mk||spanOf(mk)>1)return msg('请先标记一个单独的小节',1);openBeatPanel(mk,1)};
-$('chkFullLines').onchange=()=>{syncMode();dirty=true;syncBarH()};
 $('chkBeats').onchange=()=>{syncMode();refresh();specDirty=true;if(!$('chkBeats').checked){$('beatPanel').hidden=true;beatSelection=null}};
 
 /* ---------- 命中测试（全部用 CSS 像素，缩放无关） ---------- */
@@ -4808,7 +4804,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v49';
+const BUILD='v50';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4876,8 +4872,7 @@ async function importAudioFile(f,projId){
 }
 function syncMode(){
   const m=$('mode').value;
-  pagesEl.classList.toggle('cleanPlay',m==='play'&&!$('chkFullLines').checked);
-  $('lblFullLines').style.display=m==='play'?'':'none';
+  pagesEl.classList.toggle('cleanPlay',m==='play');
   $('lblBeats').style.display=m!=='mark'?'':'none';
   $('bBeatEdit').style.display=beatsOn()?'':'none';
   if(!beatsOn()){$('beatPanel').hidden=true;beatSelection=null}
