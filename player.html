@@ -710,7 +710,6 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
 #pages.cleanPlay .beatMark>i{opacity:.45}
 #pages.cleanPlay .beatMark.active>b{border-color:#e87500;opacity:.4}
 #pages.cleanPlay .beatMark:focus-visible{outline:1px dotted #587080}
-#pages.cleanPlay #band{background:transparent;border:0}
 #pages.cleanPlay #sweep{width:1.5px;opacity:.85}
 </style>
 </head>
@@ -4804,7 +4803,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v51';
+const BUILD='v52';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
