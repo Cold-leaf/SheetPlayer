@@ -721,6 +721,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
 #bar select[hidden]{display:none!important}
 #currentTrackName{max-width:180px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 #currentTrackName:empty{display:none}
+#bar #rowPlay>#bPlay{width:44px;height:44px;min-width:44px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:50%;flex:none}
 #bar .choiceButton{min-height:44px;max-width:160px;overflow:hidden;text-overflow:ellipsis}
 #choiceDialog{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center}
 #choiceDialog>div{box-sizing:border-box;width:480px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px);overflow:auto;padding:16px;background:var(--bg-soft);color:var(--text);border-radius:12px}
@@ -791,7 +792,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
    <!-- 演奏 / 编辑 锁。文案显示**当前**状态（跟菜单里那个方向按钮同一套说法，见 bHoriz）。
         不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认 -->
    <button id="bPerf" title="当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）">编辑</button>
-   <button id="bMenu" title="更多设置与数据"><svg class="uiIcon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg> 菜单</button>
+   <button id="bMenu" title="更多设置与数据">菜单</button>
   </span>
   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
@@ -4882,7 +4883,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v56';
+const BUILD='v57';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -6922,6 +6923,16 @@ async function boot(){
   await loadDAV();
   showLib(true);
 }
+// 触屏/窄屏播放键移出横滑区，始终占据左侧真实空间，不覆盖中间选项。
+const pinnedPlayQuery=matchMedia('(max-width:700px), (pointer:coarse)');
+function syncPinnedPlay(){
+  const button=$('bPlay');
+  if(pinnedPlayQuery.matches)$('rowPlay').insertBefore(button,$('rowPlay').firstChild);
+  else $('transport').insertBefore(button,$('transport').firstChild);
+  syncBarH();
+}
+pinnedPlayQuery.addEventListener('change',syncPinnedPlay);
+syncPinnedPlay();
 updLoop();stat();syncAudSel();syncMode();syncModeSel();   // 默认播放模式 + 模式下拉
 syncRate();                                  // 胶囊上的速度键跟工具栏下拉对齐（按 #rate 生成档位）
 // 初始方向：窗口宽过 700 **且不比自己高**才横向铺开，否则纵向堆叠。
