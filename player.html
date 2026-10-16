@@ -1572,7 +1572,7 @@ $('bNewMode').onclick=()=>{
   $('newMode').value='';
   if(name)doNewMode(name);else promptNewMode();
 };
-$('bRenMode').onclick=()=>{
+$('bRenMode').onclick=async()=>{
   const nn=($('renMode').value||'').trim();
   if(!nn)return msg('先填一个新名字',1);
   if(nn===activeMode)return;
@@ -1580,19 +1580,29 @@ $('bRenMode').onclick=()=>{
   snap();
   const old=activeMode,d=MODES[old];delete MODES[old];MODES[nn]=d;activeMode=nn;
   (track&&track.audios||[]).forEach(a=>{if(audioModeOf(a)===old)a.mode=nn});   // 挂在此模式的音频跟着改
-  syncModeSel();save();
+  await saveModeBindings();
   msg('模式改名为「'+nn+'」');
 };
-$('bDelMode').onclick=()=>{
+$('bDelMode').onclick=async()=>{
   if(Object.keys(MODES).length<=1)return msg('至少保留一个模式',1);
   if(!confirm('删除模式「'+activeMode+'」？它的时间点会一并删除。'))return;
   snap();
   const old=activeMode;delete MODES[old];
   activeMode=Object.keys(MODES)[0];
   (track&&track.audios||[]).forEach(a=>{if(audioModeOf(a)===old)a.mode=activeMode});   // 挂在此模式的音频挪到剩下的模式
-  loadMode(activeMode);syncNext();layout();refresh();syncModeSel();save();
+  loadMode(activeMode);syncNext();layout();refresh();await saveModeBindings();
   msg('已删除模式「'+old+'」');
 };
+
+// 模式名在标注和音频绑定里各存一份；改名/删除必须把两份都落盘。
+async function saveModeBindings(){
+  syncModeSel();syncAudSel();save();
+  if(idb&&track){
+    track.mediaUpdatedAt=track.updatedAt=Date.now();
+    await idbPut(idb,'projects',track);
+  }
+  await flushSave();
+}
 
 /* ---------- 撤销：整体快照，覆盖所有改动路径 ---------- */
 function snap(){hist.push(JSON.stringify({M:pureM(),E,BEATS,activeMode,sheets:SHEET_MARKS,activeSheet}));if(hist.length>200)hist.shift()}
@@ -4826,7 +4836,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v54';
+const BUILD='v55';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -4889,6 +4899,7 @@ async function importAudioFile(f,projId){
       if(swap){msg('已挂到《'+p.name+'》');return}
     }
     await selectAudio(H,blob);
+    save();                                      // 导入音频时新建的模式也必须保存，不能只落音频记录
     syncAudSel();syncModeSel();refreshAudLocal();   // 本机补上文件后，去掉"不在本机"标注
   }catch(err){msg('音频加载失败：'+err.message,1)}
 }
@@ -5023,7 +5034,7 @@ function applySave(s){
   let modes=s.modes;
   if(!modes)modes={'标准':{E:s.E||[],TEMPO:s.TEMPO,METER:s.METER,SIG:s.SIG,FORM:s.FORM,offset:s.offset||0}};
   const hasM=s.M?.length||Object.keys(s.sheets||{}).length,hasE=Object.values(modes).some(m=>m&&m.E?.length);
-  if(!hasM&&!hasE)return false;
+  if(!hasM&&!hasE&&!Object.keys(s.modes||{}).length)return false;
   restoreSheetMarks(s);MODES=modes;
   activeMode=s.activeMode||'标准';
   if(!MODES[activeMode])activeMode=Object.keys(MODES)[0]||'标准';
@@ -5544,8 +5555,15 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 // 选一个音频：切到它所属的模式（音频和那套时间点绑定），再换音频源
 async function selectAudio(hash,blob){
   const a=(track&&track.audios||[]).find(x=>x.hash===hash);
-  const mode=a?audioModeOf(a):activeMode;
-  if(!MODES[mode])newMode(mode,true);
+  let mode=a?audioModeOf(a):activeMode;
+  if(!MODES[mode]){
+    // 旧版本改名没有保存音频绑定。不能据此悄悄重建已删除/改名的模式。
+    const selected=await askPick('音频《'+(a?.name||'')+'》原来绑定的模式「'+mode+'」已不存在，请选择它现在所属的模式：',
+      Object.keys(MODES).map(n=>({v:n,label:n,primary:n===activeMode})));
+    if(selected==null){resetAudio();syncAudSel();return false}
+    mode=selected;
+    if(a){a.mode=mode;await saveModeBindings()}
+  }
   if(mode!==activeMode)switchMode(mode);
   // 实际在播哪个，就把它记为 lastAudio 并同步下拉选中项——播放列表可能指定
   // 同一模式里的另一个音频，不能只靠 lastAudio 显示（会跟真正播放的对不上）
@@ -6825,7 +6843,7 @@ function applyAnn(s){
   if(!MODES[activeMode])MODES[activeMode]=defaultModeData();
   loadMode(activeMode);loadStruct(MODES[activeMode]);
   syncNext();tapM=null;lastSeek=null;
-  layout();refresh();syncReh();
+  layout();refresh();syncModeSel();syncAudSel();
 }
 
 /* ---------- 启动 ---------- */
