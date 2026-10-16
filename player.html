@@ -23,7 +23,7 @@ button:active{opacity:.65}
 /* padding-top 带上安全区：横屏带刘海/圆角的设备上工具栏贴顶会被切掉一截。
    env() 在没开 viewport-fit=cover 时恒为 0（那时系统自己会避开安全区），所以这条是白拿的保险 */
 #bar{position:fixed;top:0;left:0;right:0;z-index:20;background:rgba(21,26,33,.97);
-  color:var(--text);padding:calc(5px + env(safe-area-inset-top)) calc(44px + env(safe-area-inset-right)) 5px calc(6px + env(safe-area-inset-left));
+  color:var(--text);padding:calc(5px + env(safe-area-inset-top)) calc(6px + env(safe-area-inset-right)) 5px calc(6px + env(safe-area-inset-left));
   display:flex;flex-direction:column;gap:5px;
   box-shadow:0 2px 12px rgba(0,0,0,.5)}
 /* safe center：宽屏居中好看；窄屏内容装不下时自动退回左对齐，保证横滑能划到最左边 */
@@ -109,10 +109,8 @@ button:active{opacity:.65}
 @media (max-width:700px),(pointer:coarse){
   .row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .row::-webkit-scrollbar{display:none}
-  /* 「▲」是 fixed 钉在右上角 right:10px、触屏下宽 44px，要吃掉右缘 54px；
-     padding 只留 44px 的话行内容（现在行末是常驻的 sysBox）会被它压住左边 10px——
-     pw_touch_targets 的「命中区不许交叠」抓到过 bMenu↔bBar 10×42 */
-  #bar{padding-right:calc(54px + env(safe-area-inset-right))}
+  /* 收起键在 sysBox 内占据真实宽度，不再为悬浮按钮猜测预留空间。 */
+  #bar{padding-right:calc(6px + env(safe-area-inset-right))}
 }
 @media (max-width:700px){
   #aud{flex:none}
@@ -187,7 +185,9 @@ body.perf #rowEdit,body.perf #rowState{display:none}
 body.perf .editOnly{display:none}
 /* 收缩/展开钉在同一个右上角位置，切换不跳 */
 /* 这两个跟 #bar 一样钉在顶边，安全区要一起跟（否则工具栏缩下去了、它俩还贴着刘海） */
-#bBar{position:fixed;top:calc(6px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:31}
+#bar #sysBox{gap:8px}
+#bar #sysBox button{box-sizing:border-box;height:44px;min-height:44px;min-width:44px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center}
+#bar #bBar{position:static;width:44px;padding:0}
 #barShow{position:fixed;top:calc(6px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:30;display:none;background:var(--bg-soft);
    color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:13px}
 /* 这条必须放在上面那条之后：同特异性下靠源码顺序取胜，放到上面的触屏块里会被基础规则压掉。
@@ -793,8 +793,8 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
         不持久化：跟 chkNum/chkProg/chkFollow/初始方向一致，刷新即回默认 -->
    <button id="bPerf" title="当前是编辑模式。点一下锁成演奏模式（只放音、不给编辑）">编辑</button>
    <button id="bMenu" title="更多设置与数据">菜单</button>
+   <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
   </span>
-  <button id="bBar" title="隐藏工具栏，给谱面腾地方">▲</button>
  </div>
  <!-- ============ 第 2 行：编辑行 ============
       演奏态整行收掉。这里的东西要么写数据（工具 / 撤销 / 自动生成 / 删音频 / 模式），
@@ -4883,7 +4883,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v57';
+const BUILD='v58';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
