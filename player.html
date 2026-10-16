@@ -657,8 +657,13 @@ body.hidebar #reh{display:flex}
    按钮保持 44px 不缩：这是全 App 最触摸导向的 UI，窄屏恰恰是最需要手指点准的场合 */
 @media (max-width:700px){
   #reh{gap:8px;padding:8px 10px;width:calc(100vw - 16px);border-radius:999px}
+  /* 固定控制组宽度，名称只能使用两侧按钮之间的剩余空间。 */
+  body.hidebar #reh{display:grid;grid-template-columns:max-content minmax(0,1fr)}
   #reh .rehMain{gap:4px}
-  #reh .rehFoot{flex:1 1 auto;gap:6px}   /* 曲名靠它吃掉剩下的宽 */
+  #reh .rehFoot{display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;gap:6px}
+  #reh button.lbl{width:100%;min-width:0;max-width:100%}
+  #reh .rateWrap{grid-column:2}
+  #rehUp{grid-column:3}
   #reh .prog{display:none}
   #reh .lbl{flex:1;min-width:0;max-width:none;font-size:12px}
   /* 只动字号——padding 交给上面的圆规则，这里再写一次就会把圆撑成椭圆 */
@@ -4821,7 +4826,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v53';
+const BUILD='v54';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
