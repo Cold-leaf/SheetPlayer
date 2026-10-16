@@ -2076,8 +2076,8 @@ async function renderPage(n){
   let scale=zoom*DPR;
   if(Math.max(base.width,base.height)*scale>MAXDIM)scale=MAXDIM/Math.max(base.width,base.height);
   const vp=p.getViewport({scale});
-  let c=cvs[n];
-  if(!c){c=document.createElement('canvas');cvs[n]=c;box.insertBefore(c,box.firstChild)}
+  // 在离屏画布完成新比例的绘制，保留旧画面，避免重设尺寸时整页变白。
+  const c=document.createElement('canvas');
   /* 背板按 DPR 放大，CSS 尺寸由 .page 撑满 → 高清屏不糊。
      取整必须跟 setPageSizes 那两行**同源**：CSS 那侧是 round(base宽*zoom)、这里再各自
      round(base宽*zoom*DPR)，同一个 x 会被舍成两个数——x=534.38 时 CSS 得 534、背板得 1069，
@@ -2089,9 +2089,27 @@ async function renderPage(n){
   c.height=exact?Math.round(Math.round(base.height*zoom)*DPR):Math.round(vp.height);
   const task=p.render({canvasContext:c.getContext('2d'),viewport:vp});
   tasks.set(n,task);
-  try{await task.promise;box.dataset.done=want}
-  catch(err){}
-  finally{tasks.delete(n)}
+  let published=false;
+  try{
+    await task.promise;
+    if(tasks.get(n)===task&&boxes[n]===box&&pageObj[n]===p&&visible.has(n)&&want===zoom+'@'+DPR){
+      const old=cvs[n];
+      if(old){old.replaceWith(c);old.width=old.height=0}
+      else box.insertBefore(c,box.firstChild);
+      cvs[n]=c;box.dataset.done=want;published=true;
+    }
+  }catch(err){
+    if(err?.name!=='RenderingCancelledException')console.warn('PDF 页面绘制失败',n,err);
+  }finally{
+    if(!published)c.width=c.height=0;
+    // 已取消的旧任务不能删掉同页的新任务（滚出再滚入、换谱都会发生）。
+    if(tasks.get(n)===task){
+      tasks.delete(n);
+      // 渲染期间的缩放请求曾被 tasks.has 拦住，结束后必须追上最新比例。
+      if(boxes[n]===box&&pageObj[n]===p&&visible.has(n)&&want!==zoom+'@'+DPR)renderPage(n);
+    }
+  }
+  if(!published)return;
   // 首张真正有谱表的页渲染完，探一下是不是扫描/影印件，是的话提示一次（staves 有缓存，不白算）
   if(!scanChecked){
     try{
@@ -2105,9 +2123,9 @@ async function renderPage(n){
 }
 function freePage(n){
   const t=tasks.get(n);if(t){try{t.cancel()}catch(e){}tasks.delete(n)}
+  if(boxes[n])delete boxes[n].dataset.done;
   const c=cvs[n];if(!c)return;
   c.width=c.height=0;c.remove();cvs[n]=null;
-  if(boxes[n])delete boxes[n].dataset.done;
 }
 let zoomDeb=null;
 function syncZoomUI(){$('zoom').value=zoom;$('zoomVal').textContent=Math.round(zoom*100)+'%'}
@@ -4803,7 +4821,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v52';
+const BUILD='v53';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
