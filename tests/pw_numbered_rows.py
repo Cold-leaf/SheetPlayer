@@ -130,6 +130,22 @@ async def main():
           if(Math.abs(M[5].nx-.641)>.004)throw Error('第67小节未落到真实边界');
         }""")
         print('PASS 爱永在第5页三行：真实边界、数字与重音误检排除、三档缩放；第2行实际补齐62至69小节')
+        await pg.evaluate("""async()=>{
+          const expected=[.200,.286,.359,.431,.650,.894];
+          for(const z of [.5,1,2]){
+            zoom=z;applyZoom();M=[];
+            const c=await recognitionCanvas(7);
+            for(const ny of [.418,.48,.53,.585]){
+              const sys=autoRowSystem(7,ny,c),bars=detectRowBars(7,sys,.12,c);
+              if(!sys?.numbered||sys.staves.length!==4||bars.length!==6||bars.some((x,i)=>Math.abs(x-expected[i])>.004))throw Error('第7页第2行识别错误 '+ny+' '+bars);
+            }
+            M=[];nextM=110;layout();
+            const el=document.querySelector('.page[data-page="7"]'),r=el.getBoundingClientRect();
+            await pagesEl.onclick({target:el,clientX:r.left+r.width*.086,clientY:r.top+r.height*.418});
+            if(M.length!==6||M.some((m,i)=>m.m!==110+i)||Math.abs(M[5].nx-.650)>.004)throw Error('第115小节位置错误 '+JSON.stringify(M));
+          }
+        }""")
+        print('PASS 爱永在第7页第2行：四声部点击、三档缩放、110至115小节，第115小节落在真实边界')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())
