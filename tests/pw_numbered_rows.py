@@ -90,6 +90,18 @@ async def main():
           const el=document.querySelector('.page'),r=el.getBoundingClientRect();
           await pagesEl.onclick({target:el,clientX:r.left+r.width*.15,clientY:r.top+r.height*.265});
           if(M.length!==6||M.some(m=>Math.abs(m.ny-.265)>.005))throw Error('实际点击未补齐第一行 '+JSON.stringify(M));
+          for(const [ny,start,count] of [[.265,.12,6],[.478,.093,5],[.737,.093,5]]){
+            const variants=[];
+            for(const z of [.5,1,2])for(const dx of [-.004,.004]){
+              M=[];syncNext();zoom=z;applyZoom();layout();
+              const r=el.getBoundingClientRect();
+              await pagesEl.onclick({target:el,clientX:r.left+r.width*(start+dx),clientY:r.top+r.height*ny});
+              if(M.length!==count)throw Error('粗细行首重复计数 '+ny+' '+dx+' '+JSON.stringify(M));
+              variants.push(JSON.stringify(M.map(m=>({nx:m.nx,m:m.m}))));
+            }
+            if(new Set(variants).size!==1)throw Error('粗细行首或缩放改变小节位置 '+ny+' '+variants);
+          }
+
         }""")
         print('PASS 爱永在第一页三行：短小节线、页眉干扰、三档缩放、后半行补齐；第一行实际点击生成六个小节')
         assert not errors,errors

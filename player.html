@@ -3412,11 +3412,17 @@ pagesEl.onclick=async e=>{
       snap();
       const sys=autoRowSystem(g.page,g.ny,source);
       const h=sys?Math.max(0.04,sys.bot-sys.top):lastH;
-      const nmk={page:g.page,nx:g.nx,ny:sys?sys.top:g.ny,m:nextM,h};
+      // 先识别整行，再把点击位置吸附到附近边界。行首括线/粗细双线是同一个起点，
+      // 不能先在点击处建一根，再把紧邻的印刷线当作下一个小节。
+      const allLines=sys?detectRowBars(g.page,sys,-1,source):null;
+      const nearby=allLines?.filter(x=>Math.abs(x-g.nx)<=.012)
+        .sort((a,b)=>Math.abs(a-g.nx)-Math.abs(b-g.nx))[0];
+      const startNx=nearby??g.nx;
+      const nmk={page:g.page,nx:startNx,ny:sys?sys.top:g.ny,m:nextM,h};
       M.push(nmk);lastH=h;
       let added=0,lines=null;
       if(sys){
-        lines=detectRowBars(g.page,sys,g.nx,source);
+        lines=allLines?.filter(x=>x>startNx+.002);
         if(lines&&lines.length>1){
           for(const nx of lines.slice(0,-1)){        // 去掉最右的终止线
             if(M.some(x=>x.page===g.page&&Math.abs(x.nx-nx)<0.004&&
@@ -4937,7 +4943,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v60';
+const BUILD='v61';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
