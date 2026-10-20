@@ -104,6 +104,32 @@ async def main():
 
         }""")
         print('PASS 爱永在第一页三行：短小节线、页眉干扰、三档缩放、后半行补齐；第一行实际点击生成六个小节')
+        await pg.evaluate("""async()=>{
+          M=[];
+          const rows=[
+            [.145,[.214,.304,.393,.501,.591,.697,.787,.893]],
+            [.446,[.231,.346,.428,.527,.641,.723,.794,.892]],
+            [.746,[.205,.314,.393,.503,.582,.691,.783,.891]]];
+          for(const [ny,expected] of rows){
+            const variants=[];
+            for(const z of [.5,1,2]){
+              zoom=z;applyZoom();const c=await recognitionCanvas(5),sys=autoRowSystem(5,ny,c);
+              if(!sys?.numbered||sys.staves.length!==4)throw Error('第5页行定位错误 '+ny);
+              const bars=detectRowBars(5,sys,.12,c);
+              if(bars.length!==8||bars.some((x,i)=>Math.abs(x-expected[i])>.004))throw Error('第5页数字误检或真线漏检 '+ny+' '+bars);
+              const tail=detectRowBars(5,sys,.54,c);
+              if(JSON.stringify(tail)!==JSON.stringify(bars.filter(x=>x>.542)))throw Error('第5页局部补齐不一致');
+              variants.push(JSON.stringify(bars));
+            }
+            if(new Set(variants).size!==1)throw Error('第5页缩放不一致');
+          }
+          M=[];nextM=62;layout();
+          const el=document.querySelector('.page[data-page="5"]'),r=el.getBoundingClientRect();
+          await pagesEl.onclick({target:el,clientX:r.left+r.width*.085,clientY:r.top+r.height*.446});
+          if(M.length!==8||M.some((m,i)=>m.m!==62+i))throw Error('第5页第2行实际补齐编号错误 '+JSON.stringify(M));
+          if(Math.abs(M[5].nx-.641)>.004)throw Error('第67小节未落到真实边界');
+        }""")
+        print('PASS 爱永在第5页三行：真实边界、数字与重音误检排除、三档缩放；第2行实际补齐62至69小节')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())

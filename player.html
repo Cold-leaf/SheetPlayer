@@ -3222,8 +3222,9 @@ function detectRowBars(page,sys,rightOfNx,source){
     // 影印件的竖线常有细断口：低分辨率时抗锯齿把它糊平了，高分辨率下露出来，
     // 填充率就掉到阈值以下 —— 实测十送红军同一行里一半小节线因此过不了跨声部校验
     //（画布 604 时 95/105，画布 1158 时 70/105，分辨率越高反而越差）。
+    // 简谱不可纵向补缝：上下对齐的数字、重音和减时线会被连成假小节线。
     for(let y=0;y<hgt;y++){
-      if(dark(ix,ys+y)||dark(ix,ys+y-1)||dark(ix,ys+y+1))n++;
+      if(dark(ix,ys+y)||(!sys.numbered&&(dark(ix,ys+y-1)||dark(ix,ys+y+1))))n++;
       cum[base+y+1]=n;
     }
   }
@@ -3306,7 +3307,8 @@ function detectRowBars(page,sys,rightOfNx,source){
   // 整条推出谱表，实测 CQ_传奇 整行返回空、十送红军一行只中 1/6。九份真值上它是净负面的：
   // 关掉 640/659，开着 613/659。
   // 所以两边都扫，谁找得多用谁：估歪的那次自然选不上，影印件那次照旧生效。
-  if(sys.numbered)return scan(0.88,false).lines;
+  // 不补缝后允许少量原始缺墨，仍要求至少四分之三声部在同列通过。
+  if(sys.numbered)return scan(0.8,false).lines;
   if(sys.continuous)return scan(0.9,false).lines; // 简谱只认贯穿人工行范围的竖线，数字笔画不能过关。
   const sT=scan(0.9,true), sF=scan(0.9,false);
   if(!sys.scan){
@@ -4943,7 +4945,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v61';
+const BUILD='v62';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
