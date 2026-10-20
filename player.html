@@ -2819,6 +2819,28 @@ function alignNy(mk){
 const staffCache=new Map();
 const scanPages=new Set();                       // 走了「扫描兜底」才认出的页：严格法一条谱线都找不到
 let scanChecked=false;
+// 扫描页先在识别副本上校正轻微倾斜；按横向墨迹集中度寻找五线谱的共同斜率。
+function straightenRecognition(c){
+  const small=document.createElement('canvas');small.width=700;small.height=Math.round(c.height*700/c.width);
+  const ctx=small.getContext('2d');ctx.drawImage(c,0,0,small.width,small.height);
+  const W=small.width,H=small.height,d=ctx.getImageData(0,0,W,H).data,points=[];
+  for(let y=0;y<H;y++)for(let x=Math.round(W*.08);x<W*.94;x+=2){
+    const p=(y*W+x)*4;if(d[p]*.299+d[p+1]*.587+d[p+2]*.114<175)points.push([x-W/2,y]);
+  }
+  const score=k=>{
+    const rows=new Uint16Array(H);
+    for(const [x,y] of points){const yy=Math.round(y-k*x);if(yy>=0&&yy<H)rows[yy]++}
+    let sum=0;for(const n of rows)sum+=n*n;return sum;
+  };
+  const base=score(0);let best=base,slope=0;
+  for(let i=-20;i<=20;i++){const k=i*.001,v=score(k);if(v>best){best=v;slope=k}}
+  if(Math.abs(slope)<.003||best<base*1.2)return c;
+  const out=document.createElement('canvas');out.width=c.width;out.height=c.height;
+  const dst=out.getContext('2d');dst.fillStyle='white';dst.fillRect(0,0,out.width,out.height);
+  dst.setTransform(1,-slope,0,1,0,slope*c.width/2);dst.drawImage(c,0,0);
+  out.straightened=true;
+  return out;
+}
 // 识别画布独立于显示缩放和设备 DPR；只保留最近三页。
 const recognitionPages=new Map();
 let recognitionEpoch=0,autoRowBusy=false;
@@ -2829,9 +2851,10 @@ async function recognitionCanvas(page){
   const c=document.createElement('canvas');c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);
   await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
   if(epoch!==recognitionEpoch)return null;
-  recognitionPages.set(page,c);
+  const aligned=straightenRecognition(c);
+  recognitionPages.set(page,aligned);
   if(recognitionPages.size>3)recognitionPages.delete(recognitionPages.keys().next().value);
-  return c;
+  return aligned;
 }
 // 简谱：先由多条同高度的长竖线确定声部带，再用左侧连谱线组合成行。
 // 数字笔画短且上下不齐，不能仅凭单列黑像素成为小节线。
@@ -3209,7 +3232,7 @@ function systemAt(page,ny,source){
     while(lo>0&&st[lo].top-st[lo-1].bot<GAP)lo--;
     while(hi<st.length-1&&st[hi+1].top-st[hi].bot<GAP)hi++;
   }
-  return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1),scan:!!st.scan};
+  return {top:st[lo].top,bot:st[hi].bot,staves:st.slice(lo,hi+1),scan:!!st.scan||!!source?.straightened};
 }
 // 扫描一行（谱表组）里所有印刷小节线，返回 nx（升序，含最右的终止线，由调用方去掉）
 function detectRowBars(page,sys,rightOfNx,source){
@@ -3303,6 +3326,13 @@ function detectRowBars(page,sys,rightOfNx,source){
           for(const dy of [-3,-2,-1,1,2,3]){
             const aa=a+dy,bb=b+dy;
             if(seg(ix,aa,aa+edge)>=.85&&seg(ix,bb-edge,bb)>=.85&&seg(ix,aa,bb)>=Math.max(fill,.9)){matched=true;break}
+          }
+        }
+        // 校平后的扫描页仍可能有声部间横向错位，只容许数像素且保持贯穿校验。
+        if(!matched&&source?.straightened){
+          for(const dx of [-3,-2,-1,1,2,3]){
+            const x=ix+dx;if(x<0||x>=iw)continue;
+            if(seg(x,a,a+edge)>=.85&&seg(x,b-edge,b)>=.85&&seg(x,a,b)>=.9){matched=true;break}
           }
         }
         if(matched)hit++;
@@ -4968,7 +4998,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v63';
+const BUILD='v64';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

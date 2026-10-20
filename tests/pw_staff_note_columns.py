@@ -55,6 +55,22 @@ async def main():
           }
         }""")
         print('PASS 爱永在标号17页第二行：98至107小节完整补齐，三档缩放与局部识别一致')
+        await pg.evaluate("""async()=>{
+          for(const [ny,start,expected] of [[.13,126,[.327,.536,.726,.913]],[.60,130,[.344,.540,.751,.918]]]){
+            const variants=[];
+            for(const z of [.5,1,2]){
+              M=[];zoom=z;applyZoom();const c=await recognitionCanvas(11),sys=autoRowSystem(11,ny,c);
+              const bars=detectRowBars(11,sys,.15,c);
+              if(sys?.staves.length!==6||bars.length!==4||bars.some((x,i)=>Math.abs(x-expected[i])>.005))throw Error('标号20页倾斜识别错误 '+ny+' '+JSON.stringify({sys,bars}));
+              variants.push(JSON.stringify(bars));
+              nextM=start;layout();const el=document.querySelector('.page[data-page="11"]'),r=el.getBoundingClientRect();
+              await pagesEl.onclick({target:el,clientX:r.left+r.width*.11,clientY:r.top+r.height*ny});
+              if(M.length!==4||M.some((m,i)=>m.m!==start+i))throw Error('标号20页实际补齐错误 '+JSON.stringify(M));
+            }
+            if(new Set(variants).size!==1)throw Error('倾斜页识别随缩放改变');
+          }
+        }""")
+        print('PASS 爱永在标号20页两行：六谱表完整识别，126至133小节、三档缩放实际补齐')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())
