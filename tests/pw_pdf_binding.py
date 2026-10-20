@@ -126,6 +126,19 @@ async def main():
         await page.click('#dlgProjNew')
         await page.wait_for_function('()=>track.name==="新曲"')
         assert await page.evaluate('(async()=> (await idbAll(idb,"projects")).length)()') == 2
+        # A newly created empty project exposes only creation, and reuses its placeholder.
+        await page.evaluate('async()=>{await flushSave();await idbPut(idb,"projects",{id:"empty",name:"空项目",pdf:null,pdfHistory:[],audios:[]});pendPid="empty"}')
+        await page.set_input_files('#fPdf', upload)
+        await page.wait_for_selector('#dlgPick', state='visible')
+        assert await page.get_by_role('button', name='谱面', exact=True).count() == 0
+        await page.keyboard.press('Escape')
+        assert await page.evaluate('(async()=> !(await idbGet(idb,"projects","empty")).pdf)()')
+        await page.evaluate('()=>{pendPid="empty"}')
+        await page.set_input_files('#fPdf', upload)
+        await page.get_by_role('button', name='＋ 新增谱面', exact=True).click()
+        await page.wait_for_function('()=>pid==="empty" && pdf && track.sheets.length===1')
+        assert await page.evaluate('track.sheets[0].name==="新曲" && M.length===0')
+        print('OK   空项目仅显示新增谱面，取消不修改，导入后无多余占位谱面')
         assert not errors, errors
         print('OK   同一 PDF 可明确新建项目，浏览器无运行错误')
         await browser.close()

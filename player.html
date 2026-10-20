@@ -1863,12 +1863,22 @@ async function attachPdf(f,projId,forceNew,sheetAction){
     if(projId&&!p)return msg('这个项目不在了，请从曲目库重新打开',1);
     if(p){
       ensureSheets(p);
+      const first=p.sheets[0],savedMarks=await idbGet(idb,'marks',p.id);
+      // 兼容层生成的空占位不作为已有谱面；远端已有标注的谱面仍可补文件。
+      const emptySheet=p.sheets.length===1&&first.id==='default'&&first.name==='谱面'
+        &&!first.pdf&&!first.pdfHistory?.length&&!savedMarks;
       if(sheetAction?.kind!=='add'){
-        const choice=await askPick('《'+p.name+'》：选择这份 PDF 对应的谱面。已有谱面沿用标注；不同分页或排版请新增谱面。',[
-          ...p.sheets.map(sh=>({v:sh.id,label:sh.name})),
+        const prompt=emptySheet?'《'+p.name+'》：为这份 PDF 新增谱面。'
+          :'《'+p.name+'》：选择这份 PDF 对应的谱面。已有谱面沿用标注；不同分页或排版请新增谱面。';
+        const choice=await askPick(prompt,[
+          ...(emptySheet?[]:p.sheets.map(sh=>({v:sh.id,label:sh.name}))),
           {v:'__new__',label:'＋ 新增谱面'}]);
         if(choice===null)return;
         sheetAction=choice==='__new__'?{kind:'add'}:{kind:'attach',sheetId:choice};
+      }
+      if(emptySheet&&sheetAction.kind==='add'){
+        first.name=sheetAction.name?.trim()||sheetFileName(f.name);
+        sheetAction={kind:'attach',sheetId:first.id};
       }
       if(sheetAction.sheetId&&!p.sheets.some(sh=>sh.id===sheetAction.sheetId))
         return msg('谱面版本已不存在',1);
