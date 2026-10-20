@@ -148,6 +148,14 @@ async def main():
             updateProg(10.5,i,OCC[i]);
             const edge=(parseFloat(bandEl.style.left)+parseFloat(bandEl.style.width))/100;
             if(Math.abs(edge-.894)>.004)throw Error('末小节进度范围未到终止线 '+edge);
+            const line=sweepEl;let previous=-1;
+            for(let t=10;t<11;t+=.017){
+              updateProg(t,i,OCC[i]);
+              const x=parseFloat(line.style.left)/100*boxes[7].clientWidth*(window.devicePixelRatio||1);
+              if(Math.abs(x-Math.round(x))>.001||x<previous||sweepEl!==line||line.style.display!=='block')throw Error('进度线像素对齐/连续移动失败');
+              previous=x;
+            }
+
 
           }
         }""")

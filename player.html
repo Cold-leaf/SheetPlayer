@@ -309,7 +309,7 @@ body.perf .editOnly{display:none}
 #band{position:absolute;background:rgba(255,136,0,.15);border-left:2px solid rgba(255,136,0,.55);
     pointer-events:none;z-index:0;display:none}
 #sweep{position:absolute;width:2px;background:#ff8c00;box-shadow:0 0 7px rgba(255,140,0,.85);
-    pointer-events:none;z-index:2;display:none}
+    pointer-events:none;z-index:2;display:none;transform:translateZ(0);will-change:left}
 
 #panel{position:fixed;right:10px;top:calc(var(--barH,96px) + 8px);background:var(--bg-soft);color:var(--text);padding:10px;
     border:1px solid var(--border);border-radius:8px;display:none;min-width:260px;overflow:auto;z-index:9;
@@ -4187,7 +4187,15 @@ function updateProg(t,i,o){
   const top=mk.ny*100,hh=hOf(mk)*100;
   bandEl.style.cssText='display:block;left:'+(x0*100)+'%;width:'+((x1-x0)*100)+
     '%;top:'+top+'%;height:'+hh+'%';
-  sweepEl.style.cssText='display:block;left:'+((x0+(x1-x0)*p)*100)+'%;top:'+top+'%;height:'+hh+'%';
+  // 将细线对齐物理像素，避免缓慢移动时亚像素抗锯齿不断改变亮度。
+  const ratio=window.devicePixelRatio||1,width=box.clientWidth;
+  const sweepX=x0+(x1-x0)*p;
+  const alignedX=width?Math.round(sweepX*width*ratio)/(width*ratio):sweepX;
+  sweepEl.style.display='block';
+  sweepEl.style.left=(alignedX*100)+'%';
+  sweepEl.style.top=top+'%';sweepEl.style.height=hh+'%';
+  const lineWidth=pagesEl.classList.contains('cleanPlay')?1.5:2;
+  sweepEl.style.width=(Math.max(1,Math.round(lineWidth*ratio))/ratio)+'px';
 }
 
 function tick(){
@@ -4998,7 +5006,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v64';
+const BUILD='v65';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
