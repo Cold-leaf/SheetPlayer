@@ -3142,23 +3142,24 @@ function snapBarX(mk,winPx){
 //   判定逻辑和 snapBarX 一致（跨声部校验），只是找的是最右那条而非离落点最近的。
 const rowEdgeCache=new Map(),rowEdgePending=new Set();
 function rowRightEdge(mk){
-  const analysis=recognitionPages.get(mk.page),c=analysis||cvs[mk.page];
-  if(!c||!c.width)return null;
-  const key=mk.page+'@'+mk.ny+'@'+hOf(mk)+'@'+c.width+'x'+c.height+'@'+!!analysis;
+  const analysis=recognitionPages.get(mk.page);
+  // 所有谱型都只用固定精度画布；显示画布随缩放变化，不能决定行末范围。
+  if(!analysis){
+    const requestKey=recognitionEpoch+'@'+mk.page,epoch=recognitionEpoch;
+    if(!rowEdgePending.has(requestKey)){
+      rowEdgePending.add(requestKey);
+      recognitionCanvas(mk.page).then(c=>{if(c&&epoch===recognitionEpoch)refresh()})
+        .catch(()=>{}).finally(()=>rowEdgePending.delete(requestKey));
+    }
+    return null;
+  }
+  const c=analysis;
+  const key=mk.page+'@'+mk.ny+'@'+hOf(mk)+'@'+c.width+'x'+c.height;
   if(rowEdgeCache.has(key))return rowEdgeCache.get(key);
   let out=null;
   const st=staves(mk.page,analysis);
   const localStaff=st?.some(s=>s.bot>mk.ny&&s.top<mk.ny+hOf(mk));
   if(!localStaff){
-    if(!analysis){
-      const requestKey=recognitionEpoch+'@'+mk.page,epoch=recognitionEpoch;
-      if(!rowEdgePending.has(requestKey)){
-        rowEdgePending.add(requestKey);
-        recognitionCanvas(mk.page).then(c=>{if(c&&epoch===recognitionEpoch)refresh()})
-          .catch(()=>{}).finally(()=>rowEdgePending.delete(requestKey));
-      }
-      return null;
-    }
     const sys=autoRowSystem(mk.page,mk.ny,analysis);
     const lines=sys?.numbered?detectRowBars(mk.page,sys,-1,analysis):null;
     out=lines?.length?lines[lines.length-1]:null;
@@ -5006,7 +5007,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v65';
+const BUILD='v66';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

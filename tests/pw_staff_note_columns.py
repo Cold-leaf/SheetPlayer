@@ -71,6 +71,22 @@ async def main():
           }
         }""")
         print('PASS 爱永在标号20页两行：六谱表完整识别，126至133小节、三档缩放实际补齐')
+        edges=[]
+        for z in [.5,1,2]:
+            await pg.evaluate("""z=>{
+              zoom=z;applyZoom();recognitionPages.clear();rowEdgeCache.clear();
+              M=[{page:9,nx:.726,ny:.144,h:.32,m:115}];E=[{m:115,t:0}];layout();
+              $('chkProg').checked=true;rowRightEdge(M[0]);
+            }""",z)
+            await pg.wait_for_function('()=>recognitionPages.has(9)&&rowEdgePending.size===0')
+            edge=await pg.evaluate("""()=>{
+              const i=OCC.findIndex(o=>o.m===115);updateProg(.5,i,OCC[i]);
+              return (parseFloat(bandEl.style.left)+parseFloat(bandEl.style.width))/100;
+            }""")
+            assert abs(edge-.909)<.008,edge
+            edges.append(edge)
+        assert max(edges)-min(edges)<.0001,edges
+        print('PASS 标号18页第一行末小节：无识别缓存时自动加载固定精度画布，三档缩放橙色范围一致',edges)
         assert not errors,errors
         await browser.close()
 asyncio.run(main())
