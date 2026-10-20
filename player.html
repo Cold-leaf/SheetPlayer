@@ -880,6 +880,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
  <div class="msec">谱面版本</div>
  <button id="bAddSheet">＋ 新增谱面版本</button>
  <button id="bRenameSheet">重命名当前谱面</button>
+ <button id="bDeleteSheet">删除谱面…</button>
  <button id="bReplaceSheet">替换当前谱面 PDF</button>
  <div class="ginfo" style="white-space:normal">不同谱面共用音频与时间轴；请按同一套小节编号标位置。替换只用于同一版谱子的文件更新。</div>
  <label class="mbtn" id="lblPdf" title="随便导一份谱子：文件名/内容哈希对得上已有项目就挂上去，否则新建项目。想给项目起名就先「＋ 新建项目」，再在那一条上导入谱子">导一份新谱子<input type="file" id="fPdf" hidden accept=".pdf"></label>
@@ -1812,6 +1813,45 @@ $('bRenameSheet').onclick=async()=>{
   const name=await askText('谱面名称',sh.name);if(name==null)return;
   if(!name.trim()||track.sheets.some(x=>x!==sh&&x.name===name.trim()))return msg('名称为空或已存在',1);
   sh.name=name.trim();track.updatedAt=Date.now();await idbPut(idb,'projects',track);save();syncSheetSel();
+};
+$('bDeleteSheet').onclick=async()=>{
+  if(!track||!idb)return msg('先打开曲目',1);
+  if(sheetBusy)return;
+  const project=track,projectId=pid;
+  if(project.sheets.length<2)return msg('项目至少保留一份谱面；如需移除整个项目，请在曲目库删除项目',1);
+  $('menu').style.display='none';
+  const id=await askPick('选择要删除的谱面：',project.sheets.map(sh=>({v:sh.id,label:sh.name})));
+  if(id===null||track!==project||pid!==projectId||sheetBusy)return;
+  const sh=project.sheets.find(sh=>sh.id===id);if(!sh)return;
+  const ok=await askPick('删除《'+sh.name+'》及其小节位置标注？此操作不可撤销。其他谱面、音频和共享时间轴会保留。',[
+    {v:'cancel',label:'取消'},{v:'delete',label:'确认删除谱面',danger:true}]);
+  if(ok!=='delete'||track!==project||pid!==projectId||sheetBusy)return;
+  try{
+    save();await flushSave();
+    if(id===activeSheet){
+      // 优先切到本机可打开的谱面；剩余谱面缺文件时仍可保留其标注。
+      const remaining=project.sheets.filter(sh=>sh.id!==id);
+      let next=remaining[0],local=false;
+      for(const candidate of remaining){
+        if(candidate.pdf&&(await idbGet(idb,'files',candidate.pdf.hash))?.blob){next=candidate;local=true;break}
+      }
+      if(local){
+        await switchSheet(next.id);
+        if(activeSheet!==next.id)return msg('无法打开剩余谱面，未删除',1);
+      }else{
+        resetPdfDerived(true);track=project;activeSheet=next.id;bindSheet(project,next.id);
+        M=deepClone(SHEET_MARKS[next.id]||[]);hist=[];tapM=null;arm=null;
+        syncNext();
+      }
+    }
+    project.sheets=project.sheets.filter(sh=>sh.id!==id);
+    delete SHEET_MARKS[id];
+    project.updatedAt=Date.now();
+    await idbPut(idb,'projects',project);
+    save();await flushSave();plPre=null;
+    syncSheetSel();await drawLib();
+    msg('已删除谱面《'+sh.name+'》');
+  }catch(err){msg('删除谱面失败：'+err.message,1)}
 };
 $('bReplaceSheet').onclick=()=>{
   if(!track)return msg('先打开曲目',1);
@@ -4893,7 +4933,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v58';
+const BUILD='v59';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
