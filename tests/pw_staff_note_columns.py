@@ -87,6 +87,24 @@ async def main():
             edges.append(edge)
         assert max(edges)-min(edges)<.0001,edges
         print('PASS 标号18页第一行末小节：无识别缓存时自动加载固定精度画布，三档缩放橙色范围一致',edges)
+        await pg.evaluate("""async()=>{
+          const results=[];
+          for(const z of [.5,1,2]){
+            zoom=z;applyZoom();await recognitionCanvas(8);
+            const sys=autoRowSystem(8,.575,recognitionPages.get(8));
+            const mk={page:8,nx:.216,ny:sys.top,h:sys.bot-sys.top,m:98};
+            M=[mk];$('chkSnapX').checked=true;$('chkAlignY').checked=false;
+            await applySnaps(mk);
+            if(Math.abs(mk.nx-.215)>.004)throw Error('固定精度吸附未命中 '+mk.nx);
+            results.push(mk.nx);
+          }
+          if(Math.max(...results)-Math.min(...results)>.001)throw Error('吸附位置随缩放改变 '+results);
+          recognitionPages.clear();
+          const mk=M[0],old=mk.nx;
+          const pending=applySnaps(mk);M=[];await pending;
+          if(mk.nx!==old)throw Error('异步吸附修改已删除标记');
+        }""")
+        print('PASS 手动/拖动共用吸附：三档缩放命中同一边界，异步期间删除标记不被修改')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())

@@ -2224,7 +2224,9 @@ async function renderPage(n){
   // 首张真正有谱表的页渲染完，探一下是不是扫描/影印件，是的话提示一次（staves 有缓存，不白算）
   if(!scanChecked){
     try{
-      const st=staves(n);
+      const source=await recognitionCanvas(n);
+      if(boxes[n]!==box)return;
+      const st=staves(n,source);
       if(st&&st.length){scanChecked=true;
         if(scanPages.size){scanPages.clear();
           msg('这份谱子像是扫描/影印版（谱线发灰不连续），「整行补齐」会自动按影印件放宽判定，补完扫一眼有没有多补漏补',1)}
@@ -2915,7 +2917,7 @@ function autoRowSystem(page,ny,c){
   return {top,bot,staves:bands.length?bands:[{top,bot}],continuous:!bands.length,scan:!!st.scan};
 }
 function staves(page,source){
-  const c=source||cvs[page];
+  const c=source||recognitionPages.get(page);
   if(!c||!c.width)return null;
   const key=page+'@'+c.width+'x'+c.height+(source?'analysis':'display');
   if(staffCache.has(key))return staffCache.get(key);
@@ -3069,9 +3071,9 @@ function staves(page,source){
 // ② 横向吸到印刷的小节线：竖线覆盖到的【每一个谱表】都得有一条通到底的竖线才算数。
 //    合唱谱的小节线通常不跨谱表相连，所以不能拿整段高度算占比；分谱表判定顺带就是跨声部校验。
 function snapBarX(mk,winPx){
-  const box=boxes[mk.page],c=cvs[mk.page];
+  const box=boxes[mk.page],c=recognitionPages.get(mk.page);
   if(!box||!c||!c.width)return null;                    // 页面没渲染就不吸
-  const st=staves(mk.page);
+  const st=staves(mk.page,c);
   if(!st||!st.length)return null;
   const W=c.width,H=c.height;
   const y0=mk.ny,y1=mk.ny+hOf(mk);
@@ -3237,7 +3239,7 @@ function systemAt(page,ny,source){
 }
 // 扫描一行（谱表组）里所有印刷小节线，返回 nx（升序，含最右的终止线，由调用方去掉）
 function detectRowBars(page,sys,rightOfNx,source){
-  const c=source||cvs[page];
+  const c=source||recognitionPages.get(page);
   if(!c||!c.width||!sys)return null;
   const W=c.width,H=c.height;
   const ys=Math.max(0,Math.round(sys.top*H)-1);
@@ -3383,7 +3385,12 @@ function detectRowBars(page,sys,rightOfNx,source){
   const lT=scan(0.72,true), lF=scan(0.72,false);
   return thin([...new Set([...sT.lines,...sF.lines,...lT.lines,...lF.lines])].sort((a,b)=>a-b));
 }
-function applySnaps(mk){
+async function applySnaps(mk){
+  const epoch=recognitionEpoch,position={nx:mk.nx,ny:mk.ny,h:hOf(mk)};
+  if($('chkSnapX').checked){
+    try{await recognitionCanvas(mk.page)}catch(err){return ''}
+    if(epoch!==recognitionEpoch||!M.includes(mk)||mk.nx!==position.nx||mk.ny!==position.ny||hOf(mk)!==position.h)return '';
+  }
   let hit='';
   if($('chkAlignY').checked&&alignNy(mk))hit='对齐同行';
   if($('chkSnapX').checked){
@@ -3497,7 +3504,8 @@ pagesEl.onclick=async e=>{
     snap();
     const nmk={page:g.page,nx:g.nx,ny:g.ny,m:nextM,h:lastH};   // 新点沿用上次的高度
     M.push(nmk);
-    const hit=applySnaps(nmk);
+    const hit=await applySnaps(nmk);
+    if(!M.includes(nmk))return;
     syncNext();layout();save();
     if(hit)msg('小节 '+nmk.m+'：'+hit);
     return;
@@ -3539,10 +3547,11 @@ function dragMove(e){
   }
   styleMk(mk);
 }
-function dragEnd(){
+async function dragEnd(){
   const mk=drag.mk,moved=drag.moved,mode=drag.mode;drag=null;
   if(!moved)return openPanel(mk.m);
-  const hit=mode==='move'?applySnaps(mk):'';       // 改长度时不吸，免得手一松位置又跑了
+  const hit=mode==='move'?await applySnaps(mk):'';
+  if(!M.includes(mk))return;       // 改长度时不吸，免得手一松位置又跑了
   styleMk(mk);save();
   if(hit)msg('小节 '+mk.m+'：'+hit);
 }
@@ -5007,7 +5016,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v66';
+const BUILD='v67';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
