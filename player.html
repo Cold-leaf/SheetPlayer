@@ -3117,15 +3117,30 @@ function snapBarX(mk,winPx){
 // ③ 行右边界：在渲染好的谱面上，从页右缘往左找「穿过该行所有谱表」的最右一条竖线
 //   （= 这一行的终止线）。行末小节的进度带精确收到这里，不再拿中位间距去猜。
 //   判定逻辑和 snapBarX 一致（跨声部校验），只是找的是最右那条而非离落点最近的。
-const rowEdgeCache=new Map();
+const rowEdgeCache=new Map(),rowEdgePending=new Set();
 function rowRightEdge(mk){
-  const c=cvs[mk.page];
+  const analysis=recognitionPages.get(mk.page),c=analysis||cvs[mk.page];
   if(!c||!c.width)return null;
-  const key=mk.page+'@'+Math.round(mk.ny*1000)+'@'+c.width+'x'+c.height;
+  const key=mk.page+'@'+mk.ny+'@'+hOf(mk)+'@'+c.width+'x'+c.height+'@'+!!analysis;
   if(rowEdgeCache.has(key))return rowEdgeCache.get(key);
   let out=null;
-  const st=staves(mk.page);
-  if(st&&st.length){
+  const st=staves(mk.page,analysis);
+  const localStaff=st?.some(s=>s.bot>mk.ny&&s.top<mk.ny+hOf(mk));
+  if(!localStaff){
+    if(!analysis){
+      const requestKey=recognitionEpoch+'@'+mk.page,epoch=recognitionEpoch;
+      if(!rowEdgePending.has(requestKey)){
+        rowEdgePending.add(requestKey);
+        recognitionCanvas(mk.page).then(c=>{if(c&&epoch===recognitionEpoch)refresh()})
+          .catch(()=>{}).finally(()=>rowEdgePending.delete(requestKey));
+      }
+      return null;
+    }
+    const sys=autoRowSystem(mk.page,mk.ny,analysis);
+    const lines=sys?.numbered?detectRowBars(mk.page,sys,-1,analysis):null;
+    out=lines?.length?lines[lines.length-1]:null;
+  }
+  if(localStaff){
     const W=c.width,H=c.height;
     const y0=mk.ny,y1=mk.ny+hOf(mk);
     const hit=st.filter(s=>s.bot>y0&&s.top<y1);
@@ -3282,7 +3297,15 @@ function detectRowBars(page,sys,rightOfNx,source){
         const edge=Math.max(2,Math.round((b-a+1)*.22));
         const reachesEdges=sys.numbered||sys.continuous||
           (seg(ix,a,a+edge)>=.85&&seg(ix,b-edge,b)>=.85);
-        if(reachesEdges&&seg(ix,a,b)>=fill)hit++;
+        let matched=reachesEdges&&seg(ix,a,b)>=fill;
+        // 扫描谱线的估计边缘可能偏几像素；允许判定带微移，但仍须贯穿上下边缘。
+        if(!matched&&sys.scan){
+          for(const dy of [-3,-2,-1,1,2,3]){
+            const aa=a+dy,bb=b+dy;
+            if(seg(ix,aa,aa+edge)>=.85&&seg(ix,bb-edge,bb)>=.85&&seg(ix,aa,bb)>=Math.max(fill,.9)){matched=true;break}
+          }
+        }
+        if(matched)hit++;
       }
       if(hit>=need)cols.push(ix);
     }
@@ -4945,7 +4968,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v62';
+const BUILD='v63';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

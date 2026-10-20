@@ -143,9 +143,26 @@ async def main():
             const el=document.querySelector('.page[data-page="7"]'),r=el.getBoundingClientRect();
             await pagesEl.onclick({target:el,clientX:r.left+r.width*.086,clientY:r.top+r.height*.418});
             if(M.length!==6||M.some((m,i)=>m.m!==110+i)||Math.abs(M[5].nx-.650)>.004)throw Error('第115小节位置错误 '+JSON.stringify(M));
+            E=M.map((m,i)=>({m:m.m,t:i*2}));layout();$('chkProg').checked=true;
+            const i=OCC.findIndex(o=>o.m===115);
+            updateProg(10.5,i,OCC[i]);
+            const edge=(parseFloat(bandEl.style.left)+parseFloat(bandEl.style.width))/100;
+            if(Math.abs(edge-.894)>.004)throw Error('末小节进度范围未到终止线 '+edge);
+
           }
         }""")
         print('PASS 爱永在第7页第2行：四声部点击、三档缩放、110至115小节，第115小节落在真实边界')
+        await pg.evaluate("""()=>{
+          recognitionPages.clear();rowEdgeCache.clear();
+          const mk=M.find(m=>m.m===115);
+          // 模拟重新打开旧标注：只剩显示画布，没有整行识别缓存。
+          cvs[7]=document.createElement('canvas');cvs[7].width=100;cvs[7].height=140;
+          const ctx=cvs[7].getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,100,140);
+          rowRightEdge(mk);
+        }""")
+        await pg.wait_for_function('()=>recognitionPages.has(7)&&rowEdgePending.size===0')
+        assert await pg.evaluate('Math.abs(rowRightEdge(M.find(m=>m.m===115))-.894)<.004')
+        print('PASS 简谱末小节进度范围抵达终止线，旧标注无识别缓存时也自动恢复')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())

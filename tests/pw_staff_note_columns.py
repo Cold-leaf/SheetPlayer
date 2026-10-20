@@ -17,7 +17,7 @@ async def main():
         await pg.wait_for_function('()=>!!idb')
         await pg.set_input_files('#fPdf',str(PDF))
         await pg.click('#dlgProjNew')
-        await pg.wait_for_function('()=>pdf&&pageObj[2]')
+        await pg.wait_for_function('()=>pdf&&pageObj[pdf.numPages]')
         result=await pg.evaluate("""async()=>{
           const n=pdf.numPages,c=await recognitionCanvas(n),st=staves(n,c);
           const rows=[st[0].top,st[6].top],out=[];
@@ -37,6 +37,24 @@ async def main():
           return out;
         }""")
         print('PASS 雪花线谱最后一页两行：音符误检排除、真实边界保留、三档缩放',result)
+        await pg.set_input_files('#fPdf',str(ROOT.parent/'SheetPlayerTests/AY_爱永在[线][SATB+NA+Pn].pdf'))
+        await pg.click('#dlgProjNew')
+        await pg.wait_for_function('()=>pdfName.startsWith("AY_")&&pageObj[8]')
+        await pg.evaluate("""async()=>{
+          const expected=[.215,.299,.383,.461,.539,.621,.695,.763,.827,.902];
+          for(const z of [.5,1,2]){
+            M=[];zoom=z;applyZoom();const c=await recognitionCanvas(8),sys=autoRowSystem(8,.575,c);
+            const bars=detectRowBars(8,sys,.15,c);
+            if(bars.length!==10||bars.some((x,i)=>Math.abs(x-expected[i])>.004))throw Error('标号17页第二行漏检/误检 '+bars);
+            const tail=detectRowBars(8,sys,.42,c);
+            if(JSON.stringify(tail)!==JSON.stringify(bars.filter(x=>x>.422)))throw Error('局部识别不一致');
+            $('mode').value='mark';syncMode();$('chkAutoRow').checked=true;nextM=98;layout();
+            const el=document.querySelector('.page[data-page="8"]'),r=el.getBoundingClientRect();
+            await pagesEl.onclick({target:el,clientX:r.left+r.width*.095,clientY:r.top+r.height*.575});
+            if(M.length!==10||M.some((m,i)=>m.m!==98+i))throw Error('98至107小节实际补齐失败');
+          }
+        }""")
+        print('PASS 爱永在标号17页第二行：98至107小节完整补齐，三档缩放与局部识别一致')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())
