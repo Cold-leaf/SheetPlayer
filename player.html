@@ -2835,14 +2835,14 @@ async function recognitionCanvas(page){
 }
 // 简谱：先由多条同高度的长竖线确定声部带，再用左侧连谱线组合成行。
 // 数字笔画短且上下不齐，不能仅凭单列黑像素成为小节线。
-function numberedSystems(c){
+function numberedSystems(c,minHeight=.018){
   const W=c.width,H=c.height,d=c.getContext('2d').getImageData(0,0,W,H).data;
   const dark=(x,y)=>{if(x<0||x>=W||y<0||y>=H)return false;const p=(y*W+x)*4;return d[p]*.299+d[p+1]*.587+d[p+2]*.114<150};
   const groups=[];
   for(let x=2;x<W-2;x++){
     let start=-1,last=-1;
     const finish=()=>{
-      if(start<0||last-start<H*.018||last-start>H*.12)return;
+      if(start<0||last-start<H*minHeight||last-start>H*.12)return;
       let g=groups.find(g=>Math.abs(g.top-start)<H*.004&&Math.abs(g.bot-last)<H*.004);
       if(!g){g={top:start,bot:last,xs:[]};groups.push(g)}
       if(!g.xs.length||x-g.xs[g.xs.length-1]>W*.012)g.xs.push(x);
@@ -2876,7 +2876,11 @@ function autoRowSystem(page,ny,c){
   const mates=M.filter(m=>m.page===page&&ny>=m.ny-.006&&ny<=m.ny+hOf(m));
   const anchor=mates.sort((a,b)=>Math.abs(a.ny-ny)-Math.abs(b.ny-ny))[0];
   const staff=staves(page,c)||[];
-  const numbered=!staff.length&&numberedSystems(c).find(s=>ny>=s.top-.012&&ny<=s.bot+.004);
+  const hasLocalStaff=staff.some(s=>ny>=s.top-.012&&ny<=s.bot+.004);
+  const atClick=s=>ny>=s.top-.012&&ny<=s.bot+.004;
+  // 短线仅作兜底，避免数字笔画打乱已可靠识别的声部带。
+  const numbered=!hasLocalStaff&&(numberedSystems(c).find(atClick)||
+    numberedSystems(c,.0135).find(s=>s.staves.length>=2&&atClick(s)));
   if(numbered)return numbered;
   if(!anchor){
     const sys=systemAt(page,ny,c);
@@ -4933,7 +4937,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v59';
+const BUILD='v60';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

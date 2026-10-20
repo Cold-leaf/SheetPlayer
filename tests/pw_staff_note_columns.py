@@ -14,7 +14,9 @@ async def main():
         pg=await browser.new_page()
         errors=[];pg.on('pageerror',lambda e:errors.append(str(e)))
         await pg.goto(f'http://127.0.0.1:{srv.server_address[1]}/player.html')
+        await pg.wait_for_function('()=>!!idb')
         await pg.set_input_files('#fPdf',str(PDF))
+        await pg.click('#dlgProjNew')
         await pg.wait_for_function('()=>pdf&&pageObj[2]')
         result=await pg.evaluate("""async()=>{
           const n=pdf.numPages,c=await recognitionCanvas(n),st=staves(n,c);
@@ -22,7 +24,7 @@ async def main():
           for(let i=0;i<rows.length;i++){
             const variants=[];
             for(const z of [.5,1,2]){
-              zoom=z;applyZoom();const image=await recognitionCanvas(n),sys=systemAt(n,rows[i],image);
+              zoom=z;applyZoom();const image=await recognitionCanvas(n),sys=autoRowSystem(n,rows[i],image);
               const bars=detectRowBars(n,sys,.13,image);
               const expected=i===0?[.3225,.5196,.717,.9129]:[.3068,.4881,.6704,.9035];
               if(bars.length!==4||bars.some((x,k)=>Math.abs(x-expected[k])>.008))throw Error('真实小节线错误 '+i+' '+bars);

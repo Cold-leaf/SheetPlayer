@@ -14,7 +14,9 @@ async def main():
         pg=await browser.new_page()
         errors=[];pg.on('pageerror',lambda e:errors.append(str(e)))
         await pg.goto(f'http://127.0.0.1:{srv.server_address[1]}/player.html')
+        await pg.wait_for_function('()=>!!idb')
         await pg.set_input_files('#fPdf',str(PDF))
+        await pg.click('#dlgProjNew')
         await pg.wait_for_function('()=>pdf&&pageObj[2]')
         result=await pg.evaluate("""async()=>{
           const c=await recognitionCanvas(1);M=[];
@@ -61,6 +63,35 @@ async def main():
           return results;
         }""")
         print('PASS 雪花第 2 页四行：中间声部点击、真实边界位置、三档缩放',result)
+        await pg.set_input_files('#fPdf',str(ROOT.parent/'SheetPlayerTests/AY_爱永在[简][SATB+NA+WO].pdf'))
+        await pg.click('#dlgProjNew')
+        await pg.wait_for_function('()=>pdfName.startsWith("AY_") && pageObj[1]')
+        await pg.evaluate("""async()=>{
+          M=[];
+          const expectedRows=[
+            [.265,[.268,.395,.534,.638,.765,.894]],
+            [.478,[.296,.425,.569,.712,.898]],
+            [.737,[.265,.412,.588,.740,.899]]];
+          for(const [ny,expected] of expectedRows){
+            const variants=[];
+            for(const z of [.5,1,2]){
+              zoom=z;applyZoom();const c=await recognitionCanvas(1);
+              const sys=autoRowSystem(1,ny,c);
+              if(!sys?.numbered||sys.staves.length!==4)throw Error('爱永在行定位错误 '+ny);
+              const bars=detectRowBars(1,sys,.15,c);
+              if(bars.length!==expected.length||bars.some((x,i)=>Math.abs(x-expected[i])>.004))throw Error('爱永在边界错误 '+ny+' '+bars);
+              const tail=detectRowBars(1,sys,.54,c);
+              if(JSON.stringify(tail)!==JSON.stringify(bars.filter(x=>x>.542)))throw Error('爱永在后半行不一致');
+              variants.push(JSON.stringify({sys,bars}));
+            }
+            if(new Set(variants).size!==1)throw Error('爱永在缩放不一致');
+          }
+          $('mode').value='mark';syncMode();$('chkAutoRow').checked=true;
+          const el=document.querySelector('.page'),r=el.getBoundingClientRect();
+          await pagesEl.onclick({target:el,clientX:r.left+r.width*.15,clientY:r.top+r.height*.265});
+          if(M.length!==6||M.some(m=>Math.abs(m.ny-.265)>.005))throw Error('实际点击未补齐第一行 '+JSON.stringify(M));
+        }""")
+        print('PASS 爱永在第一页三行：短小节线、页眉干扰、三档缩放、后半行补齐；第一行实际点击生成六个小节')
         assert not errors,errors
         await browser.close()
 asyncio.run(main())
