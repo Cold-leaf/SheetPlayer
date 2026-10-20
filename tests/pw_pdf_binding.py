@@ -180,6 +180,18 @@ async def main():
         assert await page.evaluate('!pdf && M[0].nx===.4 && E[0].t===3')
         assert await page.evaluate('(async()=>{const d=(await idbGet(idb,"marks",pid)).data;return !d.sheets.default && d.sheets.missing.M[0].nx===.4})()')
         print('OK   剩余谱面缺少本机文件时仍保留其位置和共享时间轴')
+        real_item=__import__('json').loads((ROOT/'annotations/爱永在.json').read_text())['item']
+        await page.evaluate('(it)=>importAnns([it],{force:true})',real_item)
+        real_id=real_item['id']
+        assert await page.evaluate('(id)=>(async()=>{const p=await idbGet(idb,"projects",id);return p.sheets.length===2&&!p.sheets.some(s=>s.id==="default")&&p.sheets.some(s=>s.id===p.lastSheet)})()',real_id)
+        await page.evaluate('(id)=>(async()=>{const p=await idbGet(idb,"projects",id);p.sheets.unshift({id:"default",name:"谱面",pdf:null,pdfHistory:[{hash:p.pdf.hash,name:""}]});p.lastSheet="default";p.pdf=null;await idbPut(idb,"projects",p);const m=await idbGet(idb,"marks",id);m.data.sheets.default={M:[]};await idbPut(idb,"marks",m)})()',real_id)
+        await page.evaluate('(it)=>importAnns([it],{force:true})',real_item)
+        assert await page.evaluate('(id)=>(async()=>{const p=await idbGet(idb,"projects",id),m=await idbGet(idb,"marks",id);return p.sheets.length===2&&!m.data.sheets.default&&p.lastSheet!=="default"})()',real_id)
+        print('OK   真实GitHub标注首次导入不生成占位，重新同步清除旧空占位并选择真实谱面')
+        await page.evaluate('(id)=>(async()=>{const p=await idbGet(idb,"projects",id);p.sheets.push({id:"default",name:"谱面",pdf:null});await idbPut(idb,"projects",p);const m=await idbGet(idb,"marks",id);m.data.sheets.default={M:[{m:1,page:1,nx:.2,ny:.3}]};await idbPut(idb,"marks",m)})()',real_id)
+        await page.evaluate('(it)=>importAnns([it],{force:true})',real_item)
+        assert await page.evaluate('(id)=>(async()=> (await idbGet(idb,"marks",id)).data.sheets.default.M.length===1)()',real_id)
+        print('OK   同名默认谱面有实际标注时保留')
         assert not errors, errors
         print('OK   同一 PDF 可明确新建项目，浏览器无运行错误')
         await browser.close()

@@ -1720,8 +1720,20 @@ async function migrateSheets(){
 }
 async function mergeSheetCatalog(p,data,catalog){
   if(!p)return;
-  ensureSheets(p);
   const sources=catalog?.length?catalog:Object.entries(data.sheets||{}).map(([id,sh])=>({...sh,id}));
+  const old=await idbGet(idb,'marks',p.id);
+  // 多谱面包已经声明真实目录，不为新设备额外制造 default 占位。
+  if(!p.sheets?.length&&!p.pdf&&!old&&sources.length)p.sheets=[];
+  else ensureSheets(p);
+  const placeholder=p.sheets.find(sh=>sh.id==='default');
+  const sourceHashes=new Set(sources.flatMap(sh=>[sh.pdf?.hash,...(sh.pdfHistory||[]).map(h=>h.hash)]).filter(Boolean));
+  if(placeholder&&sources.length&&!sources.some(sh=>sh.id==='default')&&!data.sheets?.default
+      &&['谱面','默认谱面'].includes(placeholder.name)&&!placeholder.pdf
+      &&!marksForSheet(old?.data,'default').length
+      &&!(placeholder.pdfHistory||[]).some(h=>!sourceHashes.has(h.hash))){
+    p.sheets=p.sheets.filter(sh=>sh!==placeholder);
+    if(old?.data?.sheets?.default){delete old.data.sheets.default;await idbPut(idb,'marks',old)}
+  }
   for(const src of sources){
     if(!src?.id)continue;
     let sh=p.sheets.find(x=>x.id===src.id);
@@ -1734,7 +1746,7 @@ async function mergeSheetCatalog(p,data,catalog){
       if(src.pdfHistory&&!local?.blob)sh.pdfHistory=deepClone(src.pdfHistory);
     }
   }
-  bindSheet(p,p.lastSheet);
+  ensureSheets(p);
   await idbPut(idb,'projects',p);
 }
 function syncSheetSel(){
@@ -5016,7 +5028,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v67';
+const BUILD='v68';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -6783,7 +6795,7 @@ async function importAnns(items,{force=false,dry=false}={}){
     if(incoming.sheets||it.sheets?.length){
       await mergeSheetCatalog(p,incoming,it.sheets);
       if(!incoming.sheets)incoming.sheets={default:{...p.sheets.find(x=>x.id==='default'),M:incoming.M||[]}};
-      if(ex?.data?.sheets)incoming.sheets={...ex.data.sheets,...incoming.sheets};
+      if(ex?.data?.sheets)incoming.sheets={...Object.fromEntries(Object.entries(ex.data.sheets).filter(([id])=>p.sheets.some(sh=>sh.id===id))),...incoming.sheets};
       incoming.v=7;
     }else if(ex?.data?.sheets){
       // 旧文件只覆盖默认谱面，不能把其他谱面的位置清掉。
