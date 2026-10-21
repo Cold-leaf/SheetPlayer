@@ -974,8 +974,8 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
 <div id="specBox">
  <div id="specHdr">
   <b>频谱</b>
-  <select id="specView" aria-label="频谱视图" title="变化图突出新增频率成分；亮纹不等于某个声部的音符">
-    <option value="original">原频谱</option><option value="change" selected>频谱变化图</option>
+  <select id="specView" aria-label="频谱视图" title="音高图：C2–C6，每行一个半音；亮色表示候选音高，不区分声部。长窗会模糊起音边缘，请结合试听">
+    <option value="original">原频谱</option><option value="change">频谱变化图</option><option value="pitch" selected>多音高显著度图</option>
   </select>
   <label>横向 <select id="specZoom">
     <option value="60">60 px/s</option><option value="100">100 px/s</option>
@@ -983,7 +983,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
     <option value="420">420 px/s</option>
   </select></label>
   <label><input type="checkbox" id="chkOnset" checked>显示起音</label>
-  <label><input type="checkbox" id="chkCurve" checked>起音曲线</label>
+  <label><input type="checkbox" id="chkCurve">起音曲线</label>
   <label title="仅筛选曲线的频段，不分离声部；吸附仍使用全频起音">曲线频段 <select id="onsetBand">
     <option value="0">全频 60–5000 Hz</option><option value="1">低频 60–500 Hz</option>
     <option value="2">中频 500–2000 Hz</option><option value="3">高频 2000–5000 Hz</option>
@@ -1084,6 +1084,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
   （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
+  「多音高显著度图」每行一个半音，范围 C2–C6，亮色表示该音高的基频与泛音证据；不区分声部，可能漏音或误判八度。分析窗约 372ms，适合看换音走向，不宜按亮带边缘精确打点。
   「频谱变化图」压暗持续声音，亮纹表示新增频率成分，可切回「原频谱」比较；亮纹不等于单个声部或音符。
   起音曲线按附近片段缩放，显示声音新增的相对强度，弱峰也会保留；频段选择仅影响曲线，不分离声部，吸附仍参考全频候选。峰值不一定是合唱元音或拍点的起始，请结合试听微调。
   频谱头上的提示文字窄屏不显示，但手势一样管用。
@@ -4447,12 +4448,58 @@ function buildSpec(mono,dur,my,cacheHash){
       cv.getContext('2d').putImageData(new ImageData(data,frames,SP_H),0,0);
       const onset=await analyzeOnsetCurves(mono,SP_SR,()=>my!==specSeq);
       if(!onset||my!==specSeq)return resolve();
-      SPEC={cv,changeCv:makeChangeSpec(q,frames,SP_H,qmax),frames,hop,sr:SP_SR,dur,...onset};
+      const pitchCv=await buildPitchSpec(mono,frames,hop,()=>my!==specSeq);
+      if(!pitchCv||my!==specSeq)return resolve();
+      SPEC={cv,pitchCv,changeCv:makeChangeSpec(q,frames,SP_H,qmax),frames,hop,sr:SP_SR,dur,...onset};
       if(cacheHash)cacheSpec(cacheHash);        // 这里 my===specSeq 已校验过，缓存的就是这个音频
       specMsg('检出 '+SPEC.onsets.length+' 个起音');specDirty=true;resolve();
     };
     requestAnimationFrame(step);
   });
+}
+
+// C2–C6，每行一个半音。较长窗分辨低音，时间戳仍与原谱的窗中心一致。
+// 局部谱峰避免一个宽峰投票给许多音名；泛音支持增强基频候选，但并非声部分离。
+function pitchScores(mag,sr,n){
+  const peaks=new Float32Array(mag.length);
+  for(let k=1;k<mag.length-1;k++)if(mag[k]>mag[k-1]&&mag[k]>=mag[k+1])peaks[k]=mag[k];
+  const scores=new Float32Array(49);
+  for(let note=36;note<=84;note++){
+    const hz=440*Math.pow(2,(note-69)/12);
+    let sum=0,weight=0,base=0;
+    for(let h=1;h<=6&&hz*h<sr/2;h++){
+      const bin=hz*h*n/sr,r=Math.max(1,bin*.018);let v=0;
+      for(let k=Math.max(1,Math.ceil(bin-r));k<=Math.min(peaks.length-2,Math.floor(bin+r));k++)v=Math.max(v,peaks[k]);
+      if(h===1)base=v;
+      sum+=v/h;weight+=1/h;
+    }
+    // 基频证据门控，减少高音泛音被误画成低八度。缺失基频的声音可能偏弱。
+    scores[84-note]=Math.sqrt(base*sum/weight);
+  }
+  return scores;
+}
+async function buildPitchSpec(mono,frames,hop,cancel=()=>false){
+  const n=4096,re=new Float32Array(n),im=new Float32Array(n),mag=new Float32Array(n/2);
+  const win=Float32Array.from({length:n},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/n));
+  const values=new Float32Array(frames*49);let max=0,slice=performance.now();
+  for(let f=0;f<frames;f++){
+    if(cancel())return null;
+    const start=f*hop+SP_N/2-n/2;
+    for(let i=0;i<n;i++){re[i]=(mono[start+i]||0)*win[i];im[i]=0}
+    fftIP(re,im);
+    for(let k=0;k<mag.length;k++)mag[k]=Math.hypot(re[k],im[k]);
+    const scores=pitchScores(mag,SP_SR,n);
+    for(let y=0;y<49;y++){values[y*frames+f]=scores[y];max=Math.max(max,scores[y])}
+    if(performance.now()-slice>14){specMsg('分析音高 '+Math.round(f/frames*100)+'%');await new Promise(r=>requestAnimationFrame(r));slice=performance.now()}
+  }
+  const data=new Uint8ClampedArray(frames*49*4);
+  for(let i=0;i<values.length;i++){
+    const db=20*Math.log10((values[i]+1e-9)/(max+1e-9));
+    const c=Math.round(Math.max(0,Math.min(1,(db+50)/50))*255)*3;
+    data[i*4]=SP_LUT[c];data[i*4+1]=SP_LUT[c+1];data[i*4+2]=SP_LUT[c+2];data[i*4+3]=255;
+  }
+  const cv=document.createElement('canvas');cv.width=frames;cv.height=49;
+  cv.getContext('2d').putImageData(new ImageData(data,frames,49),0,0);return cv;
 }
 
 // 对数能量的正向差分：持续成分变暗，新增频率变亮。低于峰值 60dB 的底噪不增强。
@@ -4686,15 +4733,25 @@ function drawSpec(){
     // 这里把源坐标整体减掉半个窗的**列数**来补正。只挪图像：下面 X() 那套时间→像素的映射
     // 一律不动，播放头、E 竖线、秒刻度、循环区间仍然是真实时刻。
     // 半窗有几列随 hop 变（长曲子 hop 会翻倍），所以按 SPEC.hop 现算，别写死 2
+    const pitch=$('specView').value==='pitch'&&SPEC.pitchCv;
     const changes=$('specView').value==='change'&&SPEC.changeCv;
     // 差分属于两帧中心的中点，比当前帧中心早半个 hop。
     const half=SP_N/2/SPEC.hop-(changes?.5:0);
     const fx0=t0*SPEC.sr/SPEC.hop-half,fx1=t1*SPEC.sr/SPEC.hop-half;
     const sx0=Math.max(0,fx0),sx1=Math.min(SPEC.frames,fx1);
     if(sx1>sx0){
-      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingEnabled=!pitch;
       const dx0=(sx0-fx0)/(fx1-fx0)*W,dx1=(sx1-fx0)/(fx1-fx0)*W;
-      ctx.drawImage(changes||SPEC.cv,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,specH);
+      ctx.drawImage(pitch||changes||SPEC.cv,sx0,0,sx1-sx0,pitch?49:SP_H,dx0,0,dx1-dx0,specH);
+    }
+    if(pitch){
+      ctx.font='10px system-ui';
+      for(let note=36;note<=84;note+=12){
+        const y=(84-note+.5)/49*specH;
+        ctx.strokeStyle='rgba(255,255,255,.18)';ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+        ctx.fillStyle='#101820';ctx.fillRect(0,Math.max(0,y-6),25,12);
+        ctx.fillStyle='#fff';ctx.fillText('C'+(note/12-1),3,Math.max(10,y+4));
+      }
     }
   }else{
     ctx.fillStyle='#151515';ctx.fillRect(0,0,W,H);
@@ -5120,7 +5177,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v70';
+const BUILD='v71';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5789,7 +5846,7 @@ async function switchAudio(blob,hash){
   let sp=hash?specMem.get(hash):null;
   if(!sp&&hash&&idb){
     sp=await idbGet(idb,'spec',hash);
-    if(sp&&sp.version!==4)sp=null; // 新版独立短窗分析和连续曲线需要重新生成
+    if(sp&&sp.version!==5)sp=null; // 新版独立短窗分析和连续曲线需要重新生成
   }
   if(sp&&my===specSeq){
     // IDB 记录 → 重建离屏 canvas；内存缓存里是活对象，直接用。
@@ -5819,8 +5876,9 @@ function cacheSpec(hash){
   try{
     const px=sp.cv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
     const changePx=sp.changeCv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
-    if(px.length+changePx.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
-    idbPut(idb,'spec',{hash,version:4,px,changePx,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
+    const pitchPx=sp.pitchCv.getContext('2d').getImageData(0,0,sp.frames,49).data;
+    if(px.length+changePx.length+pitchPx.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
+    idbPut(idb,'spec',{hash,version:5,px,changePx,pitchPx,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
       onsets:sp.onsets,onsetStr:sp.onsetStr,curves:sp.curves,curveMax:sp.curveMax,curveStep:sp.curveStep});
   }catch(err){}
 }
@@ -5832,7 +5890,9 @@ function restoreSpec(rec){
   cv.getContext('2d').putImageData(new ImageData(rec.px,rec.frames,SP_H),0,0);
   const changeCv=document.createElement('canvas');changeCv.width=rec.frames;changeCv.height=SP_H;
   changeCv.getContext('2d').putImageData(new ImageData(rec.changePx,rec.frames,SP_H),0,0);
-  SPEC={cv,changeCv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
+  const pitchCv=document.createElement('canvas');pitchCv.width=rec.frames;pitchCv.height=49;
+  pitchCv.getContext('2d').putImageData(new ImageData(rec.pitchPx,rec.frames,49),0,0);
+  SPEC={cv,changeCv,pitchCv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
         onsets:rec.onsets,onsetStr:rec.onsetStr,curves:rec.curves,curveMax:rec.curveMax,curveStep:rec.curveStep};
   specMsg('频谱已从缓存恢复');specDirty=true;
   return SPEC;

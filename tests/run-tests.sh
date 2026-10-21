@@ -8,7 +8,7 @@ LOG=/tmp/sheetplayer-tests.log
 : > "$LOG"
 
 echo "=== 纯逻辑测试 (t*.js) ===" | tee -a "$LOG"
-for f in t.js t2.js t3.js t4.js t6.js t7.js t8.js t9.js t_onset.js t_onset_curves.js; do
+for f in t.js t2.js t3.js t4.js t6.js t7.js t8.js t9.js t_onset.js t_onset_curves.js t_pitch.js; do
   out=$(node "$f" 2>&1) || FAILED=1
   echo "--- $f ---" >> "$LOG"; echo "$out" >> "$LOG"
   npass=$(echo "$out" | grep -cE '^PASS |^OK   ')

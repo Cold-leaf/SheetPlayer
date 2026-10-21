@@ -39,12 +39,12 @@ async def main():
         assert await page.evaluate('''async()=>{
           const rec=await idbGet(idb,'spec','onset-test');
           const before=Array.from(SPEC.curves[0]);restoreSpec(rec);
-          return rec.version===4&&SPEC.changeCv.width===SPEC.frames&&SPEC.curves[0].every((v,i)=>v===before[i])&&SPEC.curveStep>0;
+          return rec.version===5&&SPEC.pitchCv.height===49&&SPEC.changeCv.width===SPEC.frames&&SPEC.curves[0].every((v,i)=>v===before[i])&&SPEC.curveStep>0;
         }''')
         print('OK   IndexedDB cache restores continuous curves')
         for width in [1100,760,390]:
             await page.set_viewport_size({'width':width,'height':800})
-            for view in ['original','change']:
+            for view in ['original','change','pitch']:
                 await page.select_option('#specView',view)
                 await page.evaluate('drawSpec()')
             for band in ['0','1','2','3']:
