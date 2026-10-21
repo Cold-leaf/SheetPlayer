@@ -35,6 +35,26 @@ async def main():
         for view in ['original','change']:
             await page.select_option('#specView',view)
             await page.evaluate('drawSpec()')
+        assert await page.evaluate("""()=>{
+          const cv=document.createElement('canvas');cv.width=3;cv.height=1;
+          const d=new Uint8ClampedArray(12);
+          [40,180,250].forEach((v,i)=>{d.set(SP_LUT.slice(v*3,v*3+3),i*4);d[i*4+3]=255});
+          cv.getContext('2d').putImageData(new ImageData(d,3,1),0,0);
+          const filtered=brightSpec(cv,65),out=filtered.getContext('2d').getImageData(0,0,3,1).data;
+          return out[0]===SP_LUT[0]&&out[1]===SP_LUT[1]&&
+            out.slice(4).every((v,i)=>v===d[i+4])&&brightSpec(cv,65)===filtered&&
+            brightSpec(cv,0)===cv&&cv.getContext('2d').getImageData(0,0,3,1).data.every((v,i)=>v===d[i]);
+        }""")
+        before=await page.evaluate('Array.from(SPEC.onsets)')
+        for level in ['0','65','95']:
+            await page.locator('#specBrightLevel').fill(level)
+            await page.evaluate('drawSpec()')
+            assert await page.locator('#specBrightValue').inner_text()==level+'%'
+        await page.uncheck('#specBright')
+        assert await page.evaluate('Array.from(SPEC.onsets)')==before
+        await page.set_viewport_size({'width':390,'height':800})
+        assert await page.locator('#specClose').evaluate('(el)=>el.getBoundingClientRect().right<=innerWidth')
+        print('OK   bright filter hides dark colors, preserves bright colors and source; controls leave onsets unchanged')
         assert not errors,errors
         print('OK   removed experimental views; original default; restored detector and cache round trip')
         await browser.close()

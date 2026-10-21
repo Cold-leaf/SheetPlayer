@@ -977,6 +977,11 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   <select id="specView" aria-label="频谱视图" title="变化图突出新增频率成分；亮纹不等于某个声部的音符">
     <option value="original" selected>原频谱</option><option value="change">频谱变化图</option>
   </select>
+  <label><input type="checkbox" id="specBright" checked>仅显示亮部</label>
+  <label title="色阶阈值，越高保留越少；不是像素数量百分比">阈值
+    <input type="range" id="specBrightLevel" min="0" max="95" step="5" value="65" style="width:85px">
+    <output id="specBrightValue">65%</output>
+  </label>
   <label>横向 <select id="specZoom">
     <option value="60">60 px/s</option><option value="100">100 px/s</option>
     <option value="160" selected>160 px/s</option><option value="260">260 px/s</option>
@@ -1079,6 +1084,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
   （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
+  「仅显示亮部」隐藏低于色阶阈值的暗色成分，阈值越高保留越少；65% 表示色阶位置，不是保留 35% 的像素。取消勾选恢复完整频谱。此选项不改变起音检测。
   「频谱变化图」压暗持续声音，突出新增频率成分，可切回「原频谱」比较；亮纹不等于单个音符。
   频谱头上的提示文字窄屏不显示，但手势一样管用。
   频谱条是<b>浮层</b>，盖在谱面下沿、不挤谱面——开合它不会让谱子改大小，
@@ -4618,6 +4624,22 @@ function setDraggedBeat(d,t){
   t=Math.max(left+.001,Math.min(right-.001,t));
   BEATS[d.key]={t,src:'tap',start:w.start,end:w.end};dirty=true;specDirty=true;
 }
+// 按已有色阶过滤，不重算频谱或起音。每个源画布只缓存最近一次阈值结果。
+const brightSpecCache=new WeakMap();
+function brightSpec(source,level){
+  if(level<=0)return source;
+  const cached=brightSpecCache.get(source);
+  if(cached&&cached.level===level)return cached.cv;
+  const cv=document.createElement('canvas');cv.width=source.width;cv.height=source.height;
+  const pixels=source.getContext('2d').getImageData(0,0,source.width,source.height),d=pixels.data;
+  const k=Math.round(level/100*255)*3;
+  const threshold=.2126*SP_LUT[k]+.7152*SP_LUT[k+1]+.0722*SP_LUT[k+2];
+  for(let i=0;i<d.length;i+=4){
+    if(.2126*d[i]+.7152*d[i+1]+.0722*d[i+2]<threshold){d[i]=SP_LUT[0];d[i+1]=SP_LUT[1];d[i+2]=SP_LUT[2]}
+  }
+  cv.getContext('2d').putImageData(pixels,0,0);
+  brightSpecCache.set(source,{level,cv});return cv;
+}
 function drawSpec(){
   const cv=$('specCv'),ctx=cv.getContext('2d');
   const W=specW(),H=cv.clientHeight||SP_H;
@@ -4638,7 +4660,8 @@ function drawSpec(){
     if(sx1>sx0){
       ctx.imageSmoothingEnabled=true;
       const dx0=(sx0-fx0)/(fx1-fx0)*W,dx1=(sx1-fx0)/(fx1-fx0)*W;
-      ctx.drawImage(changes||SPEC.cv,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,H);
+      const source=changes||SPEC.cv;
+      ctx.drawImage($('specBright').checked?brightSpec(source,+$('specBrightLevel').value):source,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,H);
     }
   }else{
     ctx.fillStyle='#151515';ctx.fillRect(0,0,W,H);
@@ -4783,7 +4806,8 @@ $('specCv').onwheel=e=>{                                // 滚轮/触控板横�
   specDirty=true;
 };
 $('specZoom').onchange=()=>{specPPS=+$('specZoom').value;specDirty=true};
-$('specView').onchange=$('chkOnset').onchange=()=>{specDirty=true};
+$('specBright').onchange=$('specView').onchange=$('chkOnset').onchange=()=>{specDirty=true};
+$('specBrightLevel').oninput=()=>{$('specBrightValue').textContent=$('specBrightLevel').value+'%';specDirty=true};
 $('bAlign').onclick=alignToOnsets;
 $('specClose').onclick=()=>specShow(false);
 $('bSpec').onclick=()=>specShow(!specOn());
@@ -5047,7 +5071,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v72';
+const BUILD='v73';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
