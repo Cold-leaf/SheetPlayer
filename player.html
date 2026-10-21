@@ -1247,8 +1247,8 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   <button id="gAncNow">用当前播放位置</button></div>
 
  <h4>校准</h4>
- <div class="grow"><button id="gCal">按已卡的实测点反推 BPM</button>
-  <span id="gCalInfo" class="ginfo">MP3 是 MIDI 渲染的话，反推值多半接近某个整数，手动取整会更准</span></div>
+ <div class="grow"><button id="gCal">按实测点分段反推 BPM</button>
+  <span id="gCalInfo" class="ginfo">各速度段独立反推平均 BPM；需有覆盖同段时长的两个实测点，变速小节起点可作为前段终点。渐慢也会计入段平均。</span></div>
 
  <h4>预览</h4>
  <div id="gPrev" class="ginfo"></div>
@@ -4101,19 +4101,46 @@ function genTimeline(manual,ignoreTaps){
           unmatched:taps.length-anc.length,
           span:[mapT(0),mapT(seq.length-1)]};
 }
-// 用实测点反推速度：整张速度表按同一比例缩放
+// 每个速度段独立用「四分音符拍数 / 实测秒数」反推，不借用当前 BPM 比例。
+// 结束锚点恰在变速小节时，之前的完整小节仍属于旧速度段。
 function calibrate(){
+  const rows=[...TEMPO].sort((a,b)=>a.m-b.m);
+  if(!rows.length)throw new Error('速度表是空的');
+  if(rows.some((r,i)=>!Number.isInteger(r.m)||r.m<1||(i&&r.m===rows[i-1].m)))
+    throw new Error('速度段的起始小节必须是不同的正整数');
   const taps=E.filter(e=>e.src!=='gen').sort((a,b)=>a.t-b.t);
   if(taps.length<2)throw new Error('至少要有 2 个实测时间点才能反推');
   const seq=expandForm(formOrAll()),anc=matchAnchors(seq,taps);
   if(anc.length<2)throw new Error('实测点对不上播放顺序');
-  const rel=relTimeline(seq);
-  const A=anc[0],B=anc[anc.length-1],dr=rel[B.k]-rel[A.k];
-  if(Math.abs(dr)<1e-9)throw new Error('两个锚点之间没有跨度');
-  const scale=(B.t-A.t)/dr;                               // 实际用时 / 按当前速度表预测用时
-  if(!(scale>0.1&&scale<10))throw new Error('反推结果离谱（×'+scale.toFixed(2)+'），检查拍号或锚点');
-  TEMPO.forEach(t=>t.bpm=+(t.bpm/scale).toFixed(3));       // 时长 ∝ 1/BPM
-  return {scale,span:[A,B]};
+  const totals=rows.map(()=>({beats:0,seconds:0,intervals:0}));
+  let crossing=0;
+  for(let i=0;i+1<anc.length;i++){
+    const A=anc[i],B=anc[i+1],seconds=B.t-A.t;
+    if(!Number.isFinite(seconds)||seconds<=0)throw new Error('实测时间点必须严格递增，请检查重复时间');
+    let owner=-1,beats=0,mixed=false;
+    for(let k=A.k;k<B.k;k++){
+      const m=seq[k].m;let r=0;
+      while(r+1<rows.length&&rows[r+1].m<=m)r++;
+      if(owner<0)owner=r;else if(owner!==r)mixed=true;
+      if(!meterCovered(m))throw new Error('小节 '+m+' 没有拍号，无法反推');
+      const sig=meterAt(m),q=sig[0]*4/sig[1];
+      if(!Number.isFinite(q)||q<=0)throw new Error('小节 '+m+' 的拍号无效');
+      beats+=q;
+    }
+    if(mixed){crossing++;continue}
+    if(owner<0||!beats)continue;
+    const t=totals[owner];t.beats+=beats;t.seconds+=seconds;t.intervals++;
+  }
+  const segments=rows.map((row,i)=>{
+    const t=totals[i],bpm=t.intervals?+(60*t.beats/t.seconds).toFixed(3):null;
+    if(bpm!==null&&(!Number.isFinite(bpm)||bpm<=0))throw new Error('反推速度无效，请检查实测时间');
+    return {m:row.m,to:rows[i+1]?rows[i+1].m-1:null,bpm,intervals:t.intervals};
+  });
+  if(!segments.some(s=>s.bpm!==null))
+    throw new Error('没有可独立反推的速度段：请在同一速度段内补至少两个实测点（结束点可放在下一段起点）；跨变速间隔不能确定各段速度');
+  // 全部校验成功后才更新；缺少证据的段保留原值。
+  segments.forEach((seg,i)=>{if(seg.bpm!==null)rows[i].bpm=seg.bpm});
+  return {segments,crossing};
 }
 
 /* ---------- 高亮跟随（rAF，200ms 轮询的滞后没了） ---------- */
@@ -5070,12 +5097,14 @@ $('gForm').oninput=preview;
 ['gAncM','gAncT','gAncTap','gAncMan'].forEach(id=>$(id).onchange=preview);
 $('gAncNow').onclick=()=>{$('gAncT').value=stamp().toFixed(2);$('gAncMan').checked=true;preview()};
 $('gCal').onclick=()=>{
-  readForm();
+  if(!readForm())return;
   try{
     const r=calibrate();
     $('gCalInfo').className='ginfo';
-    $('gCalInfo').textContent='反推完成：实际比预测 ×'+r.scale.toFixed(4)+
-      '，速度已更新为 ♩='+TEMPO.map(t=>t.bpm).join(' / ')+'（多半该取整）';
+    $('gCalInfo').textContent=r.segments.map(s=>
+      '小节 '+s.m+(s.to!==null?'–'+s.to:' 起')+'：'+
+      (s.bpm!==null?'♩='+s.bpm+'（'+s.intervals+' 个实测间隔）':'实测点不足，未修改')).join('；')+
+      (r.crossing?'。另有 '+r.crossing+' 个跨变速间隔未使用':'');
     drawSig();
   }catch(err){$('gCalInfo').className='gerr';$('gCalInfo').textContent=err.message}
 };
@@ -5140,7 +5169,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v77';
+const BUILD='v78';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
