@@ -467,6 +467,7 @@ body.perf .editOnly{display:none}
 #gen .ginfo{color:var(--text-dim);font-size:12px}
 #gen .gwarn{color:var(--accent);font-size:12px}
 #gen .gerr{color:var(--danger);font-size:12px}
+#gen [hidden]{display:none}
 #gen label{margin-right:14px;white-space:nowrap}
 #gen code{background:var(--surface);padding:1px 5px;border-radius:3px;color:var(--info)}
 #gen input.sig{width:62px;font-family:monospace;text-align:center;font-weight:600}
@@ -1250,6 +1251,20 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
  <div class="grow"><button id="gCal">按实测点分段反推 BPM</button>
   <span id="gCalInfo" class="ginfo">各速度段独立反推平均 BPM；需有覆盖同段时长的两个实测点，变速小节起点可作为前段终点。渐慢也会计入段平均。</span></div>
 
+ <h4>亮部辅助校准 <span class="ginfo">（试用，适合目标声部被突出的合成音频）</span></h4>
+ <label><input type="checkbox" id="gBrightEnabled">启用亮部辅助校准</label>
+ <div id="gBrightOptions" hidden>
+  <div class="grow">
+   <label>亮部阈值 <input type="number" id="gBrightThreshold" min="50" max="95" step="5" value="90">%</label>
+   <label>音域 <select id="gBrightRange"></select></label>
+   <label>最大校准 <input type="number" id="gBrightWindow" min="20" max="250" step="10" value="120">毫秒</label>
+  </div>
+  <div class="ginfo">先按速度表生成，再检查原频谱亮部是否支持一致的小幅偏移；每段最多 8 小节，在变速、反复和锚点处断开。证据不足保留推算，不逐点追峰。手工小节线固定，含手动拍点的区段不自动校准。<br>
+   无 BPM 时先补实测点并分段反推；渐慢前后补锚点，本版不自动估计渐慢曲线。</div>
+  <button id="gBrightPreview" style="margin-top:8px">分析并预览校准</button>
+  <div id="gBrightInfo" class="ginfo" role="status">调整设置后请先预览，再生成。</div>
+  <div id="gBrightDetails" style="max-height:220px;overflow:auto;margin-top:6px"></div>
+ </div>
  <h4>预览</h4>
  <div id="gPrev" class="ginfo"></div>
  <div style="margin-top:16px"><button id="gRun" class="pri">生成</button><button id="gCancel">取消</button></div>
@@ -4097,7 +4112,9 @@ function genTimeline(manual,ignoreTaps){
   });
   const gen=seq.map((s,k)=>({m:s.m,t:Math.max(0,mapT(k)),src:'gen',seg:s.seg}))
                .filter((_,k)=>!drop.has(k));
-  return {E:[...keptTaps,...gen],seq,anc,fromE,scales,gs,
+  const fixed=new Set(anc.map(a=>a.k));
+  const grid=seq.map((s,k)=>({...s,k,t:Math.max(0,mapT(k)),fixed:fixed.has(k)}));
+  return {E:[...keptTaps,...gen],grid,seq,anc,fromE,scales,gs,
           unmatched:taps.length-anc.length,
           span:[mapT(0),mapT(seq.length-1)]};
 }
@@ -4689,9 +4706,9 @@ function specFrequencyRow(hz){
   // 图像行中心 y+.5 对应生成时的对数频率 y/(SP_H-1)。
   return Math.log(hz/SP_FMAX)/Math.log(SP_FMIN/SP_FMAX)*(SP_H-1)+.5;
 }
-function specFrequencyRange(){
+function specFrequencyRange(value=$('specRange').value){
   const ranges={soprano:[60,84],alto:[53,77],tenor:[48,72],bass:[40,64]};
-  const notes=ranges[$('specRange').value];
+  const notes=ranges[value];
   if(!notes)return {top:0,bottom:SP_H};
   // 两端各留半个半音，让边界音名和基频落在视图内。
   return {top:specFrequencyRow(440*2**((notes[1]+.5-69)/12)),
@@ -4909,9 +4926,181 @@ $('specClose').onclick=()=>specShow(false);
 $('bSpec').onclick=()=>specShow(!specOn());
 new ResizeObserver(()=>{if(specOn())fitSpec()}).observe($('specCv'));
 
+/* BRIGHT-ALIGN-CORE: read-only evidence and conservative region planning. */
+function brightEvidence(levels,frames,rows,dt,center,onsets,threshold){
+  const out=[];
+  for(const t of onsets){
+    const frame=(t-center)/dt;
+    const a=Math.max(0,Math.ceil(frame-.08/dt)),b=Math.min(frames-1,Math.floor(frame-.04/dt));
+    const c=Math.max(0,Math.ceil(frame-.02/dt)),d=Math.min(frames-1,Math.floor(frame+.06/dt));
+    if(a>b||c>d)continue;
+    let score=0;
+    for(let y=0;y<rows;y++){
+      let before=0,after=0;
+      for(let f=a;f<=b;f++)before+=levels[y*frames+f];
+      before/=b-a+1;
+      for(let f=c;f<=d;f++)after=Math.max(after,levels[y*frames+f]);
+      const rise=after-before;
+      if(after>=threshold&&rise>=12)score+=rise*after/255;
+    }
+    if(score>0)out.push({t,score});
+  }
+  return out;
+}
+function planBrightRegions(grid,candidates,window,duration){
+  const times=grid.map(p=>p.t),regions=[];
+  const median=a=>{const b=[...a].sort((x,y)=>x-y);return b[Math.floor(b.length/2)]};
+  for(let start=0;start<grid.length;){
+    let end=start+1;
+    while(end<grid.length&&end-start<8&&!grid[end].fixed&&
+      grid[end].seg===grid[start].seg&&grid[end].tempo===grid[start].tempo)end++;
+    const report={start,end,from:grid[start].m,to:grid[end-1].m,seg:grid[start].seg,
+      time:grid[start].t,matches:0,support:0,changed:0,shift:0,reason:''};
+    regions.push(report);
+    if(grid.slice(start,end).every(p=>p.fixed)){report.reason='实测锚点，保持不变';start=end;continue}
+    if(grid.slice(start,end).some(p=>p.manualBeat)){
+      report.reason='含手动拍点，保留推算';start=end;continue;
+    }
+    const samples=[],used=new Set();
+    for(let i=start;i<end;i++){
+      const p=grid[i],next=grid[i+1];
+      if(!next||next.t<=p.t)continue;
+      const beat=(next.t-p.t)/p.beats,win=Math.min(window,beat*.25);
+      for(let b=0;b<p.beats;b++){
+        if(!b&&p.fixed)continue;
+        const t=p.t+beat*b;if(t<0||t>duration)continue;
+        let lo=0,hi=candidates.length;
+        while(lo<hi){const mid=(lo+hi)>>1;if(candidates[mid].t<t-win)lo=mid+1;else hi=mid}
+        const options=[];
+        for(let j=lo;j<candidates.length&&candidates[j].t<=t+win;j++){
+          if(used.has(j))continue;
+          options.push({j,score:candidates[j].score*Math.exp(-.5*((candidates[j].t-t)/(win*.6))**2)});
+        }
+        options.sort((a,b)=>b.score-a.score);
+        if(!options.length||(options[1]&&options[1].score>=options[0].score*.7))continue;
+        const j=options[0].j;used.add(j);samples.push({i,delta:candidates[j].t-t});
+      }
+    }
+    report.matches=samples.length;
+    if(samples.length<4){report.reason='可靠匹配不足，保留推算';start=end;continue}
+    const shift=median(samples.map(s=>s.delta));
+    const support=samples.filter(s=>Math.abs(s.delta-shift)<=.025);
+    report.support=support.length;
+    if(support.length<4||support.length<samples.length*.75||new Set(support.map(s=>s.i)).size<2){
+      report.reason='偏差不一致，请检查速度或补锚点';start=end;continue;
+    }
+    const correction=median(support.map(s=>s.delta));
+    if(Math.abs(correction)<.008){report.reason='已接近推算时间';start=end;continue}
+    // 同一小段一起平移，休止不追逐音头。手工锚点始终固定。
+    // 与固定端点相邻的小节，其内部拍由边界插值自然过渡。
+    const proposals=[];
+    for(let i=start;i<end;i++)if(!grid[i].fixed)proposals.push({i,t:grid[i].t+correction});
+    const at=new Map(proposals.map(p=>[p.i,p.t]));
+    const get=i=>at.has(i)?at.get(i):times[i];
+    const invalid=proposals.some(p=>p.t<0||p.t>duration||
+      (p.i>0&&p.t<=get(p.i-1)+.01)||(p.i+1<grid.length&&p.t>=get(p.i+1)-.01));
+    if(invalid){report.reason='会越过边界，保留推算';start=end;continue}
+    proposals.forEach(p=>times[p.i]=p.t);
+    report.shift=correction;report.changed=proposals.length;report.reason='一致偏移，整段校准';start=end;
+  }
+  return {times,regions};
+}
+/* BRIGHT-ALIGN-CORE-END */
+
+// 预览绑定当前音频、模式、速度表和手工标注；任何变化都需要重新预览。
+let brightPlan=null,brightJob=0,brightBusy=false;
+const brightLevelCache=new WeakMap();
+function brightSettings(){
+  const threshold=+$('gBrightThreshold').value,window=+$('gBrightWindow').value;
+  if(!Number.isFinite(threshold)||threshold<50||threshold>95)throw new Error('亮部阈值需在 50–95% 之间');
+  if(!Number.isFinite(window)||window<20||window>250)throw new Error('最大校准范围需在 20–250 毫秒之间');
+  return {threshold,window:window/1000,range:$('gBrightRange').value};
+}
+function brightStateKey(r){
+  return JSON.stringify({mode:activeMode,audio:loadedAudioHash,seq:specSeq,grid:r.grid,
+    E:r.E,tempo:TEMPO,beats:BEATS,counts:M.map(m=>[m.m,beatCount(m)]),settings:brightSettings()});
+}
+async function brightCandidates(sp,settings,cancel){
+  if(sp.hop/sp.sr>.05)throw new Error('这份长音频的频谱时间间隔过大，暂不支持亮部校准，请用实测锚点生成');
+  let levels=brightLevelCache.get(sp.cv);
+  if(!levels){
+    const px=sp.cv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
+    const lookup=new Map();
+    for(let i=0;i<256;i++)lookup.set((SP_LUT[i*3]<<16)|(SP_LUT[i*3+1]<<8)|SP_LUT[i*3+2],i);
+    levels=new Uint8Array(sp.frames*SP_H);let start=performance.now();
+    for(let i=0;i<levels.length;i++){
+      const p=i*4;levels[i]=lookup.get((px[p]<<16)|(px[p+1]<<8)|px[p+2])||0;
+      if(i%16384===0&&performance.now()-start>12){
+        await new Promise(r=>requestAnimationFrame(r));if(cancel())return null;start=performance.now();
+      }
+    }
+    brightLevelCache.set(sp.cv,levels);
+  }
+  const range=specFrequencyRange(settings.range);
+  const top=Math.max(0,Math.ceil(range.top-.5)),bottom=Math.min(SP_H,Math.floor(range.bottom-.5)+1);
+  const selected=levels.subarray(top*sp.frames,bottom*sp.frames),out=[];
+  // 保留旧检测的短窗时间精修结果，只用亮部证据筛选，不以阈值交点作为起音。
+  for(let i=0;i<sp.onsets.length;i+=128){
+    if(cancel())return null;
+    out.push(...brightEvidence(selected,sp.frames,bottom-top,sp.hop/sp.sr,SP_N/2/sp.sr,
+      sp.onsets.subarray(i,i+128),Math.round(settings.threshold/100*255)));
+    await new Promise(r=>requestAnimationFrame(r));
+  }
+  return out;
+}
+function brightGeneration(r,candidates,settings){
+  const tempo=[...TEMPO].sort((a,b)=>a.m-b.m),marks=new Map(M.map(m=>[m.m,m]));
+  const manualMeasures=new Set(Object.entries(BEATS).filter(([,v])=>v.src==='tap').map(([k])=>+k.split(':')[0]));
+  const grid=r.grid.map(p=>{
+    let ti=0;while(ti+1<tempo.length&&tempo[ti+1].m<=p.m)ti++;
+    return {...p,tempo:ti,beats:beatCount(marks.get(p.m)||{m:p.m}),manualBeat:manualMeasures.has(p.m)};
+  });
+  if(r.unmatched)throw new Error('有实测点对不上播放顺序，请先修正后再做亮部校准');
+  if(grid.some((p,i)=>!Number.isFinite(p.t)||p.t<0||(i&&p.t<=grid[i-1].t)))
+    throw new Error('推算时间有重叠或倒序，请先检查速度和锚点');
+  const result=planBrightRegions(grid,candidates,settings.window,SPEC.dur);
+  const map=new Map(grid.map((p,i)=>[p.seg+':'+p.m,result.times[i]]));
+  return {result:{...r,E:r.E.map(e=>e.src==='gen'?{...e,t:map.get(e.seg+':'+e.m)??e.t}:e),
+    grid:r.grid.map((p,i)=>({...p,t:result.times[i]})),span:[result.times[0],result.times[result.times.length-1]]},
+    regions:result.regions,candidates:candidates.length};
+}
+function showBrightPlan(plan){
+  const changed=plan.regions.reduce((n,r)=>n+r.changed,0);
+  const rows=plan.regions.map(r=>'<tr><td>'+ (r.seg+1)+' / '+r.from+'–'+r.to+'</td><td>'+r.support+'/'+r.matches+
+    '</td><td>'+ (r.changed?(r.shift>=0?'+':'')+Math.round(r.shift*1000)+' ms':'—')+'</td><td>'+r.reason+'</td></tr>').join('');
+  $('gBrightInfo').textContent='筛出 '+plan.candidates+' 个亮部候选；将校准 '+changed+' 条推算小节线，内部拍随边界推算。其余保留原推算值；表内为一致匹配数 / 总匹配数。';
+  $('gBrightDetails').innerHTML='<table style="width:100%;font-size:12px;text-align:left"><thead><tr><th>遍次 / 小节</th><th>匹配</th><th>偏移</th><th>结果</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+async function previewBrightAlignment(){
+  if(!readForm())return;
+  const job=++brightJob;brightPlan=null;brightBusy=true;$('gBrightPreview').disabled=true;
+  $('gBrightInfo').textContent='正在分析亮部证据…';$('gBrightDetails').innerHTML='';$('gRun').disabled=true;
+  try{
+    if(!SPEC?.cv)throw new Error('请先加载音频，等待频谱分析完成');
+    const sp=SPEC,o=genOpts(),r=genTimeline(o.manual,o.ignoreTaps),settings=brightSettings(),key=brightStateKey(r);
+    const candidates=await brightCandidates(sp,settings,()=>job!==brightJob||SPEC!==sp);
+    if(job!==brightJob)return;
+    if(!candidates||SPEC!==sp||key!==brightStateKey(genTimeline(genOpts().manual,genOpts().ignoreTaps)))
+      throw new Error('设置或音频已改变，请重新预览');
+    brightPlan={...brightGeneration(r,candidates,settings),key,sp};
+    showBrightPlan(brightPlan);
+  }catch(err){if(job===brightJob){$('gBrightInfo').textContent=err.message;$('gBrightDetails').innerHTML=''}}
+  finally{if(job===brightJob){brightBusy=false;$('gBrightPreview').disabled=false;preview()}}
+}
+function generationForApply(){
+  const o=genOpts(),r=genTimeline(o.manual,o.ignoreTaps);
+  if(!$('gBrightEnabled').checked)return r;
+  if(brightBusy||!brightPlan||brightPlan.sp!==SPEC||brightPlan.key!==brightStateKey(r))
+    throw new Error('请先预览当前设置下的亮部校准结果');
+  return brightPlan.result;
+}
+
 /* ---------- 生成面板 ---------- */
 function openGen(){
   if(!M.length)return msg('先标几个小节位置',1);
+  ++brightJob;brightBusy=false;brightPlan=null;$('gBrightPreview').disabled=false;
+  $('gBrightRange').innerHTML=$('specRange').innerHTML;$('gBrightRange').value=$('specRange').value;
+  $('gBrightInfo').textContent='调整设置后请先预览，再生成。';$('gBrightDetails').innerHTML='';
   $('gForm').value=formText(FORM);
   const nTap=E.filter(e=>e.src!=='gen').length;
   if(nTap)$('gAncTap').checked=true;else $('gAncMan').checked=true;   // 有实测点就默认用它们
@@ -5061,11 +5250,18 @@ function drawAnchors(){
   };
 }
 function preview(){
-  const box=$('gPrev');
+  const box=$('gPrev'),enabled=$('gBrightEnabled').checked;
+  $('gBrightOptions').hidden=!enabled;
+  $('gRun').disabled=enabled;$('gRun').textContent=enabled?'生成并应用校准':'生成';
   drawAnchors();
   if(!readForm())return box.textContent='';
   try{
-    const o=genOpts(),r=genTimeline(o.manual,o.ignoreTaps);
+    const o=genOpts();let r=genTimeline(o.manual,o.ignoreTaps);
+    if(enabled){
+      const fresh=brightPlan&&brightPlan.sp===SPEC&&brightPlan.key===brightStateKey(r);
+      if(fresh){r=brightPlan.result;$('gRun').disabled=brightBusy}
+      else if(brightPlan){brightPlan=null;$('gBrightInfo').textContent='设置或标注已改变，请重新预览。';$('gBrightDetails').innerHTML=''}
+    }
     const marked=new Set(M.map(x=>x.m));
     const missing=[...new Set(r.seq.map(s=>s.m))].filter(m=>!marked.has(m));
     const dur=isFinite(aud.duration)?aud.duration:0;
@@ -5087,6 +5283,9 @@ function preview(){
         missing.slice(0,12).join(',')+(missing.length>12?'…':'')+'），时间会生成但谱面上看不到</span>':'');
   }catch(err){box.className='gerr';box.textContent=err.message}
 }
+$('gBrightEnabled').onchange=preview;
+['gBrightThreshold','gBrightWindow','gBrightRange'].forEach(id=>$(id).oninput=preview);
+$('gBrightPreview').onclick=previewBrightAlignment;
 $('bGen').onclick=openGen;
 $('gCancel').onclick=()=>hideModal('gen');
 $('gen').onclick=e=>{if(e.target===$('gen'))hideModal('gen')};
@@ -5111,8 +5310,9 @@ $('gCal').onclick=()=>{
 $('gRun').onclick=()=>{
   if(!readForm())return;
   try{
-    const o=genOpts(),r=genTimeline(o.manual,o.ignoreTaps);
+    const r=generationForApply();
     snap();
+    if($('gBrightEnabled').checked)BEATS=Object.fromEntries(Object.entries(BEATS).filter(([,p])=>p.src==='tap'));
     E=r.E;tapM=null;lastSeek=null;
     layout();save();
     hideModal('gen');
@@ -5169,7 +5369,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v78';
+const BUILD='v79';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
