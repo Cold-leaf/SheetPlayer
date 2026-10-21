@@ -255,7 +255,7 @@ body.perf .editOnly{display:none}
   #specHdr{flex-wrap:wrap;row-gap:4px}
   #specTip{display:none}
 }
-#specCv{width:100%;height:112px;display:block;cursor:grab;touch-action:none}
+#specCv{width:100%;height:168px;display:block;cursor:grab;touch-action:none}
 #specCv.grab{cursor:grabbing}
 /* 四周垫约一屏的空白（90dvh/90vw）：谱面像一张纸，可以拖到视口内任意位置，
    拖到顶/底/边也不会有「卡死拉不动」的死角（滚动坐标里有了负空间）。
@@ -982,6 +982,12 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
     <input type="range" id="specBrightLevel" min="0" max="95" step="5" value="65" style="width:85px">
     <output id="specBrightValue">65%</output>
   </label>
+  <label title="常见实声音域参考，仅缩放频率范围，不分离声部；中央 C 为 C4">音域 <select id="specRange">
+    <option value="all">全部</option><option value="soprano">女高 C4–C6</option>
+    <option value="alto">女低 F3–F5</option><option value="tenor">男高 C3–C5</option>
+    <option value="bass">男低 E2–E4</option>
+  </select></label>
+  <label><input type="checkbox" id="specNotes" checked>音名</label>
   <label>横向 <select id="specZoom">
     <option value="60">60 px/s</option><option value="100">100 px/s</option>
     <option value="160" selected>160 px/s</option><option value="260">260 px/s</option>
@@ -1084,6 +1090,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
   （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
+  「音域」按常见实声音域缩放，中央 C 为 C4（男高使用实际发声音高）；不会分离声部或过滤试听音频。音名标的是频率，亮带可能是泛音。
   「仅显示亮部」隐藏低于色阶阈值的暗色成分，阈值越高保留越少；65% 表示色阶位置，不是保留 35% 的像素。取消勾选恢复完整频谱。此选项不改变起音检测。
   「频谱变化图」压暗持续声音，突出新增频率成分，可切回「原频谱」比较；亮纹不等于单个音符。
   频谱头上的提示文字窄屏不显示，但手势一样管用。
@@ -4640,12 +4647,44 @@ function brightSpec(source,level){
   cv.getContext('2d').putImageData(pixels,0,0);
   brightSpecCache.set(source,{level,cv});return cv;
 }
+function specFrequencyRow(hz){
+  // 图像行中心 y+.5 对应生成时的对数频率 y/(SP_H-1)。
+  return Math.log(hz/SP_FMAX)/Math.log(SP_FMIN/SP_FMAX)*(SP_H-1)+.5;
+}
+function specFrequencyRange(){
+  const ranges={soprano:[60,84],alto:[53,77],tenor:[48,72],bass:[40,64]};
+  const notes=ranges[$('specRange').value];
+  if(!notes)return {top:0,bottom:SP_H};
+  // 两端各留半个半音，让边界音名和基频落在视图内。
+  return {top:specFrequencyRow(440*2**((notes[1]+.5-69)/12)),
+          bottom:specFrequencyRow(440*2**((notes[0]-.5-69)/12))};
+}
+function drawSpecNotes(ctx,H,range){
+  const names=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  const labels=[];let last=-Infinity;
+  for(let n=108;n>=24;n--){
+    const y=(specFrequencyRow(440*2**((n-69)/12))-range.top)/(range.bottom-range.top)*H;
+    const semitoneH=(SP_H-1)*Math.log(2)/12/Math.log(SP_FMAX/SP_FMIN)/(range.bottom-range.top)*H;
+    // 全频以八度 C 作参照；放大后显示白键音名，空间足够才显示升号。
+    if(y<0||y>H||y-last<12)continue;
+    if(semitoneH<3&&n%12!==0)continue;
+    if(semitoneH<12&&names[n%12].includes('♯'))continue;
+    labels.push({y,name:names[n%12]+(Math.floor(n/12)-1)});last=y;
+  }
+  ctx.font='10px system-ui';ctx.textAlign='left';
+  for(const {y,name} of labels){
+    ctx.strokeStyle='rgba(255,255,255,.14)';ctx.beginPath();ctx.moveTo(33,y);ctx.lineTo(45,y);ctx.stroke();
+    ctx.fillStyle='rgba(8,12,18,.88)';ctx.fillRect(0,Math.max(0,Math.min(H-12,y-6)),32,12);
+    ctx.fillStyle='#d8e3ed';ctx.fillText(name,3,Math.max(10,Math.min(H-3,y+3)));
+  }
+}
 function drawSpec(){
   const cv=$('specCv'),ctx=cv.getContext('2d');
   const W=specW(),H=cv.clientHeight||SP_H;
   ctx.clearRect(0,0,W,H);
   const t0=specT0(),t1=t0+W/specPPS,X=t=>(t-t0)*specPPS;
 
+  const range=specFrequencyRange();
   if(SPEC){
     // 谱图第 f 列是 [f*hop, f*hop+SP_N) 这段窗算出来的，能量重心在**窗中心** f*hop+SP_N/2，
     // 不是窗起点。按 f*hop 摆放，画出来的声能就比真实时刻早半个窗——1024 样本 @11025Hz 时
@@ -4661,7 +4700,7 @@ function drawSpec(){
       ctx.imageSmoothingEnabled=true;
       const dx0=(sx0-fx0)/(fx1-fx0)*W,dx1=(sx1-fx0)/(fx1-fx0)*W;
       const source=changes||SPEC.cv;
-      ctx.drawImage($('specBright').checked?brightSpec(source,+$('specBrightLevel').value):source,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,H);
+      ctx.drawImage($('specBright').checked?brightSpec(source,+$('specBrightLevel').value):source,sx0,range.top,sx1-sx0,range.bottom-range.top,dx0,0,dx1-dx0,H);
     }
   }else{
     ctx.fillStyle='#151515';ctx.fillRect(0,0,W,H);
@@ -4669,6 +4708,7 @@ function drawSpec(){
     ctx.fillText(aud.src?'正在分析音频…':'先在上面选一个音频文件',W/2,H/2);
     ctx.textAlign='left';
   }
+  if(SPEC&&$('specNotes').checked)drawSpecNotes(ctx,H,range);
   // 循环区间
   const R=loop.on?loopRange():null;
   if(R){ctx.fillStyle='rgba(0,255,136,.10)';ctx.fillRect(X(R.t0),0,(R.t1-R.t0)*specPPS,H)}
@@ -4806,7 +4846,7 @@ $('specCv').onwheel=e=>{                                // 滚轮/触控板横�
   specDirty=true;
 };
 $('specZoom').onchange=()=>{specPPS=+$('specZoom').value;specDirty=true};
-$('specBright').onchange=$('specView').onchange=$('chkOnset').onchange=()=>{specDirty=true};
+$('specRange').onchange=$('specNotes').onchange=$('specBright').onchange=$('specView').onchange=$('chkOnset').onchange=()=>{specDirty=true};
 $('specBrightLevel').oninput=()=>{$('specBrightValue').textContent=$('specBrightLevel').value+'%';specDirty=true};
 $('bAlign').onclick=alignToOnsets;
 $('specClose').onclick=()=>specShow(false);
@@ -5071,7 +5111,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v73';
+const BUILD='v74';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

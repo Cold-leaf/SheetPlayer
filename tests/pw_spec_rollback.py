@@ -55,6 +55,21 @@ async def main():
         await page.set_viewport_size({'width':390,'height':800})
         assert await page.locator('#specClose').evaluate('(el)=>el.getBoundingClientRect().right<=innerWidth')
         print('OK   bright filter hides dark colors, preserves bright colors and source; controls leave onsets unchanged')
+        for value,low,high in [('soprano',60,84),('alto',53,77),('tenor',48,72),('bass',40,64)]:
+            await page.select_option('#specRange',value)
+            result=await page.evaluate("""([low,high])=>{
+              const r=specFrequencyRange(),H=$('specCv').clientHeight;
+              const y=n=>(specFrequencyRow(440*2**((n-69)/12))-r.top)/(r.bottom-r.top)*H;
+              drawSpec();
+              return r.top>=0&&r.bottom<=SP_H&&y(high)>0&&y(high)<H*.05&&y(low)>H*.95&&y(low)<H;
+            }""",[low,high])
+            assert result
+        await page.select_option('#specRange','all')
+        assert await page.evaluate('specFrequencyRange().top===0&&specFrequencyRange().bottom===SP_H')
+        await page.uncheck('#specNotes');await page.check('#specNotes')
+        assert await page.evaluate('Array.from(SPEC.onsets)')==before
+        await page.screenshot(path='/tmp/sheetplayer-note-axis.png')
+        print('OK   SATB ranges map note frequencies correctly; full range restored; onsets unchanged')
         assert not errors,errors
         print('OK   removed experimental views; original default; restored detector and cache round trip')
         await browser.close()
