@@ -27,15 +27,26 @@ async def main():
         }''')
         assert result=={'timesOk':True,'count':5},result
         print('OK   production build detects rapid and boundary attacks')
+        assert await page.evaluate("""()=>{
+          const cv=makeChangeSpec(Uint8Array.from([160,160,200,200,160]),5,1,200);
+          const px=cv.getContext('2d').getImageData(0,0,5,1).data;
+          const energy=i=>px[i*4]+px[i*4+1]+px[i*4+2];
+          const scale=localCurveMax(Float32Array.from([100,0,0,2,4,2,0]),1,3,5,100);
+          return energy(2)>energy(1)*3&&energy(1)===energy(3)&&energy(3)===energy(4)&&scale===4;
+        }""")
+        print('OK   change map suppresses sustained/decaying tones; local curve gain reveals weak passages')
         await page.wait_for_function("async()=>!!(await idbGet(idb,'spec','onset-test'))")
         assert await page.evaluate('''async()=>{
           const rec=await idbGet(idb,'spec','onset-test');
           const before=Array.from(SPEC.curves[0]);restoreSpec(rec);
-          return rec.version===3&&SPEC.curves[0].every((v,i)=>v===before[i])&&SPEC.curveStep>0;
+          return rec.version===4&&SPEC.changeCv.width===SPEC.frames&&SPEC.curves[0].every((v,i)=>v===before[i])&&SPEC.curveStep>0;
         }''')
         print('OK   IndexedDB cache restores continuous curves')
         for width in [1100,760,390]:
             await page.set_viewport_size({'width':width,'height':800})
+            for view in ['original','change']:
+                await page.select_option('#specView',view)
+                await page.evaluate('drawSpec()')
             for band in ['0','1','2','3']:
                 await page.select_option('#onsetBand',band)
                 await page.evaluate('drawSpec()')

@@ -255,7 +255,7 @@ body.perf .editOnly{display:none}
   #specHdr{flex-wrap:wrap;row-gap:4px}
   #specTip{display:none}
 }
-#specCv{width:100%;height:112px;display:block;cursor:grab;touch-action:none}
+#specCv{width:100%;height:200px;display:block;cursor:grab;touch-action:none}
 #specCv.grab{cursor:grabbing}
 /* 四周垫约一屏的空白（90dvh/90vw）：谱面像一张纸，可以拖到视口内任意位置，
    拖到顶/底/边也不会有「卡死拉不动」的死角（滚动坐标里有了负空间）。
@@ -974,6 +974,9 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
 <div id="specBox">
  <div id="specHdr">
   <b>频谱</b>
+  <select id="specView" aria-label="频谱视图" title="变化图突出新增频率成分；亮纹不等于某个声部的音符">
+    <option value="original">原频谱</option><option value="change" selected>频谱变化图</option>
+  </select>
   <label>横向 <select id="specZoom">
     <option value="60">60 px/s</option><option value="100">100 px/s</option>
     <option value="160" selected>160 px/s</option><option value="260">260 px/s</option>
@@ -1081,7 +1084,8 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
   （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
-  起音曲线显示声音新增的相对强度，弱峰也会保留；频段选择仅影响曲线，不分离声部，吸附仍参考全频候选。峰值不一定是合唱元音或拍点的起始，请结合试听微调。
+  「频谱变化图」压暗持续声音，亮纹表示新增频率成分，可切回「原频谱」比较；亮纹不等于单个声部或音符。
+  起音曲线按附近片段缩放，显示声音新增的相对强度，弱峰也会保留；频段选择仅影响曲线，不分离声部，吸附仍参考全频候选。峰值不一定是合唱元音或拍点的起始，请结合试听微调。
   频谱头上的提示文字窄屏不显示，但手势一样管用。
   频谱条是<b>浮层</b>，盖在谱面下沿、不挤谱面——开合它不会让谱子改大小，
   谱子底部被它盖住的地方往上滚就能看到；跟随会把当前小节停在它上方，不会藏进去。<br>
@@ -4443,12 +4447,33 @@ function buildSpec(mono,dur,my,cacheHash){
       cv.getContext('2d').putImageData(new ImageData(data,frames,SP_H),0,0);
       const onset=await analyzeOnsetCurves(mono,SP_SR,()=>my!==specSeq);
       if(!onset||my!==specSeq)return resolve();
-      SPEC={cv,frames,hop,sr:SP_SR,dur,...onset};
+      SPEC={cv,changeCv:makeChangeSpec(q,frames,SP_H,qmax),frames,hop,sr:SP_SR,dur,...onset};
       if(cacheHash)cacheSpec(cacheHash);        // 这里 my===specSeq 已校验过，缓存的就是这个音频
       specMsg('检出 '+SPEC.onsets.length+' 个起音');specDirty=true;resolve();
     };
     requestAnimationFrame(step);
   });
+}
+
+// 对数能量的正向差分：持续成分变暗，新增频率变亮。低于峰值 60dB 的底噪不增强。
+// 原始量化谱的间隔是 0.5dB；3dB 以下变化抑制，约 15dB 增量达到满亮。
+function makeChangeSpec(q,frames,height,qmax){
+  const data=new Uint8ClampedArray(q.length*4);
+  for(let y=0;y<height;y++)for(let f=0;f<frames;f++){
+    const i=y*frames+f,v=q[i],prev=f?q[i-1]:v;
+    const increase=Math.max(0,v-prev-6);
+    const gate=Math.max(0,Math.min(1,(v-(qmax-120))/24));
+    const c=Math.round(Math.min(1,increase/24)*gate*255)*3,p=i*4;
+    data[p]=SP_LUT[c];data[p+1]=SP_LUT[c+1];data[p+2]=SP_LUT[c+2];data[p+3]=255;
+  }
+  const cv=document.createElement('canvas');cv.width=frames;cv.height=height;
+  cv.getContext('2d').putImageData(new ImageData(data,frames,height),0,0);return cv;
+}
+function localCurveMax(c,step,t0,t1,globalMax){
+  let max=0;
+  for(let i=Math.max(0,Math.floor((t0-.5)/step));i<Math.min(c.length,Math.ceil((t1+.5)/step));i++)max=Math.max(max,c[i]);
+  // 限制自动增益，静音附近不把数值噪声放大成明显峰值。
+  return Math.max(max,globalMax*.02,1e-6);
 }
 
 // 起音分析不受频谱 canvas 的宽度限制。23ms 窗、约 5ms 步，零填充覆盖首尾。
@@ -4653,7 +4678,7 @@ function drawSpec(){
   const t0=specT0(),t1=t0+W/specPPS,X=t=>(t-t0)*specPPS;
 
   const curveOn=!!(SPEC?.curves&&$('chkCurve').checked);
-  const curveH=curveOn?Math.min(42,H*.32):0,specH=H-curveH;
+  const curveH=curveOn?Math.min(80,H*.4):0,specH=H-curveH;
   if(SPEC){
     // 谱图第 f 列是 [f*hop, f*hop+SP_N) 这段窗算出来的，能量重心在**窗中心** f*hop+SP_N/2，
     // 不是窗起点。按 f*hop 摆放，画出来的声能就比真实时刻早半个窗——1024 样本 @11025Hz 时
@@ -4661,13 +4686,15 @@ function drawSpec(){
     // 这里把源坐标整体减掉半个窗的**列数**来补正。只挪图像：下面 X() 那套时间→像素的映射
     // 一律不动，播放头、E 竖线、秒刻度、循环区间仍然是真实时刻。
     // 半窗有几列随 hop 变（长曲子 hop 会翻倍），所以按 SPEC.hop 现算，别写死 2
-    const half=SP_N/2/SPEC.hop;
+    const changes=$('specView').value==='change'&&SPEC.changeCv;
+    // 差分属于两帧中心的中点，比当前帧中心早半个 hop。
+    const half=SP_N/2/SPEC.hop-(changes?.5:0);
     const fx0=t0*SPEC.sr/SPEC.hop-half,fx1=t1*SPEC.sr/SPEC.hop-half;
     const sx0=Math.max(0,fx0),sx1=Math.min(SPEC.frames,fx1);
     if(sx1>sx0){
       ctx.imageSmoothingEnabled=true;
       const dx0=(sx0-fx0)/(fx1-fx0)*W,dx1=(sx1-fx0)/(fx1-fx0)*W;
-      ctx.drawImage(SPEC.cv,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,specH);
+      ctx.drawImage(changes||SPEC.cv,sx0,0,sx1-sx0,SP_H,dx0,0,dx1-dx0,specH);
     }
   }else{
     ctx.fillStyle='#151515';ctx.fillRect(0,0,W,H);
@@ -4676,8 +4703,8 @@ function drawSpec(){
     ctx.textAlign='left';
   }
   if(curveOn){
-    const band=+$('onsetBand').value,c=SPEC.curves[band],max=SPEC.curveMax[band]||1;
-    const bottom=H-13,height=Math.max(1,curveH-16);
+    const band=+$('onsetBand').value,c=SPEC.curves[band],max=localCurveMax(c,SPEC.curveStep,t0,t1,SPEC.curveMax[band]||0);
+    const bottom=H-13,height=Math.max(1,curveH-30);
     ctx.fillStyle='#101c24';ctx.fillRect(0,specH,W,curveH);
     ctx.strokeStyle='#6de4c5';ctx.lineWidth=1;ctx.beginPath();
     // 每像素取最大值，缩小时仍保留短暂的弱峰；只遍历可见时间区间。
@@ -4685,11 +4712,11 @@ function drawSpec(){
       const a=Math.max(0,Math.ceil((t0+x/specPPS)/SPEC.curveStep));
       const b=Math.min(c.length,Math.max(a+1,Math.ceil((t0+(x+1)/specPPS)/SPEC.curveStep)));
       let v=0;for(let i=a;i<b;i++)v=Math.max(v,c[i]);
-      const y=bottom-height*Math.sqrt(v/max);
+      const y=bottom-height*Math.sqrt(Math.min(1,v/max));
       if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
     }
     ctx.stroke();ctx.fillStyle='#a6c8c4';ctx.font='10px system-ui';
-    ctx.fillText('起音强度 · '+['全频','低频','中频','高频'][band]+'（相对强度）',5,specH+10);
+    ctx.fillText('起音强度 · '+['全频','低频','中频','高频'][band]+'（局部缩放，非音高）',5,specH+10);
   }
   // 循环区间
   const R=loop.on?loopRange():null;
@@ -4829,7 +4856,7 @@ $('specCv').onwheel=e=>{                                // 滚轮/触控板横�
 };
 $('specZoom').onchange=()=>{specPPS=+$('specZoom').value;specDirty=true};
 $('chkOnset').onchange=()=>{specDirty=true};
-$('chkCurve').onchange=$('onsetBand').onchange=()=>{specDirty=true};
+$('specView').onchange=$('chkCurve').onchange=$('onsetBand').onchange=()=>{specDirty=true};
 $('bAlign').onclick=alignToOnsets;
 $('specClose').onclick=()=>specShow(false);
 $('bSpec').onclick=()=>specShow(!specOn());
@@ -5093,7 +5120,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v69';
+const BUILD='v70';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -5762,7 +5789,7 @@ async function switchAudio(blob,hash){
   let sp=hash?specMem.get(hash):null;
   if(!sp&&hash&&idb){
     sp=await idbGet(idb,'spec',hash);
-    if(sp&&sp.version!==3)sp=null; // 新版独立短窗分析和连续曲线需要重新生成
+    if(sp&&sp.version!==4)sp=null; // 新版独立短窗分析和连续曲线需要重新生成
   }
   if(sp&&my===specSeq){
     // IDB 记录 → 重建离屏 canvas；内存缓存里是活对象，直接用。
@@ -5791,8 +5818,9 @@ function cacheSpec(hash){
   if(!idb)return;
   try{
     const px=sp.cv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
-    if(px.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
-    idbPut(idb,'spec',{hash,version:3,px,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
+    const changePx=sp.changeCv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
+    if(px.length+changePx.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
+    idbPut(idb,'spec',{hash,version:4,px,changePx,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
       onsets:sp.onsets,onsetStr:sp.onsetStr,curves:sp.curves,curveMax:sp.curveMax,curveStep:sp.curveStep});
   }catch(err){}
 }
@@ -5802,7 +5830,9 @@ function restoreSpec(rec){
   const cv=document.createElement('canvas');
   cv.width=rec.frames;cv.height=SP_H;
   cv.getContext('2d').putImageData(new ImageData(rec.px,rec.frames,SP_H),0,0);
-  SPEC={cv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
+  const changeCv=document.createElement('canvas');changeCv.width=rec.frames;changeCv.height=SP_H;
+  changeCv.getContext('2d').putImageData(new ImageData(rec.changePx,rec.frames,SP_H),0,0);
+  SPEC={cv,changeCv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
         onsets:rec.onsets,onsetStr:rec.onsetStr,curves:rec.curves,curveMax:rec.curveMax,curveStep:rec.curveStep};
   specMsg('频谱已从缓存恢复');specDirty=true;
   return SPEC;
