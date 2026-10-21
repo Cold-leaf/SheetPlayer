@@ -989,7 +989,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
     <option value="bass">男低 E2–E4</option>
   </select></label>
   <label><input type="checkbox" id="specNotes" checked>刻度</label>
-  <select id="specNoteMode" aria-label="刻度名称"><option value="note">音名</option><option value="solfege">首调唱名</option></select>
+  <select id="specNoteMode" aria-label="刻度名称"><option value="note">音名</option><option value="solfege">首调数字</option></select>
   <label id="specKeyLabel" hidden title="按谱面的 1= 选择 do 的音高；小调采用 la 为主音，例如 a 小调选 1=C。不会自动识别调性">
     1=<select id="specKey" aria-label="首调 do 的音高">
       <option value="0">C</option><option value="1">D♭ / C♯</option><option value="2">D</option>
@@ -1100,7 +1100,7 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   而手机屏高最紧。定位改用手边就有的那条路——<b>点谱面上的小节线</b>跳过去
   （播放模式下点小节线 = 跳到那一小节）。曲名、倍速、展开键一个不少。<br>
   <b>频谱</b>打开后：拖空白 = 像拖胶片一样连续走带，单击 = 定位，拖竖线 = 微调那个时间点。
-  刻度可切换「首调唱名」，按谱面的「1=」选择 do 的音高；例如 1=D 时 D 为 do、E 为 re。小调采用 la 为主音，例如 a 小调选择 1=C。唱名后的数字是该组 do 的八度编号（do4 表示第四组 do），不是简谱音级；变化音使用固定升降号写法，不推断和声拼写。
+  刻度可切换「首调数字」，按谱面的「1=」选择音高；例如 1=D 时 D 为 1、E 为 2。小调以 6 为主音，例如 a 小调选择 1=C。第四组的 1（如 C4、D4）无点，高低八度用上下点区分；变化音使用固定升降号写法，不推断和声拼写。
   「音域」按常见实声音域缩放，中央 C 为 C4（男高使用实际发声音高）；不会分离声部或过滤试听音频。音名标的是频率，亮带可能是泛音。
   「仅显示亮部」隐藏低于色阶阈值的暗色成分，阈值越高保留越少；65% 表示色阶位置，不是保留 35% 的像素。取消勾选恢复完整频谱。此选项不改变起音检测。
   「频谱变化图」压暗持续声音，突出新增频率成分，可切回「原频谱」比较；亮纹不等于单个音符。
@@ -4674,10 +4674,12 @@ function specNoteLabel(note,mode,key){
   const names=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
   if(mode!=='solfege')return {text:names[note%12]+(Math.floor(note/12)-1),root:note%12===0,altered:names[note%12].includes('♯')};
   const relative=((note-key)%12+12)%12;
-  const syllables=['do','♯do','re','♭mi','mi','fa','♯fa','sol','♭la','la','♭ti','ti'];
-  // 后缀是该组 do 的科学音高八度，避免跨八度的唱名无法区分。
+  const degrees=['1','♯1','2','♭3','3','4','♯4','5','♭6','6','♭7','7'];
+  // 第四组无点，每升降一个八度增加一个上下点。
   const octave=Math.floor((note-key)/12)-1;
-  return {text:syllables[relative]+octave,root:relative===0,altered:[1,3,6,8,10].includes(relative)};
+  const dots=octave-4;
+  const marks=dots>0?'\u0307'.repeat(dots):'\u0323'.repeat(-dots);
+  return {text:degrees[relative]+marks,root:relative===0,altered:[1,3,6,8,10].includes(relative)};
 }
 function drawSpecNotes(ctx,H,range,axisX){
   const mode=$('specNoteMode').value,key=+$('specKey').value;
@@ -5138,7 +5140,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v76';
+const BUILD='v77';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');

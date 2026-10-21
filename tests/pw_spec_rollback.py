@@ -76,11 +76,11 @@ async def main():
         await page.select_option('#specKey','2')
         assert await page.evaluate("""()=>{
           drawSpec();
-          return specNoteLabel(62,'solfege',2).text==='do4'&&
-            specNoteLabel(64,'solfege',2).text==='re4'&&
-            specNoteLabel(61,'solfege',2).text==='ti3'&&
+          return specNoteLabel(62,'solfege',2).text==='1'&&
+            specNoteLabel(64,'solfege',2).text==='2'&&
+            specNoteLabel(61,'solfege',2).text==='7̣'&&
             specNoteLabel(63,'solfege',2).altered&&
-            specNoteLabel(69,'solfege',0).text==='la4'&&
+            specNoteLabel(69,'solfege',0).text==='6'&&
             specNoteLabel(60,'note',2).text==='C4';
         }""")
         await page.select_option('#specNoteMode','note')
