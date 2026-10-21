@@ -4659,7 +4659,7 @@ function specFrequencyRange(){
   return {top:specFrequencyRow(440*2**((notes[1]+.5-69)/12)),
           bottom:specFrequencyRow(440*2**((notes[0]-.5-69)/12))};
 }
-function drawSpecNotes(ctx,H,range){
+function drawSpecNotes(ctx,H,range,axisX){
   const names=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
   const labels=[];let last=-Infinity;
   for(let n=108;n>=24;n--){
@@ -4671,12 +4671,17 @@ function drawSpecNotes(ctx,H,range){
     if(semitoneH<12&&names[n%12].includes('♯'))continue;
     labels.push({y,name:names[n%12]+(Math.floor(n/12)-1)});last=y;
   }
-  ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.save();ctx.font='10px system-ui';ctx.textAlign='left';ctx.lineJoin='round';
+  // 刻度贴着播放线，文字仅描边，不用矩形背景遮挡频谱。
   for(const {y,name} of labels){
-    ctx.strokeStyle='rgba(255,255,255,.14)';ctx.beginPath();ctx.moveTo(33,y);ctx.lineTo(45,y);ctx.stroke();
-    ctx.fillStyle='rgba(8,12,18,.88)';ctx.fillRect(0,Math.max(0,Math.min(H-12,y-6)),32,12);
-    ctx.fillStyle='#d8e3ed';ctx.fillText(name,3,Math.max(10,Math.min(H-3,y+3)));
+    const tickY=Math.round(y)+.5;
+    ctx.lineWidth=1;ctx.strokeStyle='rgba(255,255,255,.85)';
+    ctx.beginPath();ctx.moveTo(axisX-4,tickY);ctx.lineTo(axisX+5,tickY);ctx.stroke();
+    const textY=Math.max(10,Math.min(H-3,y+3));
+    ctx.lineWidth=2;ctx.strokeStyle='rgba(8,12,18,.8)';ctx.strokeText(name,axisX+8,textY);
+    ctx.fillStyle='#edf4fa';ctx.fillText(name,axisX+8,textY);
   }
+  ctx.restore();
 }
 function drawSpec(){
   const cv=$('specCv'),ctx=cv.getContext('2d');
@@ -4708,7 +4713,7 @@ function drawSpec(){
     ctx.fillText(aud.src?'正在分析音频…':'先在上面选一个音频文件',W/2,H/2);
     ctx.textAlign='left';
   }
-  if(SPEC&&$('specNotes').checked)drawSpecNotes(ctx,H,range);
+  if(SPEC&&$('specNotes').checked)drawSpecNotes(ctx,H,range,W/2);
   // 循环区间
   const R=loop.on?loopRange():null;
   if(R){ctx.fillStyle='rgba(0,255,136,.10)';ctx.fillRect(X(R.t0),0,(R.t1-R.t0)*specPPS,H)}
@@ -5111,7 +5116,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v74';
+const BUILD='v75';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
