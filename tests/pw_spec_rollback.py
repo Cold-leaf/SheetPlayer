@@ -18,8 +18,7 @@ async def main():
         await page.evaluate('async()=>{idb=(await initStore()).db}')
         assert await page.locator('#chkCurve').count()==0
         assert await page.locator('#onsetBand').count()==0
-        assert await page.locator('#specView').input_value()=='original'
-        assert await page.locator('#specView option').count()==2
+        assert await page.locator('#specView').count()==0
         await page.evaluate("""async()=>{
           const m=new Float32Array(SP_SR*2);
           for(let k=0;k<300;k++)m[5500+k]=.8*Math.exp(-k/44)*Math.sin(2*Math.PI*1500*k/SP_SR);
@@ -30,11 +29,9 @@ async def main():
           const rec=await idbGet(idb,'spec','rollback-test');
           const expected=Array.from(SPEC.onsets);restoreSpec(rec);
           return rec.version===6&&!('curves' in SPEC)&&!('pitchCv' in SPEC)&&
-            expected.length===1&&SPEC.onsets.every((v,i)=>v===expected[i])&&SPEC.changeCv.width===SPEC.frames;
+            expected.length===1&&SPEC.onsets.every((v,i)=>v===expected[i])&&!('changeCv' in SPEC)&&!('changePx' in rec);
         }""")
-        for view in ['original','change']:
-            await page.select_option('#specView',view)
-            await page.evaluate('drawSpec()')
+        await page.evaluate('drawSpec()')
         assert await page.evaluate("""()=>{
           const cv=document.createElement('canvas');cv.width=3;cv.height=1;
           const d=new Uint8ClampedArray(12);
@@ -87,6 +84,24 @@ async def main():
         assert not await page.locator('#specKeyLabel').is_visible()
         assert await page.evaluate('Array.from(SPEC.onsets)')==before
         print('OK   movable-do key selection, chromatic notes, octave boundaries and note mode')
+        await page.evaluate("""async()=>{
+          track={id:'delete-test',name:'测试',lastAudio:'keep',audios:[
+            {hash:'keep',name:'保留.mp3',mode:activeMode},
+            {hash:'remove',name:'删除.mp3',mode:activeMode}]};
+          await idbPut(idb,'projects',track);
+          await idbPut(idb,'files',{hash:'remove',blob:new Blob(['audio'])});
+          loadedAudioHash='keep';syncAudSel();openChoice('audSel','音频');
+        }""")
+        assert await page.locator('.audioChoiceRow').count()==2
+        page.once('dialog',lambda d:d.dismiss())
+        await page.get_by_role('button',name='删除音频《删除.mp3》',exact=True).click()
+        assert await page.locator('.audioChoiceRow').count()==2
+        page.once('dialog',lambda d:d.accept())
+        await page.get_by_role('button',name='删除音频《删除.mp3》',exact=True).click()
+        await page.wait_for_function("track.audios.length===1 && document.querySelectorAll('.audioChoiceRow').length===1")
+        assert await page.evaluate("async()=>loadedAudioHash==='keep' && track.lastAudio==='keep' && !(await idbGet(idb,'files','remove'))")
+        assert await page.locator('#choiceDialog').evaluate('(el)=>el.scrollWidth<=el.clientWidth')
+        print('OK   per-audio deletion supports cancel, removes file and keeps current audio unchanged on narrow screens')
         assert not errors,errors
         print('OK   removed experimental views; original default; restored detector and cache round trip')
         await browser.close()

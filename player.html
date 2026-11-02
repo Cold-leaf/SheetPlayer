@@ -730,6 +730,9 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
 #choiceHead{display:flex;align-items:center;justify-content:space-between;gap:12px}
 #choiceCurrent{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;margin:12px 0;color:var(--text-dim)}
 #choiceItems{display:flex;flex-direction:column;gap:6px}
+.audioChoiceRow{display:flex;gap:8px}
+.audioChoiceRow>button:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+#choiceItems .audioChoiceRow>button:last-child{flex-shrink:0;color:#ff8585}
 #choiceDialog button{min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:inherit;white-space:normal;overflow-wrap:anywhere;text-align:left}
 #choiceItems button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
 @media(max-width:700px){#currentTrackName{max-width:120px}#bar .choiceButton{max-width:130px}}
@@ -976,9 +979,6 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
 <div id="specBox">
  <div id="specHdr">
   <b>频谱</b>
-  <select id="specView" aria-label="频谱视图" title="变化图突出新增频率成分；亮纹不等于某个声部的音符">
-    <option value="original" selected>原频谱</option><option value="change">频谱变化图</option>
-  </select>
   <label><input type="checkbox" id="specBright" checked>仅显示亮部</label>
   <label title="色阶阈值，越高保留越少；不是像素数量百分比">阈值
     <input type="range" id="specBrightLevel" min="0" max="95" step="5" value="65" style="width:85px">
@@ -1104,7 +1104,6 @@ body.perf .beatMark{touch-action:auto;cursor:pointer}
   刻度可切换「首调数字」，按谱面的「1=」选择音高；例如 1=D 时 D 为 1、E 为 2。小调以 6 为主音，例如 a 小调选择 1=C。第四组的 1（如 C4、D4）无点，高低八度用上下点区分；变化音使用固定升降号写法，不推断和声拼写。
   「音域」按常见实声音域缩放，中央 C 为 C4（男高使用实际发声音高）；不会分离声部或过滤试听音频。音名标的是频率，亮带可能是泛音。
   「仅显示亮部」隐藏低于色阶阈值的暗色成分，阈值越高保留越少；65% 表示色阶位置，不是保留 35% 的像素。取消勾选恢复完整频谱。此选项不改变起音检测。
-  「频谱变化图」压暗持续声音，突出新增频率成分，可切回「原频谱」比较；亮纹不等于单个音符。
   频谱头上的提示文字窄屏不显示，但手势一样管用。
   频谱条是<b>浮层</b>，盖在谱面下沿、不挤谱面——开合它不会让谱子改大小，
   谱子底部被它盖住的地方往上滚就能看到；跟随会把当前小节停在它上方，不会藏进去。<br>
@@ -1412,7 +1411,18 @@ function openChoice(selectId,title){
       if(!isCurrent){sel.value=option.value;sel.dispatchEvent(new Event('change',{bubbles:true}))}
       syncChoiceButtons();
     };
-    $('choiceItems').appendChild(button);
+    if(selectId==='audSel'&&track?.audios?.some(a=>a.hash===option.value)){
+      const row=document.createElement('div');row.className='audioChoiceRow';
+      const remove=document.createElement('button');remove.type='button';remove.textContent='删除';
+      remove.setAttribute('aria-label','删除音频《'+(option.title||option.textContent)+'》');
+      remove.onclick=async()=>{
+        remove.disabled=true;
+        try{await deleteAudio(option.value);openChoice(selectId,title)}
+        catch(err){msg('删除失败：'+err.message,1)}
+        finally{remove.disabled=false}
+      };
+      row.append(button,remove);$('choiceItems').appendChild(row);
+    }else $('choiceItems').appendChild(button);
   }
   showModal('choiceDialog');
 }
@@ -4519,7 +4529,7 @@ function buildSpec(mono,dur,my,cacheHash){
       cv.width=frames;cv.height=SP_H;
       cv.getContext('2d').putImageData(new ImageData(data,frames,SP_H),0,0);
       const on=pickOnsets(flux,frames,hop,SP_SR,mono);
-      SPEC={cv,changeCv:makeChangeSpec(q,frames,SP_H,qmax),frames,hop,sr:SP_SR,dur,onsets:on.t,onsetStr:on.s};
+      SPEC={cv,frames,hop,sr:SP_SR,dur,onsets:on.t,onsetStr:on.s};
       if(cacheHash)cacheSpec(cacheHash);        // 这里 my===specSeq 已校验过，缓存的就是这个音频
       specMsg('检出 '+on.t.length+' 个起音');specDirty=true;resolve();
     };
@@ -4527,20 +4537,6 @@ function buildSpec(mono,dur,my,cacheHash){
   });
 }
 
-// 对数能量的正向差分：持续成分变暗，新增频率变亮。低于峰值 60dB 的底噪不增强。
-// 原始量化谱的间隔是 0.5dB；3dB 以下变化抑制，约 15dB 增量达到满亮。
-function makeChangeSpec(q,frames,height,qmax){
-  const data=new Uint8ClampedArray(q.length*4);
-  for(let y=0;y<height;y++)for(let f=0;f<frames;f++){
-    const i=y*frames+f,v=q[i],prev=f?q[i-1]:v;
-    const increase=Math.max(0,v-prev-6);
-    const gate=Math.max(0,Math.min(1,(v-(qmax-120))/24));
-    const c=Math.round(Math.min(1,increase/24)*gate*255)*3,p=i*4;
-    data[p]=SP_LUT[c];data[p+1]=SP_LUT[c+1];data[p+2]=SP_LUT[c+2];data[p+3]=255;
-  }
-  const cv=document.createElement('canvas');cv.width=frames;cv.height=height;
-  cv.getContext('2d').putImageData(new ImageData(data,frames,height),0,0);return cv;
-}
 /* 谱通量峰值 = 起音。局部最大 + 高于邻域均值 + 最小间距，避免平台期重复出峰 */
 /* 在候选长窗内用短窗谱增量定位：持续音的总能量不能充当新音的阈值。
    约 23ms Hann 窗、2ms 步，比较相隔约 8ms 的频谱；增量的时间取两窗中心中点。
@@ -4766,14 +4762,13 @@ function drawSpec(){
     // 这里把源坐标整体减掉半个窗的**列数**来补正。只挪图像：下面 X() 那套时间→像素的映射
     // 一律不动，播放头、E 竖线、秒刻度、循环区间仍然是真实时刻。
     // 半窗有几列随 hop 变（长曲子 hop 会翻倍），所以按 SPEC.hop 现算，别写死 2
-    const changes=$('specView').value==='change'&&SPEC.changeCv;
-    const half=SP_N/2/SPEC.hop-(changes?.5:0);
+    const half=SP_N/2/SPEC.hop;
     const fx0=t0*SPEC.sr/SPEC.hop-half,fx1=t1*SPEC.sr/SPEC.hop-half;
     const sx0=Math.max(0,fx0),sx1=Math.min(SPEC.frames,fx1);
     if(sx1>sx0){
       ctx.imageSmoothingEnabled=true;
       const dx0=(sx0-fx0)/(fx1-fx0)*W,dx1=(sx1-fx0)/(fx1-fx0)*W;
-      const source=changes||SPEC.cv;
+      const source=SPEC.cv;
       ctx.drawImage($('specBright').checked?brightSpec(source,+$('specBrightLevel').value):source,sx0,range.top,sx1-sx0,range.bottom-range.top,dx0,0,dx1-dx0,H);
     }
   }else{
@@ -4921,7 +4916,7 @@ $('specCv').onwheel=e=>{                                // 滚轮/触控板横�
 };
 $('specZoom').onchange=()=>{specPPS=+$('specZoom').value;specDirty=true};
 $('specNoteMode').onchange=()=>{$('specKeyLabel').hidden=$('specNoteMode').value!=='solfege';specDirty=true};
-$('specKey').onchange=$('specRange').onchange=$('specNotes').onchange=$('specBright').onchange=$('specView').onchange=$('chkOnset').onchange=()=>{specDirty=true};
+$('specKey').onchange=$('specRange').onchange=$('specNotes').onchange=$('specBright').onchange=$('chkOnset').onchange=()=>{specDirty=true};
 $('specBrightLevel').oninput=()=>{$('specBrightValue').textContent=$('specBrightLevel').value+'%';specDirty=true};
 $('bAlign').onclick=alignToOnsets;
 $('specClose').onclick=()=>specShow(false);
@@ -5372,7 +5367,7 @@ function syncInstall(){$('instNow').style.display=isStandalone()?'':'none'}
 // 跟 sw.js 的 VER **一起 bump**：手机上"拿到的页面是不是新的"就靠这一行判断。
 // 9/20 之后只 bump 了 VER、这一行冻在 v12，于是手机看不出自己跑的是旧页面
 //（那次"手机上没生效"因此多绕了几圈）。两个值保持同一个号，肉眼对得上。
-const BUILD='v80';
+const BUILD='v81';
 $('buildTag').textContent='构建 '+BUILD+(isStandalone()?' · 已装成 App':'')+' · ↻ 点此刷新';
 async function forceReload(){
   msg('正在清缓存重新加载…');
@@ -6070,9 +6065,8 @@ function cacheSpec(hash){
   if(!idb)return;
   try{
     const px=sp.cv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
-    const changePx=sp.changeCv.getContext('2d').getImageData(0,0,sp.frames,SP_H).data;
-    if(px.length+changePx.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
-    idbPut(idb,'spec',{hash,version:6,px,changePx,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
+    if(px.length>16<<20)return;              // 超长曲子的频谱太大，不落盘
+    idbPut(idb,'spec',{hash,version:6,px,frames:sp.frames,hop:sp.hop,sr:sp.sr,dur:sp.dur,
       onsets:sp.onsets,onsetStr:sp.onsetStr});
   }catch(err){}
 }
@@ -6082,9 +6076,7 @@ function restoreSpec(rec){
   const cv=document.createElement('canvas');
   cv.width=rec.frames;cv.height=SP_H;
   cv.getContext('2d').putImageData(new ImageData(rec.px,rec.frames,SP_H),0,0);
-  const changeCv=document.createElement('canvas');changeCv.width=rec.frames;changeCv.height=SP_H;
-  changeCv.getContext('2d').putImageData(new ImageData(rec.changePx,rec.frames,SP_H),0,0);
-  SPEC={cv,changeCv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
+  SPEC={cv,frames:rec.frames,hop:rec.hop,sr:rec.sr,dur:rec.dur,
         onsets:rec.onsets,onsetStr:rec.onsetStr};
   specMsg('频谱已从缓存恢复');specDirty=true;
   return SPEC;
@@ -6157,12 +6149,12 @@ function syncAudSel(){
   };
 }
 // 删除当前选中的音频变体：从项目移除，文件若无别的项目引用则一并删，标注不受影响
-$('bDelAud').onclick=async()=>{
+async function deleteAudio(h){
   if(!idb||!track)return;
-  const h=$('audSel').value;
   if(!h||h==='__add__')return msg('先选一个音频再删',1);
   const a=(track.audios||[]).find(x=>x.hash===h);if(!a)return;
   if(!confirm('删除音频《'+a.name+'》？它在本机的文件会一并删除（标注不受影响）。'))return;
+  const wasLoaded=loadedAudioHash===h;
   track.audios=track.audios.filter(x=>x.hash!==h);
   if(track.lastAudio===h)track.lastAudio=null;
   track.mediaUpdatedAt=track.updatedAt=Date.now();
@@ -6171,10 +6163,11 @@ $('bDelAud').onclick=async()=>{
   // 换成项目模型之后 t.hash 全是 undefined，undefined!==undefined 为 false → 判断失效 → 会误删别人的音频
   const used=await blobsInUse(track.id);
   if(!used.has(h))await delBlob(h);
-  refreshAudLocal();syncAudSel();syncModeSel();
-  loadModeAudio(activeMode);              // 换回当前模式剩下的音频（没有则清空播放器）
+  await refreshAudLocal();syncAudSel();syncModeSel();
+  if(wasLoaded)await loadModeAudio(activeMode); // 只在删除正在播放的音频时切换
   msg('已删除音频《'+a.name+'》');
-};
+}
+$('bDelAud').onclick=()=>deleteAudio($('audSel').value);
 
 /* ---------- 曲目库界面 ---------- */
 /* ---------- 返回键：曲目库 ↔ 谱面 两级 ----------
